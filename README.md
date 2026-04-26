@@ -74,7 +74,7 @@ Each service is independently deployable. See the README in each folder for serv
 
 ## Running locally
 
-You'll need: Node 20+, Go 1.26+, a Gemini API key from [Google AI Studio](https://aistudio.google.com/).
+You'll need: Node 24+, Go 1.26+, a Gemini API key from [Google AI Studio](https://aistudio.google.com/).
 
 Or use the Makefile: `make metrics`, `make gateway`, `make frontend` in separate terminals.
 
