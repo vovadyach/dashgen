@@ -1,4 +1,4 @@
-import "dotenv/config";
+import 'dotenv/config';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -9,7 +9,10 @@ function required(name: string): string {
 }
 
 function requiredList(name: string): string[] {
-  const items = required(name).split(",").map((s) => s.trim()).filter(Boolean);
+  const items = required(name)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (items.length === 0) {
     throw new Error(`Environment variable ${name} must contain at least one value`);
   }
@@ -17,8 +20,8 @@ function requiredList(name: string): string[] {
 }
 
 export const config = {
-  geminiApiKey: required("GEMINI_API_KEY"),
-  metricsBaseUrl: required("METRICS_BASE_URL"),
-  allowedOrigins: requiredList("ALLOWED_ORIGINS"),
+  geminiApiKey: required('GEMINI_API_KEY'),
+  metricsBaseUrl: required('METRICS_BASE_URL'),
+  allowedOrigins: requiredList('ALLOWED_ORIGINS'),
   port: Number(process.env.PORT ?? 3000),
 };
