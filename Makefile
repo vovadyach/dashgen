@@ -1,27 +1,21 @@
-.PHONY: help metrics gateway frontend install clean
+.PHONY: help install metrics gateway clean
 
 help:
 	@echo "DashGen — available commands:"
 	@echo "  make install    Install all dependencies"
 	@echo "  make metrics    Run the Go metrics service (:8080)"
-	@echo "  make gateway    Run the Node gateway (:3000)"
-	@echo "  make frontend   Run the React frontend (:5173)"
-	@echo "  make clean      Remove build artifacts and node_modules"
+	@echo "  make gateway    Run the Python gateway (:3000)"
+	@echo "  make clean      Remove build artifacts and the Python virtual environment"
 
 install:
-	cd gateway && npm install
-	cd frontend && npm install
+	cd gateway && uv sync
 
 metrics:
 	cd metrics && go run .
 
 gateway:
-	cd gateway && npm run dev
-
-frontend:
-	cd frontend && npm run dev
+	cd gateway && uv run uvicorn gateway.main:create_app --factory --reload --port 3000
 
 clean:
-	rm -rf gateway/node_modules gateway/dist
-	rm -rf frontend/node_modules frontend/dist
+	rm -rf gateway/.venv
 	rm -f metrics/metrics
