@@ -20,7 +20,7 @@ Rewrite the gateway in Python with FastAPI before building the agent.
 - **pydantic-settings** loads typed configuration from environment variables.
 - **limits** counts requests for rate limiting, wrapped in a FastAPI dependency.
 - **pytest, ruff and mypy** handle tests, formatting and linting, and type checking.
-- **google-genai**, the official Gemini SDK, is added with the agent in step 2.
+- **google-genai**, the official Gemini SDK, is added with the agent in step 4.
 
 ## Consequences
 
