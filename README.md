@@ -81,18 +81,30 @@ make gateway                           # terminal 2: gateway on :3000
 
 Open http://localhost:3000/docs to try the gateway's endpoints in the browser.
 
-Run the gateway's tests with `cd gateway && uv run pytest`.
+Run every formatter, linter, type checker and test with `make check`.
 
 ## Repo layout
 
 ```
 dashgen/
+├── .claude/    # Claude Code settings, hooks and skills
 ├── docs/       # roadmap and decision records
 ├── frontend/   # React + Vite app (planned)
 ├── gateway/    # Python + FastAPI gateway
 ├── metrics/    # Go metrics service
+├── scripts/    # check.sh: every check in one command
+├── CLAUDE.md   # project rules for Claude Code
 └── Makefile
 ```
+
+## Working with Claude Code
+
+The repo is set up for [Claude Code](https://claude.com/claude-code):
+
+- `CLAUDE.md` holds the project rules, and `gateway/CLAUDE.md` and `metrics/CLAUDE.md` hold each service's conventions.
+- `.claude/settings.json` stops Claude from committing or pushing, so every change is reviewed and committed by hand. It also keeps Claude's file tools, and shell commands like `cat`, away from `.env` files other than `.env.example`. A script that opens a file itself isn't covered; only Claude Code's [sandbox](https://code.claude.com/docs/en/sandboxing) blocks that.
+- Hooks format each Python or Go file Claude edits, and run `scripts/check.sh` when Claude finishes a turn that changed files. If a check fails, Claude is sent back to fix it, up to twice; after that it stops with a warning.
+- Skills: `/fix-issue <number>` works a GitHub issue through to passing checks, and `/adr` records a decision in `docs/decisions/`.
 
 ## Decisions
 
