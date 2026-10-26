@@ -58,6 +58,8 @@ Where it's headed (the [status](#status) table says what exists today):
 
 Both backend services keep their data in Postgres, each in its own tables: the metrics service owns the time series, and the gateway owns the log of agent runs. Everything runs on AWS, built with Terraform: the frontend on S3 + CloudFront, the services on ECS Fargate, and Postgres on RDS.
 
+[docs/architecture.md](docs/architecture.md) has the details, including each service's API.
+
 ## Status
 
 | Part | Tech | Today |
@@ -90,7 +92,7 @@ Run every formatter, linter, type checker and test with `make check`. GitHub Act
 dashgen/
 ├── .claude/    # Claude Code settings, hooks and skills
 ├── .github/    # CI workflow: runs scripts/check.sh
-├── docs/       # roadmap and decision records
+├── docs/       # architecture, roadmap and decision records
 ├── frontend/   # React + Vite app (planned)
 ├── gateway/    # Python + FastAPI gateway
 ├── metrics/    # Go metrics service

@@ -15,7 +15,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] `scripts/check.sh`: one command that runs every formatter, linter, type checker and test
 - [x] CI on GitHub Actions that runs `scripts/check.sh`
 - [x] Claude Code setup: a `CLAUDE.md` per service, permissions, format and stop hooks, `fix-issue` and `adr` skills
-- [ ] `docs/architecture.md`: how the services fit together
+- [x] `docs/architecture.md`: how the services fit together
 - [x] README and Makefile brought up to date
 
 **Done when:** `scripts/check.sh` passes locally and in CI, and failing checks send Claude back to fix them before it finishes.
