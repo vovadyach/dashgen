@@ -1,6 +1,6 @@
 # Architecture
 
-How DashGen's services fit together, and what each one's API looks like today. The [roadmap](roadmap.md) says what comes next, and the [decisions](decisions/) say why.
+What runs today: how DashGen's services fit together, and each one's API. [design.md](design.md) works out the target design and the reasons for it, the [roadmap](roadmap.md) says what comes next, and the [decisions](decisions/) record why.
 
 ## The pieces
 
@@ -9,25 +9,13 @@ Browser ──▶ Gateway ──▶ Metrics ──▶ Postgres
            (the agent)   (the data)
 ```
 
-| Service | Folder | Built with | Today |
-|---|---|---|---|
-| Metrics | `metrics/` | Go, standard library | Serves 7 days of hardcoded sample data |
-| Gateway | `gateway/` | Python, FastAPI | `GET /health`, and `POST /ask`, which answers 501 until the agent exists |
-| Frontend | `frontend/` | React, Vite | Planned (step 5) |
-| Postgres | | | Planned (step 2) |
+Today the metrics service and the gateway run. The frontend, Postgres and the agent are still planned, and the README's [status table](../README.md#status) says in which step.
 
 - **Metrics** owns the time series. Nothing else reads that data directly.
 - **Gateway** owns the agent and, from step 2, the log of agent runs. It gets metrics only by calling the metrics service over HTTP.
 - **Frontend** talks only to the gateway.
 
-## How a question becomes a chart
-
-Planned for step 4:
-
-1. The frontend sends `POST /ask` with `{"question": "Show errors for payments-service this week"}`.
-2. The gateway checks the rate limit and the question, then starts the Gemini loop.
-3. Gemini calls tools: `list_services`, then `query_metrics(service, metric, days)`, which the gateway turns into `GET /metrics` on the metrics service.
-4. Gemini calls `create_chart`. The gateway validates the chart and returns it with the steps that produced it.
+How a question will become a chart is drawn step by step in [design.md](design.md#one-question-step-by-step).
 
 ## Metrics API
 

@@ -15,7 +15,7 @@ How DashGen should be built, and why. [architecture.md](architecture.md) describ
 
 | | Requirement |
 |---|---|
-| Users | Portfolio visitors: tens to a few hundred questions a day, with spikes after a LinkedIn post |
+| Users | Demo visitors: tens to a few hundred questions a day, with short spikes when the project is shared |
 | Uptime | Up only while it's being worked on or demoed. A demo video covers the rest; there's no uptime promise |
 | Budget | Under $25 a month for AWS and Gemini together |
 | Speed | A chart within about 10 seconds |

@@ -26,10 +26,10 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] `runs` table with one row per agent run
 - [ ] Seed script that writes 30 days of hourly data relative to today, so "today" and "this week" always have data
 - [ ] Metrics service reads from Postgres instead of hardcoded data
-- [ ] Each service owns its tables, their migrations and its own database user: `metrics` belongs to the metrics service, `runs` to the gateway
+- [ ] One Postgres instance with a database per service, each with its own user and migrations: the `metrics` database belongs to the metrics service, and the `gateway` database, with `runs`, to the gateway
 - [ ] Dockerfiles for both services, and Docker Compose to run everything locally
 - [ ] Tests against a real Postgres, locally and in CI
-- [ ] ADR: why Postgres is enough for this data, and what would replace it at scale (TimescaleDB or ClickHouse)
+- [ ] ADR: why Postgres is enough for this data, why one instance holds a database per service, and what changes at scale (TimescaleDB or ClickHouse, and separate instances)
 
 **Done when:** `docker compose up` starts Postgres and both services, and the metrics service answers from seeded data.
 

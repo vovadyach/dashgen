@@ -56,16 +56,14 @@ Where it's headed (the [status](#status) table says what exists today):
 - **Gateway** — runs the agent: calls the tools, returns the chart
 - **Metrics** — a small REST API over the sample metrics
 
-Both backend services keep their data in Postgres, each in its own tables: the metrics service owns the time series, and the gateway owns the log of agent runs. Everything runs on AWS, built with Terraform: the frontend on S3 + CloudFront, the services on ECS Fargate, and Postgres on RDS.
-
-[docs/architecture.md](docs/architecture.md) has the details, including each service's API.
+More detail: [docs/architecture.md](docs/architecture.md) covers what runs today, including each API, and [docs/design.md](docs/design.md) the target design, with requirements, cost estimates and diagrams.
 
 ## Status
 
 | Part | Tech | Today |
 |---|---|---|
-| Metrics (`metrics/`) | Go 1.27+, standard library | `GET /health`, `GET /services`, `GET /metrics?service=&metric=&days=` over hardcoded data |
-| Gateway (`gateway/`) | Python 3.14, FastAPI, uv | `GET /health`, and `POST /ask` with a per-IP rate limit, which answers 501 until the agent exists |
+| Metrics (`metrics/`) | Go 1.27+, standard library | Serves 7 days of hardcoded sample data ([API](docs/architecture.md#metrics-api)) |
+| Gateway (`gateway/`) | Python 3.14, FastAPI, uv | Takes questions with a per-IP rate limit, and answers 501 until the agent exists ([API](docs/architecture.md#gateway-api)) |
 | Database | Postgres | Planned (step 2) |
 | Hosting | AWS, Terraform | Planned (step 3) |
 | Agent | Gemini (`google-genai`) | Planned (step 4) |
@@ -92,7 +90,7 @@ Run every formatter, linter, type checker and test with `make check`. GitHub Act
 dashgen/
 ├── .claude/    # Claude Code settings, hooks and skills
 ├── .github/    # CI workflow: runs scripts/check.sh
-├── docs/       # architecture, roadmap and decision records
+├── docs/       # architecture, design, roadmap and decision records
 ├── frontend/   # React + Vite app (planned)
 ├── gateway/    # Python + FastAPI gateway
 ├── metrics/    # Go metrics service

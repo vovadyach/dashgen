@@ -8,6 +8,7 @@ Type a question in plain English, get a chart. A Gemini agent in the gateway pic
 - `metrics/`: Go service that serves the sample metrics. See `metrics/CLAUDE.md`.
 - `frontend/`: React + Vite app, empty until step 5.
 - `docs/architecture.md`: how the services fit together, and their APIs. Update it whenever an API changes.
+- `docs/design.md`: the target design, with requirements, estimates and diagrams. Update it when a design choice changes.
 - `docs/roadmap.md`: the nine steps. Tick an item when it's done.
 - `docs/decisions/`: ADRs. Write new ones with `/adr`.
 

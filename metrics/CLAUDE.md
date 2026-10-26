@@ -1,6 +1,6 @@
 # Metrics service
 
-Go, standard library only. Serves the sample metrics over HTTP: `GET /health`, `GET /services` and `GET /metrics?service=&metric=&days=`.
+Go, standard library only. Serves the sample metrics over HTTP. Its API is described in `docs/architecture.md`.
 
 - Run it with `make metrics` from the repo root (port 8080). Settings come from the environment, never a `.env` file: `PORT=8081 make metrics`.
 - Checks: `gofmt -l .`, `go vet ./...` and `go test ./...`.
