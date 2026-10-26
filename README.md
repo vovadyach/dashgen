@@ -1,5 +1,6 @@
 # DashGen
 
+[![CI](https://github.com/vovadyach/dashgen/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vovadyach/dashgen/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
@@ -81,13 +82,14 @@ make gateway                           # terminal 2: gateway on :3000
 
 Open http://localhost:3000/docs to try the gateway's endpoints in the browser.
 
-Run every formatter, linter, type checker and test with `make check`.
+Run every formatter, linter, type checker and test with `make check`. GitHub Actions runs the same script on every pull request and every push to `main`.
 
 ## Repo layout
 
 ```
 dashgen/
 ├── .claude/    # Claude Code settings, hooks and skills
+├── .github/    # CI workflow: runs scripts/check.sh
 ├── docs/       # roadmap and decision records
 ├── frontend/   # React + Vite app (planned)
 ├── gateway/    # Python + FastAPI gateway
