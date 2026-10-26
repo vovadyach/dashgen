@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 Fix GitHub issue #$ARGUMENTS.
 
-1. Read it: `gh issue view $ARGUMENTS --comments`. If it's unclear what "done" means, ask before writing code.
+1. Read it: `gh issue view $ARGUMENTS --json title,body,comments`. (Outside a terminal, `--comments` alone prints only the comments, not the issue.) If no number was given, run `gh issue list` and ask which issue. If it's unclear what "done" means, ask before writing code.
 2. Find the code involved. Say in a few lines what you'll change and why, then go ahead.
 3. Write a test that fails because of the issue, then make it pass. Follow the `CLAUDE.md` of the service you touch.
 4. Run `scripts/check.sh` until it passes.
