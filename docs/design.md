@@ -169,8 +169,8 @@ sequenceDiagram
     V->>F: types "Show errors for payments-service this week"
     F->>G: POST /ask with the question
     G->>G: per-IP rate limit, question length
-    G->>DB: count today's runs (daily cap)
-    DB-->>G: under the cap
+    G->>DB: reserve one of today's questions (daily cap)
+    DB-->>G: reserved
     rect rgba(127, 127, 127, 0.12)
         Note over G,M: Agent loop, at most 6 model calls
         G->>LLM: question + tool descriptions
@@ -182,18 +182,21 @@ sequenceDiagram
         G->>G: check: known service and metric
         G->>M: GET /metrics with those arguments
         M-->>G: 7 daily points
-        G->>LLM: tool result
-        LLM-->>G: call create_chart(line, points, title)
+        G->>G: keep them as result q1
+        G->>LLM: tool result, labeled q1
+        LLM-->>G: call create_chart(line, q1, title)
     end
-    G->>G: validate the chart against its schema
+    G->>G: build the chart from q1's real points, then validate it
     G->>DB: save the run: steps, chart, tokens, cost, latency
     G-->>F: chart + steps
     F-->>V: draws the chart, lists the steps
 ```
 
+- **The daily cap is reserved before any work starts.** One SQL statement adds 1 to today's counter only while it's under the cap (`UPDATE … SET used = used + 1 WHERE used < cap RETURNING used`), so parallel requests can't all slip past a separate check. The cap counts questions: each one makes at most 6 model calls, so its worst-case cost is known, and the cap times that worst case is the most a day can cost.
+- **The model chooses, the code computes.** `create_chart` names a query result (`q1`), a chart type and a title, and never carries numbers. The gateway builds the chart from the metrics service's real response, so the model can't copy a value wrong or invent one. For comparisons, the model names an aggregation, like average, maximum or latest, and the gateway does the math.
 - The loop has a hard limit of 6 model calls, so a confused model can't run up the bill.
-- Tool arguments are checked against the known services and metrics before any tool runs, which is what makes prompt injection harmless here.
-- Every run is saved, whether it succeeds or fails. That feeds cost tracking and the daily cap.
+- Tool arguments are checked against the known services and metrics before any tool runs. With read-only tools, that limits what an injected prompt can do: it can't write anything or reach other data, though it can still steer the agent to a misleading chart or spend part of the budget.
+- Every run is saved, whether it succeeds or fails, for cost tracking.
 
 ### When things go wrong
 
@@ -211,7 +214,7 @@ sequenceDiagram
     break more than 10 requests a minute from this IP
         G-->>F: 429 with Retry-After
     end
-    G->>DB: count today's runs
+    G->>DB: reserve one of today's questions
     break the cap is reached, or the database can't answer (fail closed)
         G-->>F: friendly message, Gemini is never called
     end

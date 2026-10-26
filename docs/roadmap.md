@@ -60,14 +60,16 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 - [ ] Chart format first: what the gateway returns and the frontend draws
 - [ ] Tools: `list_services`, `query_metrics`, `create_chart`, each with a description that also says what it doesn't handle
-- [ ] Read-only tools that accept only known service and metric names, so prompt injection can't do harm
+- [ ] `create_chart` refers to query results by id, and the gateway builds the chart's numbers from them, so the model never copies data
+- [ ] Read-only tools that accept only known service and metric names, so a prompt injection can't write anything or reach other data
 - [ ] Hand-written Gemini function-calling loop with a step limit, timeouts and a record of each step
 - [ ] Tool arguments and the final chart validated against their schemas
+- [ ] The OpenAPI schema (the API description FastAPI generates, shown at `/docs`) lists every status `/ask` can return, checked by a test, before the frontend generates types from it
 - [ ] Errors classified as retryable or not; retries use exponential backoff with jitter
 - [ ] A clarifying question with clickable choices, instead of a guess, when the question is vague
 - [ ] Off-topic questions get a short refusal and example questions
 - [ ] Maximum question length
-- [ ] Daily cap on Gemini calls for the whole app, counted from `runs` so every gateway container shares it, in place before the agent is deployed
+- [ ] Daily cap on questions for the whole app, reserved atomically in Postgres before any Gemini call, so parallel requests can't overshoot it and every gateway container shares it. In place before the agent is deployed
 - [ ] Model name in config
 - [ ] Each run saved to `runs`
 - [ ] Tests against a scripted fake model, so no API calls
@@ -90,7 +92,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 ## 6. Evals
 
-- [ ] 20–30 test questions, each with the expected tool calls and chart type
+- [ ] 20–30 test questions, each with the expected tool calls, chart type and chart data: values, dates and units
 - [ ] Ambiguous questions where the right answer is a clarifying question
 - [ ] Scored for accuracy; runs from the command line and in CI
 - [ ] `eval-runner` subagent on Haiku that runs the evals and returns only the score and the failures

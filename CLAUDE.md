@@ -15,6 +15,7 @@ Type a question in plain English, get a chart. A Gemini agent in the gateway pic
 ## Commands
 
 - `make check` runs every formatter, linter, type checker and test. The stop hook runs it when you finish a turn that changed files, and CI (`.github/workflows/ci.yml`) runs it on every pull request. It must pass.
+- `make fmt` formats the Python and Go code and sorts imports.
 - `make metrics` and `make gateway` start the services on :8080 and :3000.
 - `/fix-issue <number>` works a GitHub issue through to passing checks.
 

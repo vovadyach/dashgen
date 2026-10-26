@@ -15,7 +15,7 @@ You type: *"Show errors for payments-service this week"*
 
 The agent:
 1. Calls `query_metrics(service="payments-service", metric="errors", days=7)`
-2. Calls `create_chart(type="line", data=[...], title="Payments errors this week")`
+2. Calls `create_chart(type="line", source="q1", title="Payments errors this week")`, naming the query result to draw. The gateway fills in the real numbers, so the model never copies data.
 3. Returns the chart to the frontend, which draws it with Recharts.
 
 Different questions lead to different tool calls. Ask *"What's the slowest service?"* and the agent calls `list_services`, then `query_metrics` for each service, then picks a chart type for the result.
@@ -82,7 +82,7 @@ make gateway                           # terminal 2: gateway on :3000
 
 Open http://localhost:3000/docs to try the gateway's endpoints in the browser.
 
-Run every formatter, linter, type checker and test with `make check`. GitHub Actions runs the same script on every pull request and every push to `main`.
+Run every formatter, linter, type checker and test with `make check`, and fix formatting with `make fmt`. GitHub Actions runs the same checks on every pull request and every push to `main`.
 
 ## Repo layout
 
