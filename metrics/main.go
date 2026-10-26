@@ -20,18 +20,23 @@ type metricsQuery struct {
 }
 
 func main() {
+	addr := ":" + cmp.Or(os.Getenv("PORT"), "8080")
+
+	log.Printf("metrics service listening on %s", addr)
+	if err := http.ListenAndServe(addr, newHandler()); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// newHandler wires the routes and CORS. Tests use it too, so they exercise
+// exactly what main serves.
+func newHandler() http.Handler {
 	mux := http.NewServeMux()
 	// Go 1.22 method-aware routing: pattern includes the HTTP verb.
 	mux.HandleFunc("GET /health", handleHealth)
 	mux.HandleFunc("GET /services", handleServices)
 	mux.HandleFunc("GET /metrics", handleMetrics)
-
-	addr := ":" + cmp.Or(os.Getenv("PORT"), "8080")
-
-	log.Printf("metrics service listening on %s", addr)
-	if err := http.ListenAndServe(addr, withCORS(mux)); err != nil {
-		log.Fatal(err)
-	}
+	return withCORS(mux)
 }
 
 // withCORS adds permissive CORS headers and short-circuits preflight requests.

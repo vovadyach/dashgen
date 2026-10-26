@@ -11,7 +11,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 - [x] Metrics service in Go with hardcoded data
 - [x] Move the gateway from Node.js to Python + FastAPI ([ADR-0001](decisions/0001-python-gateway.md)), renaming `POST /chat` to `POST /ask` ([ADR-0002](decisions/0002-question-box.md))
-- [ ] Tests for the metrics service and the gateway
+- [x] Tests for the metrics service and the gateway
 - [x] `scripts/check.sh`: one command that runs every formatter, linter, type checker and test
 - [ ] CI on GitHub Actions that runs `scripts/check.sh`
 - [x] Claude Code setup: a `CLAUDE.md` per service, permissions, format and stop hooks, `fix-issue` and `adr` skills

@@ -10,4 +10,4 @@ Go, standard library only. Serves the sample metrics over HTTP: `GET /health`, `
 
 - No third-party modules without the user's OK. Step 2 will need a Postgres driver.
 - Responses go through `writeJSON`, and errors through `writeError`, which sends `{"error": "..."}` with the status code.
-- Test handlers with `net/http/httptest`, as table-driven tests.
+- Routes are wired in `newHandler()`, which `main` and the tests share. Test handlers through it with `net/http/httptest`, as table-driven tests.
