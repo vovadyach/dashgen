@@ -2,7 +2,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
-![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
 
 Natural-language dashboard generator. Type a question in plain English, an LLM agent decides which tools to call, fetches the data, and renders a chart.
 
@@ -61,7 +61,7 @@ Both backend services keep their data in Postgres, each in its own tables: the m
 
 | Part | Tech | Today |
 |---|---|---|
-| Metrics (`metrics/`) | Go 1.25+, standard library | `GET /health`, `GET /services`, `GET /metrics?service=&metric=&days=` over hardcoded data |
+| Metrics (`metrics/`) | Go 1.27+, standard library | `GET /health`, `GET /services`, `GET /metrics?service=&metric=&days=` over hardcoded data |
 | Gateway (`gateway/`) | Python 3.14, FastAPI, uv | `GET /health`, and `POST /ask` with a per-IP rate limit, which answers 501 until the agent exists |
 | Database | Postgres | Planned (step 2) |
 | Hosting | AWS, Terraform | Planned (step 3) |
@@ -70,7 +70,7 @@ Both backend services keep their data in Postgres, each in its own tables: the m
 
 ## Running locally
 
-You'll need Go 1.25+ and [uv](https://docs.astral.sh/uv/), which installs the right Python version for you.
+You'll need Go 1.27+ and [uv](https://docs.astral.sh/uv/), which installs the right Python version for you.
 
 ```bash
 make install                           # install the gateway's packages
