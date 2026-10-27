@@ -74,7 +74,7 @@ Approximate on-demand prices in us-east-1. Check them in the AWS pricing calcula
 
 - A 4-hour session costs about $0.50, so ten sessions a month cost about $5.
 - Left running all month, the same stack would cost about $90.
-- Fixed costs: the always-on part (CloudFront, two small S3 buckets and an IAM role) costs a few cents a month at this traffic. There's no domain ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
+- Fixed costs: the always-on part (CloudFront with a small function and key-value store, two small S3 buckets and an IAM role) costs a few cents a month at this traffic. There's no domain ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
 - The AWS Free plan credits cover this at first.
 
 ### Data
@@ -167,7 +167,7 @@ sequenceDiagram
     participant M as Metrics service
 
     V->>F: types "Show errors for payments-service this week"
-    F->>G: POST /ask with the question
+    F->>G: POST /api/ask with the question
     G->>G: per-IP rate limit, question length
     G->>DB: reserve one of today's questions (daily cap)
     DB-->>G: reserved
@@ -210,7 +210,7 @@ sequenceDiagram
     participant LLM as Gemini
     participant M as Metrics service
 
-    F->>G: POST /ask
+    F->>G: POST /api/ask
     break more than 10 requests a minute from this IP
         G-->>F: 429 with Retry-After
     end
@@ -231,14 +231,15 @@ sequenceDiagram
     end
     LLM-->>G: a chart that fails validation
     G->>LLM: one retry, with the validation error
-    break still invalid, or 6 model calls used
+    break still invalid, 6 model calls used, or 25 seconds passed
         G-->>F: an error, and the run is saved as failed
     end
 ```
 
 - **Fail closed:** if the cap can't be checked, Gemini isn't called. A lost answer is cheaper than an unchecked bill.
 - **Timeouts and retries:** every outside call has a timeout, and only errors worth retrying are retried, after a short random wait, so retries from many requests don't all land at once.
-- The numbers here (6 calls, a 2-second timeout, one retry) are starting values for step 6's evals to tune.
+- **25 seconds per question:** less than CloudFront's 30-second response timeout, so a slow question ends with the gateway's own error rather than CloudFront's generic 504. [ADR-0003](decisions/0003-cloudfront-front-door.md) lists all three timeouts.
+- The numbers here (6 calls, 25 seconds per question, a 2-second timeout, one retry) are starting values for step 6's evals to tune.
 
 ### On AWS
 
@@ -247,9 +248,12 @@ flowchart TB
     visitor(["Visitor"])
     gha["GitHub Actions"]
     gemini["Gemini API"]
+    offline(["503: the demo is offline"])
 
     subgraph base ["Always on"]
         cf["CloudFront<br/>dxxxx.cloudfront.net"]
+        fn["CloudFront Function<br/>on every /api/* request"]
+        kvs[("Key-value store<br/>entry: this session's address + secret")]
         site[("S3: React build")]
         tfstate[("S3: Terraform state")]
         role["IAM role for GitHub Actions"]
@@ -276,7 +280,10 @@ flowchart TB
 
     visitor -->|"HTTPS"| cf
     cf -->|"/*"| site
-    cf -->|"/api/*, HTTP + secret header"| alb
+    cf -->|"/api/*"| fn
+    fn -.->|"looks up the session"| kvs
+    fn -->|"no session"| offline
+    fn -->|"session running: HTTP + secret header"| alb
     alb --> gw
     gw -->|"Service Connect"| mt
     gw & mt --> rds
@@ -290,12 +297,13 @@ flowchart TB
     gha -->|"upload the build"| site
 ```
 
-- **One address:** visitors only ever talk to CloudFront. It serves the React app from S3 and forwards `/api/*` to the load balancer, so there's no CORS. HTTPS comes from CloudFront's own certificate, so there's no domain to buy ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
-- **The load balancer accepts only our CloudFront:** its security group allows only CloudFront's IP ranges, and since every CloudFront customer shares those, it also requires a secret header that only our distribution adds. Anything else gets 403.
-- **The hop from CloudFront to the load balancer is plain HTTP,** because without a domain the load balancer can't get a certificate. It carries only demo questions.
+- **One address:** visitors only ever talk to CloudFront. It serves the React app from S3 and forwards `/api/*` to the backend, so there's no CORS. The gateway's routes live under `/api` too, so the paths are the same locally and on AWS. HTTPS comes from CloudFront's own certificate, so there's no domain to buy ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
+- **A CloudFront Function turns the API on and off:** on every `/api/*` request it looks up the session in a key-value store. During a session it forwards the request to that session's load balancer. Between sessions it answers 503 "offline" itself, so the page can show its banner right away. CloudFront's own settings never change between sessions.
+- **The load balancer accepts only our CloudFront:** its security group allows only CloudFront's IP ranges, and since every CloudFront customer shares those, it also requires a secret header that only our function adds. The secret is new every session, and anything without it gets 403.
+- **The hop from CloudFront to the load balancer is plain HTTP,** because without a domain the load balancer can't get a certificate. The questions and the secret header cross it unencrypted, an accepted risk that ADR-0003 explains.
 - **Public vs. private:** only CloudFront and the load balancer face the internet. The tasks and the database sit in private subnets, and the tasks reach outside services (Gemini, ECR, Secrets Manager, CloudWatch) through the NAT gateway.
 - **One NAT gateway, in one AZ,** because there's no uptime requirement, and it's already the biggest line on the hourly bill.
-- **Two stacks:** the always-on one holds CloudFront, the React build, the Terraform state and the GitHub Actions role, and costs a few cents a month. `make up` builds the session stack and points CloudFront's `/api/*` at its load balancer; `make down` points it away and destroys the stack. Between sessions the page still loads and says the live demo is offline.
+- **Two stacks:** the always-on one holds CloudFront with its function and key-value store, the React build, the Terraform state and the GitHub Actions role, and costs a few cents a month. The session stack holds everything else, plus the store's one entry, which it writes once the gateway is healthy. The entry depends on the load balancer, so `terraform destroy` deletes it first. `make up` and `make down` apply and destroy the session stack without touching CloudFront. Between sessions the page still loads and says the live demo is offline.
 - **No keys anywhere:** secrets come from Secrets Manager when a task starts, and GitHub Actions signs in with OIDC.
 
 Next: step 4, data and APIs, with a diagram of the tables, then step 5's deep dives into the gateway's parts and the agent loop.

@@ -37,24 +37,31 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 - [ ] AWS account with MFA and budget alerts at $10, $25 and $50
 - [ ] All infrastructure defined in Terraform
-- [ ] A small Terraform stack that stays between sessions: the state bucket, an S3 bucket and CloudFront for the frontend, and the IAM role for GitHub Actions. Everything else lives in the session stack that `terraform destroy` removes ([ADR-0003](decisions/0003-cloudfront-front-door.md))
+- [ ] A small Terraform stack that stays between sessions: the state bucket, an S3 bucket and CloudFront for the frontend, CloudFront's function and key-value store, and the IAM role for GitHub Actions. Everything else lives in the session stack that `terraform destroy` removes ([ADR-0003](decisions/0003-cloudfront-front-door.md))
 - [ ] `terraform destroy` finishes cleanly: secrets deleted with no recovery window, RDS without a final snapshot, ECR repositories deleted with their images
 - [ ] No database backups: every deploy reseeds the data, and the `runs` history starts over
 - [ ] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
 - [ ] VPC with public and private subnets and a NAT gateway
 - [ ] ECR repositories for both images
-- [ ] CloudFront as the only address visitors use: it sends `/api/*` to the load balancer, and `make up` and `make down` point it at each session's load balancer and away again
-- [ ] Gateway on ECS Fargate behind a load balancer (ALB) that accepts only our CloudFront: CloudFront's IP ranges, plus a secret header that only our distribution adds, and 403 for anything else
+- [ ] The gateway's routes move under `/api` (`/api/ask`, `/api/health`), so the paths are the same locally and through CloudFront, and `/api/health` sends `Cache-Control: no-store`
+- [ ] CloudFront as the only address visitors use. Its `/api/*` behavior allows POST, uses the `CachingDisabled` policy, forwards `CloudFront-Viewer-Address`, and gives up connecting after 2 seconds and one attempt
+- [ ] A CloudFront Function on `/api/*` that looks up the session in a key-value store: with one, it forwards the request to that session's load balancer with its secret header; without one, it answers 503 `{"status": "offline"}`. The session stack writes the entry once the gateway is healthy, and `terraform destroy` deletes it before the load balancer
+- [ ] Gateway on ECS Fargate behind a load balancer (ALB) that accepts only our CloudFront: CloudFront's IP ranges, plus a secret header that's new every session, and 403 for anything else
 - [ ] Metrics service on ECS Fargate in private subnets, reached through Service Connect
 - [ ] Postgres on RDS (db.t4g.micro) in private subnets
 - [ ] Database passwords and the Gemini key in AWS Secrets Manager, passed to the containers by ECS
 - [ ] Structured JSON logs with a request ID, collected in CloudWatch
 - [ ] Migrations and seed run as a one-off ECS task
 - [ ] GitHub Actions builds the images and deploys them, signing in to AWS with OIDC instead of stored keys
-- [ ] Rate limiting keyed on the visitor's IP, read from the header CloudFront adds
+- [ ] Rate limiting keyed on the visitor's IP: the part of `CloudFront-Viewer-Address` before the last colon. A test shows that a forged `X-Forwarded-For` doesn't change it
 - [ ] Deploy runbook: `docs/runbooks/deploy.md`
 
-**Done when:** `terraform apply` builds the stack from nothing, GitHub Actions deploys to it, the gateway answers `/api/health` over HTTPS through CloudFront, and `terraform destroy` removes everything except the small stack that stays.
+**Done when:**
+
+- `terraform apply` builds the stack from nothing, GitHub Actions deploys to it, and `terraform destroy` removes everything except the small stack that stays.
+- Through CloudFront, `/api/health` answers `{"status": "ok"}` over HTTPS during a session, and 503 `{"status": "offline"}` after `make down`. The runbook records how long that switch takes.
+- After `make up`, `make down` and `make up` again, the CloudFront address is the same and `/api/health` is back to `{"status": "ok"}`.
+- A request sent straight to the load balancer, skipping CloudFront, doesn't reach the gateway.
 
 ## 4. Agent and guardrails
 
@@ -62,7 +69,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] Tools: `list_services`, `query_metrics`, `create_chart`, each with a description that also says what it doesn't handle
 - [ ] `create_chart` refers to query results by id, and the gateway builds the chart's numbers from them, so the model never copies data
 - [ ] Read-only tools that accept only known service and metric names, so a prompt injection can't write anything or reach other data
-- [ ] Hand-written Gemini function-calling loop with a step limit, timeouts and a record of each step
+- [ ] Hand-written Gemini function-calling loop with a step limit, timeouts on each call, a 25-second limit for the whole question (under CloudFront's 30-second response timeout) and a record of each step
 - [ ] Tool arguments and the final chart validated against their schemas
 - [ ] The OpenAPI schema (the API description FastAPI generates, shown at `/docs`) lists every status `/ask` can return, checked by a test, before the frontend generates types from it
 - [ ] Errors classified as retryable or not; retries use exponential backoff with jitter
@@ -86,10 +93,11 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] TypeScript API types generated from the gateway's OpenAPI schema
 - [ ] Component tests with Vitest
 - [ ] Frontend checks added to `scripts/check.sh`, and a `frontend/CLAUDE.md`
+- [ ] Vite's dev server forwards `/api` to the gateway, so the app calls the same paths locally and on AWS
 - [ ] Deployed to the always-on S3 bucket behind CloudFront
-- [ ] When `/api/health` fails, a banner says the live demo is offline and the question box is disabled
+- [ ] When `/api/health` doesn't answer `{"status": "ok"}` within 3 seconds, a banner says the live demo is offline and the question box is disabled
 
-**Done when:** the README's example question works in the browser, locally and on AWS.
+**Done when:** the README's example question works in the browser, locally and on AWS, and while the backend is down the page shows the offline banner instead.
 
 ## 6. Evals
 
