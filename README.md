@@ -112,6 +112,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 
 - [1. Python and FastAPI for the gateway](docs/decisions/0001-python-gateway.md)
 - [2. A question box, not a chat](docs/decisions/0002-question-box.md)
+- [3. CloudFront as the front door, with no domain](docs/decisions/0003-cloudfront-front-door.md)
 
 ## License
 

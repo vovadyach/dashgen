@@ -5,7 +5,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 - Every step ships with its tests.
 - Deploying early (step 3) means every later feature runs on real infrastructure, instead of one big deploy at the end.
-- The AWS stack runs only while it's being worked on, and `terraform destroy` removes it after each session. Only the Terraform state and the domain's DNS stay.
+- The AWS backend runs only while it's being worked on, and `terraform destroy` removes it after each session. Only a small stack stays: the Terraform state, the frontend on S3 and CloudFront, and the role GitHub Actions uses ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
 
 ## 1. Foundation
 
@@ -37,24 +37,24 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 - [ ] AWS account with MFA and budget alerts at $10, $25 and $50
 - [ ] All infrastructure defined in Terraform
-- [ ] A small Terraform stack that stays between sessions: the state bucket and the domain's DNS. Everything else lives in the stack that `terraform destroy` removes
+- [ ] A small Terraform stack that stays between sessions: the state bucket, an S3 bucket and CloudFront for the frontend, and the IAM role for GitHub Actions. Everything else lives in the session stack that `terraform destroy` removes ([ADR-0003](decisions/0003-cloudfront-front-door.md))
 - [ ] `terraform destroy` finishes cleanly: secrets deleted with no recovery window, RDS without a final snapshot, ECR repositories deleted with their images
 - [ ] No database backups: every deploy reseeds the data, and the `runs` history starts over
 - [ ] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
 - [ ] VPC with public and private subnets and a NAT gateway
 - [ ] ECR repositories for both images
-- [ ] Domain name, bought through Route 53 or Cloudflare
-- [ ] Gateway on ECS Fargate behind a public load balancer (ALB), with HTTPS from an ACM certificate for the domain
+- [ ] CloudFront as the only address visitors use: it sends `/api/*` to the load balancer, and `make up` and `make down` point it at each session's load balancer and away again
+- [ ] Gateway on ECS Fargate behind a load balancer (ALB) that accepts only our CloudFront: CloudFront's IP ranges, plus a secret header that only our distribution adds, and 403 for anything else
 - [ ] Metrics service on ECS Fargate in private subnets, reached through Service Connect
 - [ ] Postgres on RDS (db.t4g.micro) in private subnets
 - [ ] Database passwords and the Gemini key in AWS Secrets Manager, passed to the containers by ECS
 - [ ] Structured JSON logs with a request ID, collected in CloudWatch
 - [ ] Migrations and seed run as a one-off ECS task
 - [ ] GitHub Actions builds the images and deploys them, signing in to AWS with OIDC instead of stored keys
-- [ ] Rate limiting keyed on the real client IP behind the load balancer
+- [ ] Rate limiting keyed on the visitor's IP, read from the header CloudFront adds
 - [ ] Deploy runbook: `docs/runbooks/deploy.md`
 
-**Done when:** `terraform apply` builds the stack from nothing, GitHub Actions deploys to it, the gateway's `/health` answers over HTTPS, and `terraform destroy` removes everything except the small stack that stays.
+**Done when:** `terraform apply` builds the stack from nothing, GitHub Actions deploys to it, the gateway answers `/api/health` over HTTPS through CloudFront, and `terraform destroy` removes everything except the small stack that stays.
 
 ## 4. Agent and guardrails
 
@@ -86,7 +86,8 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] TypeScript API types generated from the gateway's OpenAPI schema
 - [ ] Component tests with Vitest
 - [ ] Frontend checks added to `scripts/check.sh`, and a `frontend/CLAUDE.md`
-- [ ] Hosted on S3 behind CloudFront, added to the Terraform
+- [ ] Deployed to the always-on S3 bucket behind CloudFront
+- [ ] When `/api/health` fails, a banner says the live demo is offline and the question box is disabled
 
 **Done when:** the README's example question works in the browser, locally and on AWS.
 

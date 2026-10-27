@@ -74,7 +74,7 @@ Approximate on-demand prices in us-east-1. Check them in the AWS pricing calcula
 
 - A 4-hour session costs about $0.50, so ten sessions a month cost about $5.
 - Left running all month, the same stack would cost about $90.
-- Fixed costs: the domain, about $1 a month averaged over a year, and its DNS zone, $0.50 a month.
+- Fixed costs: the always-on part (CloudFront, two small S3 buckets and an IAM role) costs a few cents a month at this traffic. There's no domain ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
 - The AWS Free plan credits cover this at first.
 
 ### Data
@@ -121,8 +121,8 @@ flowchart LR
     gemini["Gemini API"]
 
     subgraph public ["Public"]
-        cdn["CloudFront + S3<br/>React app, static files"]
-        alb["Load balancer<br/>HTTPS"]
+        cdn["CloudFront + S3<br/>React app, and /api/* to the backend"]
+        alb["Load balancer<br/>only from our CloudFront"]
     end
 
     subgraph private ["Private network"]
@@ -134,8 +134,8 @@ flowchart LR
         end
     end
 
-    browser -->|"loads the app"| cdn
-    browser -->|"POST /ask, JSON"| alb
+    browser -->|"loads the app, POST /api/ask"| cdn
+    cdn -->|"/api/*, with the secret header"| alb
     browser <-->|"pin and unpin"| pins
     alb --> gateway
     gateway -->|"GET /metrics, JSON over HTTP"| metrics
@@ -146,8 +146,8 @@ flowchart LR
 
 | Part | Its job | Why it exists |
 |---|---|---|
-| CloudFront + S3 | Serves the React app's files | Static files need no server, so this is cheap and fast |
-| Load balancer | HTTPS, health checks, routing to the gateway | The only public door to the backend |
+| CloudFront + S3 | The one address visitors use: serves the React app's files and forwards `/api/*` to the load balancer | Static files need no server, and one address means no CORS and no domain |
+| Load balancer | Health checks, routing to the gateway | The backend's only door, open only to our CloudFront |
 | Gateway | The agent loop, the rate limit, the daily cap, all validation | Keeps the Gemini key and every decision on the server |
 | Metrics service | Answers metric queries | Owns the data, so nothing else touches its tables |
 | Postgres | Two databases on one instance, each with its own user | The data is tiny, and separate databases keep ownership strict |
@@ -248,20 +248,20 @@ flowchart TB
     gha["GitHub Actions"]
     gemini["Gemini API"]
 
-    subgraph base ["Stays between sessions"]
-        zone["Route 53 zone<br/>dashgen.example"]
+    subgraph base ["Always on"]
+        cf["CloudFront<br/>dxxxx.cloudfront.net"]
+        site[("S3: React build")]
         tfstate[("S3: Terraform state")]
+        role["IAM role for GitHub Actions"]
     end
 
-    subgraph appstack ["Destroyed after each session"]
-        cf["CloudFront"]
-        site[("S3: React build")]
+    subgraph appstack ["Session stack: destroyed after each session"]
         ecr["ECR: images"]
         secrets["Secrets Manager<br/>DB passwords, Gemini key"]
         logs["CloudWatch Logs"]
         subgraph vpc ["VPC"]
             subgraph pub ["Public subnets, 2 AZs"]
-                alb["Load balancer, HTTPS<br/>api.dashgen.example"]
+                alb["Load balancer, HTTP<br/>only from our CloudFront"]
                 nat["NAT gateway, 1 AZ"]
             end
             subgraph priv ["Private subnets, 2 AZs"]
@@ -274,24 +274,28 @@ flowchart TB
         end
     end
 
-    zone -.->|"dashgen.example"| cf
-    zone -.->|"api.dashgen.example"| alb
-    visitor -->|"HTTPS"| cf --> site
-    visitor -->|"HTTPS, /ask"| alb --> gw
+    visitor -->|"HTTPS"| cf
+    cf -->|"/*"| site
+    cf -->|"/api/*, HTTP + secret header"| alb
+    alb --> gw
     gw -->|"Service Connect"| mt
     gw & mt --> rds
     gw -->|"outbound only"| nat --> gemini
     secrets -.->|"injected at startup"| ecs
     ecr -.->|"pulled at startup"| ecs
     ecs -.->|"logs"| logs
-    gha -->|"OIDC: push images"| ecr
-    gha -->|"OIDC: deploy"| ecs
+    gha -->|"signs in with OIDC"| role
+    gha -->|"push images"| ecr
+    gha -->|"deploy"| ecs
+    gha -->|"upload the build"| site
 ```
 
-- **Public vs. private:** only the load balancer and CloudFront face the internet. The tasks and the database sit in private subnets, and the tasks reach outside services (Gemini, ECR, Secrets Manager, CloudWatch) through the NAT gateway.
+- **One address:** visitors only ever talk to CloudFront. It serves the React app from S3 and forwards `/api/*` to the load balancer, so there's no CORS. HTTPS comes from CloudFront's own certificate, so there's no domain to buy ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
+- **The load balancer accepts only our CloudFront:** its security group allows only CloudFront's IP ranges, and since every CloudFront customer shares those, it also requires a secret header that only our distribution adds. Anything else gets 403.
+- **The hop from CloudFront to the load balancer is plain HTTP,** because without a domain the load balancer can't get a certificate. It carries only demo questions.
+- **Public vs. private:** only CloudFront and the load balancer face the internet. The tasks and the database sit in private subnets, and the tasks reach outside services (Gemini, ECR, Secrets Manager, CloudWatch) through the NAT gateway.
 - **One NAT gateway, in one AZ,** because there's no uptime requirement, and it's already the biggest line on the hourly bill.
-- **Two stacks:** the small one keeps the Terraform state and the domain's DNS, and the rest is destroyed after each session.
+- **Two stacks:** the always-on one holds CloudFront, the React build, the Terraform state and the GitHub Actions role, and costs a few cents a month. `make up` builds the session stack and points CloudFront's `/api/*` at its load balancer; `make down` points it away and destroys the stack. Between sessions the page still loads and says the live demo is offline.
 - **No keys anywhere:** secrets come from Secrets Manager when a task starts, and GitHub Actions signs in with OIDC.
-- `dashgen.example` stands in for the real domain until it's bought.
 
 Next: step 4, data and APIs, with a diagram of the tables, then step 5's deep dives into the gateway's parts and the agent loop.
