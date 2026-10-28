@@ -7,6 +7,7 @@ Type a question in plain English, get a chart. A Gemini agent in the gateway pic
 - `gateway/`: Python + FastAPI gateway, where the agent will live. See `gateway/CLAUDE.md`.
 - `metrics/`: Go service that serves the sample metrics. See `metrics/CLAUDE.md`.
 - `frontend/`: React + Vite app, empty until step 5.
+- `compose.yaml` and `postgres/`: Postgres in Docker for local development, with a database and a user per service.
 - `docs/architecture.md`: how the services fit together, and their APIs. Update it whenever an API changes.
 - `docs/design.md`: the target design, with requirements, estimates and diagrams. Update it when a design choice changes.
 - `docs/roadmap.md`: the nine steps. Tick an item when it's done.
@@ -17,6 +18,7 @@ Type a question in plain English, get a chart. A Gemini agent in the gateway pic
 - `make check` runs every formatter, linter, type checker and test. The stop hook runs it when you finish a turn that changed files, and CI (`.github/workflows/ci.yml`) runs it on every pull request. It must pass.
 - `make fmt` formats the Python and Go code and sorts imports.
 - `make metrics` and `make gateway` start the services on :8080 and :3000.
+- `make db` starts Postgres in Docker on localhost:5432, with the passwords from the root `.env` that the user makes from `.env.example`. Don't create that file: for a test run, set the three passwords as environment variables instead.
 - `/fix-issue <number>` works a GitHub issue through to passing checks.
 
 ## Rules
