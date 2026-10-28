@@ -15,7 +15,7 @@ You type: *"Show errors for payments-service this week"*
 
 The agent:
 1. Calls `query_metrics(service="payments-service", metric="errors", days=7)`
-2. Calls `create_chart(type="line", source="q1", title="Payments errors this week")`, naming the query result to draw. The gateway fills in the real numbers, so the model never copies data.
+2. Calls `create_chart(type="line", sources=["q1"], title="Payments errors this week")`, naming the query result to draw. The gateway fills in the real numbers, so the model never copies data.
 3. Returns the chart to the frontend, which draws it with Recharts.
 
 Different questions lead to different tool calls. Ask *"What's the slowest service?"* and the agent calls `list_services`, then `query_metrics` for each service, then picks a chart type for the result.

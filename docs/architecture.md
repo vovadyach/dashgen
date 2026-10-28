@@ -90,7 +90,7 @@ CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
 
 ## Known limits
 
-- **The rate limit is per process.** Counts live in memory, so each running copy of the gateway keeps its own, and a restart resets them. Step 4's daily Gemini cap is counted in Postgres, so every copy shares it.
-- **Behind a load balancer**, the client IP has to come from the forwarded headers, or every visitor shares one limit (step 3).
+- **The rate limit is per process.** Counts live in memory, so each running copy of the gateway keeps its own, and a restart resets them. Step 4's [daily cap](design.md#the-daily-cap) is shared by every copy.
+- **Behind CloudFront and a load balancer,** every request would come from the load balancer's IP, so all visitors would share one limit. Step 3 takes the visitor's IP from CloudFront instead ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
 - **The data is 7 hardcoded days.** Step 2 moves it to Postgres, with 30 days of hourly data that always ends today.
 - **The metrics service has no auth and allows any origin.** It serves only sample data, and on AWS it will sit in private subnets, reachable only from the gateway.

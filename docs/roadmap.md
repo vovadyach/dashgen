@@ -5,7 +5,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 - Every step ships with its tests.
 - Deploying early (step 3) means every later feature runs on real infrastructure, instead of one big deploy at the end.
-- The AWS backend runs only while it's being worked on, and `terraform destroy` removes it after each session. Only a small stack stays: the Terraform state, the frontend on S3 and CloudFront, and the role GitHub Actions uses ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
+- The AWS backend runs only while it's being worked on, and `terraform destroy` removes it after each session. Only a small stack stays on, so the link and the page keep working in between ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
 
 ## 1. Foundation
 
@@ -22,14 +22,14 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 ## 2. Postgres and Docker
 
-- [ ] `metrics` table (`name`, `value`, `dimension`, `recorded_at`) with a composite index on `(name, dimension, recorded_at)`
-- [ ] `runs` table with one row per agent run
-- [ ] Seed script that writes 30 days of hourly data relative to today, so "today" and "this week" always have data
-- [ ] Metrics service reads from Postgres instead of hardcoded data
-- [ ] One Postgres instance with a database per service, each with its own user and migrations: the `metrics` database belongs to the metrics service, and the `gateway` database, with `runs`, to the gateway
+- [ ] `points`, `services` and `metrics` tables ([design](design.md#the-metrics-database))
+- [ ] `runs` table with one row per agent run ([design](design.md#the-gateway-database))
+- [ ] Seed script: 30 days of hourly data ending today, from a fixed random seed
+- [ ] Metrics service reads from Postgres and serves the [new API](design.md#the-metrics-services-api): up to 30 days, hourly or daily buckets, and a summary
+- [ ] One Postgres instance with a database, a user and migrations per service ([design](design.md#one-postgres-a-database-per-service))
 - [ ] Dockerfiles for both services, and Docker Compose to run everything locally
 - [ ] Tests against a real Postgres, locally and in CI
-- [ ] ADR: why Postgres is enough for this data, why one instance holds a database per service, and what changes at scale (TimescaleDB or ClickHouse, and separate instances)
+- [ ] ADR: why Postgres, why one instance with a database per service, and what changes at scale. It replaces design.md's [Why Postgres](design.md#why-postgres), which then links to it
 
 **Done when:** `docker compose up` starts Postgres and both services, and the metrics service answers from seeded data.
 
@@ -37,23 +37,23 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 - [ ] AWS account with MFA and budget alerts at $10, $25 and $50
 - [ ] All infrastructure defined in Terraform
-- [ ] A small Terraform stack that stays between sessions: the state bucket, an S3 bucket and CloudFront for the frontend, CloudFront's function and key-value store, and the IAM role for GitHub Actions. Everything else lives in the session stack that `terraform destroy` removes ([ADR-0003](decisions/0003-cloudfront-front-door.md))
+- [ ] The always-on and session Terraform stacks from the [AWS design](design.md#on-aws)
 - [ ] `terraform destroy` finishes cleanly: secrets deleted with no recovery window, RDS without a final snapshot, ECR repositories deleted with their images
 - [ ] No database backups: every deploy reseeds the data, and the `runs` history starts over
 - [ ] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
-- [ ] VPC with public and private subnets and a NAT gateway
+- [ ] VPC with public and private subnets, a NAT gateway, and a gateway endpoint for DynamoDB
 - [ ] ECR repositories for both images
-- [ ] The gateway's routes move under `/api` (`/api/ask`, `/api/health`), so the paths are the same locally and through CloudFront, and `/api/health` sends `Cache-Control: no-store`
-- [ ] CloudFront as the only address visitors use. Its `/api/*` behavior allows POST, uses the `CachingDisabled` policy, forwards `CloudFront-Viewer-Address`, and gives up connecting after 2 seconds and one attempt
-- [ ] A CloudFront Function on `/api/*` that looks up the session in a key-value store: with one, it forwards the request to that session's load balancer with its secret header; without one, it answers 503 `{"status": "offline"}`. The session stack writes the entry once the gateway is healthy, and `terraform destroy` deletes it before the load balancer
-- [ ] Gateway on ECS Fargate behind a load balancer (ALB) that accepts only our CloudFront: CloudFront's IP ranges, plus a secret header that's new every session, and 403 for anything else
+- [ ] The gateway's routes move under `/api` (`/api/ask`, `/api/health`)
+- [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md)
+- [ ] A CloudFront Function and key-value store that send `/api/*` to the running session, or answer 503 `{"status": "offline"}` between sessions, and a `make down` that drains the API before `terraform destroy`
+- [ ] Gateway on ECS Fargate behind a load balancer (ALB) that accepts only our CloudFront
 - [ ] Metrics service on ECS Fargate in private subnets, reached through Service Connect
 - [ ] Postgres on RDS (db.t4g.micro) in private subnets
 - [ ] Database passwords and the Gemini key in AWS Secrets Manager, passed to the containers by ECS
 - [ ] Structured JSON logs with a request ID, collected in CloudWatch
 - [ ] Migrations and seed run as a one-off ECS task
 - [ ] GitHub Actions builds the images and deploys them, signing in to AWS with OIDC instead of stored keys
-- [ ] Rate limiting keyed on the visitor's IP: the part of `CloudFront-Viewer-Address` before the last colon. A test shows that a forged `X-Forwarded-For` doesn't change it
+- [ ] Rate limiting keyed on the visitor's IP from `CloudFront-Viewer-Address`, with a test that a forged `X-Forwarded-For` doesn't change it
 - [ ] Deploy runbook: `docs/runbooks/deploy.md`
 
 **Done when:**
@@ -65,18 +65,19 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 ## 4. Agent and guardrails
 
-- [ ] Chart format first: what the gateway returns and the frontend draws
-- [ ] Tools: `list_services`, `query_metrics`, `create_chart`, each with a description that also says what it doesn't handle
-- [ ] `create_chart` refers to query results by id, and the gateway builds the chart's numbers from them, so the model never copies data
-- [ ] Read-only tools that accept only known service and metric names, so a prompt injection can't write anything or reach other data
-- [ ] Hand-written Gemini function-calling loop with a step limit, timeouts on each call, a 25-second limit for the whole question (under CloudFront's 30-second response timeout) and a record of each step
+- [ ] Chart format first: what the gateway returns and the frontend draws ([design](design.md#the-public-api))
+- [ ] [Tools](design.md#the-agents-tools): `list_services`, `query_metrics`, `create_chart`, `clarify` and `decline`, each with a description that also says what it doesn't handle
+- [ ] The gateway builds each chart from the query results `create_chart` names
+- [ ] Read-only tools that accept only known service and metric names
+- [ ] Hand-written Gemini function-calling loop that records each step, with timeouts on each call, 25 seconds per question, and the [per-question limits](design.md#the-daily-cap) on model calls and tokens
 - [ ] Tool arguments and the final chart validated against their schemas
-- [ ] The OpenAPI schema (the API description FastAPI generates, shown at `/docs`) lists every status `/ask` can return, checked by a test, before the frontend generates types from it
+- [ ] The OpenAPI schema (the API description FastAPI generates, shown at `/docs`) lists every status `/api/ask` can return, with one error shape, checked by a test, before the frontend generates types from it
 - [ ] Errors classified as retryable or not; retries use exponential backoff with jitter
 - [ ] A clarifying question with clickable choices, instead of a guess, when the question is vague
 - [ ] Off-topic questions get a short refusal and example questions
-- [ ] Maximum question length
-- [ ] Daily cap on questions for the whole app, reserved atomically in Postgres before any Gemini call, so parallel requests can't overshoot it and every gateway container shares it. In place before the agent is deployed
+- [ ] Maximum question length: 300 characters
+- [ ] [Daily cap](design.md#the-daily-cap) of 150 questions, counted in DynamoDB, with DynamoDB Local in Docker Compose. In place before the agent is deployed
+- [ ] A $20 monthly spend cap on the Gemini project, noted in the runbook
 - [ ] Model name in config
 - [ ] Each run saved to `runs`
 - [ ] Tests against a scripted fake model, so no API calls
@@ -88,16 +89,17 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] React + Vite + Tailwind + Recharts: question box, chart, steps panel
 - [ ] Example questions under the box for first-time visitors
 - [ ] The agent's steps streamed to the steps panel as they happen (SSE)
-- [ ] Pin charts to a dashboard, saved in the browser
+- [ ] Pin charts to a dashboard, saved in the browser with their data, so they still draw while the backend is offline
+- [ ] A note under the question box says questions are saved
 - [ ] Works on a phone
 - [ ] TypeScript API types generated from the gateway's OpenAPI schema
 - [ ] Component tests with Vitest
 - [ ] Frontend checks added to `scripts/check.sh`, and a `frontend/CLAUDE.md`
 - [ ] Vite's dev server forwards `/api` to the gateway, so the app calls the same paths locally and on AWS
 - [ ] Deployed to the always-on S3 bucket behind CloudFront
-- [ ] When `/api/health` doesn't answer `{"status": "ok"}` within 3 seconds, a banner says the live demo is offline and the question box is disabled
+- [ ] An offline banner that disables the question box when `/api/health` doesn't answer `{"status": "ok"}` within 3 seconds, or when `/api/ask` gets an unexpected response: anything but the gateway's JSON or its event stream (SSE), such as the offline 503 or CloudFront's own 502
 
-**Done when:** the README's example question works in the browser, locally and on AWS, and while the backend is down the page shows the offline banner instead.
+**Done when:** the README's example question works in the browser, locally and on AWS, with the steps streaming through CloudFront too, and while the backend is down the page shows the offline banner instead.
 
 ## 6. Evals
 
