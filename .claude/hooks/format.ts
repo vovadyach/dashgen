@@ -1,9 +1,8 @@
 // PostToolUse hook: formats each file Claude writes or edits.
 //
-// TypeScript, JavaScript and JSON files in the gateway, the shared packages,
-// these hooks and the repo root get Prettier, Go files get gofmt, and other
-// files are left alone. It never blocks Claude: scripts/check.sh catches
-// anything this misses.
+// TypeScript, JavaScript and JSON files in the backend, the shared packages,
+// these hooks and the repo root get Prettier, and other files are left alone.
+// It never blocks Claude: scripts/check.sh catches anything this misses.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -13,7 +12,7 @@ const ROOT = path.resolve(import.meta.dirname, "../..");
 const PRETTIER = path.join(ROOT, "node_modules", ".bin", "prettier");
 const PRETTIER_EXTENSIONS = new Set([".ts", ".js", ".json"]);
 const PRETTIER_FOLDERS = [
-  path.join(ROOT, "gateway"),
+  path.join(ROOT, "backend"),
   path.join(ROOT, "packages"),
   import.meta.dirname,
 ];
@@ -36,15 +35,15 @@ if (isInside(ROOT, file) && existsSync(file) && statSync(file).isFile()) {
     path.dirname(file) === ROOT ||
     PRETTIER_FOLDERS.some((folder) => isInside(folder, file));
 
-  if (PRETTIER_EXTENSIONS.has(extension) && formatsWithPrettier) {
-    // Prettier is installed by `make install`; until then, skip. Running from
-    // the root applies its .prettierignore, which skips package-lock.json.
-    if (existsSync(PRETTIER)) {
-      spawnSync(PRETTIER, ["--write", "--log-level", "warn", file], {
-        cwd: ROOT,
-      });
-    }
-  } else if (extension === ".go") {
-    spawnSync("gofmt", ["-w", file]);
+  // Prettier is installed by `make install`; until then, skip. Running from
+  // the root applies its .prettierignore, which skips package-lock.json.
+  if (
+    PRETTIER_EXTENSIONS.has(extension) &&
+    formatsWithPrettier &&
+    existsSync(PRETTIER)
+  ) {
+    spawnSync(PRETTIER, ["--write", "--log-level", "warn", file], {
+      cwd: ROOT,
+    });
   }
 }

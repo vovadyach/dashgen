@@ -9,9 +9,6 @@
       "Bash(npm run typecheck)",
       "Bash(npm run format)",
       "Bash(npm run format:check)",
-      "Bash(go test *)",
-      "Bash(go vet *)",
-      "Bash(gofmt -l *)",
       "Bash(gh issue view *)"
     ],
     "deny": [

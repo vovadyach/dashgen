@@ -1,97 +1,48 @@
 # Architecture
 
-What runs today: how DashGen's services fit together, and each one's API. [design.md](design.md) works out the target design and the reasons for it, the [roadmap](roadmap.md) says what comes next, and the [decisions](decisions/) record why.
+What runs today, and its API. [design.md](design.md) has the target design, the [roadmap](roadmap.md) what comes next, and the [decisions](decisions/) why.
 
 ## The pieces
 
 ```
-Browser ──▶ Gateway ──▶ Metrics ──▶ Postgres
-           (the agent)   (the data)
+Browser ──▶ Backend ──▶ Postgres
+           (Fastify)    (one empty database, for now)
 ```
 
-Today the metrics service and the gateway run, and Postgres runs in Docker Compose with an empty database per service. The frontend and the agent are still planned, and the README's [status table](../README.md#status) says in which step.
+- **Backend** (`backend/`): one TypeScript service. Today it takes questions and answers 501, because the agent arrives in step 3.
+- **Postgres** runs in Docker Compose (`make db`), with one `dashgen` database and user. Step 2 adds the tables and the sample data.
+- **Frontend:** planned for step 3.
 
-- **Metrics** owns the time series. Nothing else reads that data directly.
-- **Gateway** owns the agent and, from step 2, the log of agent runs. It gets metrics only by calling the metrics service over HTTP.
-- **Frontend** talks only to the gateway.
+How a question will become a chart is drawn in [design.md](design.md#one-question-step-by-step).
 
-How a question will become a chart is drawn step by step in [design.md](design.md#one-question-step-by-step).
+## Backend API
 
-## Metrics API
-
-`http://localhost:8080`. Responses are JSON and allow any origin (CORS `*`).
-
-**`GET /health`** returns `200 {"status":"ok"}`.
-
-**`GET /services`** returns `200` with the five services, in this order:
-
-```json
-{"services":["auth-service","payments-service","checkout-api","search-service","notifications-worker"]}
-```
-
-**`GET /metrics?service=&metric=&days=`**
-
-| Parameter | Required | Values |
-|---|---|---|
-| `service` | yes | one of `/services` |
-| `metric` | yes | `errors` (a daily count) or `latency_ms` (milliseconds) |
-| `days` | no | a positive integer. Defaults to 7, and anything above 7 counts as 7 |
-
-`GET /metrics?service=payments-service&metric=errors&days=3` returns `200`:
-
-```json
-{
-  "days": 3,
-  "metric": "errors",
-  "points": [
-    {"date": "2026-10-24", "value": 5},
-    {"date": "2026-10-25", "value": 2},
-    {"date": "2026-10-26", "value": 3}
-  ],
-  "service": "payments-service"
-}
-```
-
-Points come oldest first. Dates are `YYYY-MM-DD` in UTC and end today. `days` is the number of points actually returned.
-
-**Errors** are `400` with one message:
-
-```json
-{"error":"days must be a positive integer"}
-{"error":"unknown metric \"cpu\" (valid: errors, latency_ms)"}
-```
-
-The other messages are `missing required query param: service` (or `metric`) and `unknown service "…"`. Unknown paths get `404` and wrong methods `405`, as plain text from Go's router.
-
-## Gateway API
-
-`http://localhost:3000`. Interactive docs, generated from the routes' Zod schemas and drawn by Scalar, are at `/docs`, and the OpenAPI document behind them at `/docs/openapi.json`.
+`http://localhost:3000`. Interactive docs, generated from the routes' Zod schemas, are at `/docs`, and the OpenAPI document at `/docs/openapi.json`.
 
 **`GET /health`** returns `200 {"status":"ok"}`.
 
 **`POST /ask`** takes `{"question": "..."}`, at least one character long.
 
-| Status | When | Body |
+| Status | Code | When |
 |---|---|---|
-| 501 | the question is valid, until the agent arrives in step 3 | `{"error":{"code":"not_implemented","message":"Not implemented yet."}}` |
-| 422 | `question` is missing or empty | `{"error":{"code":"invalid_question","message":"The question is missing or empty."}}` |
-| 429 | an IP's 11th request in a minute, counted from its first | `{"error":{"code":"rate_limited","message":"Rate limit exceeded, try again later."}}`, plus a `Retry-After` header in seconds |
-| 400 | the body isn't valid JSON, or Fastify rejects the request for another reason | `{"error":{"code":"bad_request","message":"..."}}`, with Fastify's description of the problem |
+| 501 | `not_implemented` | the question is valid, until the agent arrives |
+| 422 | `invalid_question` | `question` is missing or empty |
+| 429 | `rate_limited` | an IP's 11th request in a minute, counted from its first, with `Retry-After` |
+| 400 | `bad_request` | the body isn't valid JSON, or Fastify rejects the request |
+| 404 | `not_found` | an unknown route |
+| 500 | `internal_error` | an unexpected failure |
 
-Every error has the shape `{"error": {"code": "...", "message": "..."}}`: the code is for programs, and the message is safe to show visitors. The [target design](design.md#the-frontends-api) keeps these codes but sends them through tRPC. An unknown route gets `404` with the code `not_found`, and an unexpected failure gets `500` with `internal_error`. The metrics service uses `{"error": "..."}` instead.
-
-CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
+Every error is `{"error": {"code": "...", "message": "..."}}`, and the message is safe to show visitors. The [target design](design.md#the-frontends-api) keeps these codes, sent through tRPC. CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
 
 ## Configuration
 
-| Service | Settings | Where they come from |
-|---|---|---|
-| Metrics | `PORT`, default 8080 | the environment only, for example `PORT=8081 make metrics` |
-| Gateway | `GEMINI_API_KEY`, `METRICS_BASE_URL`, `ALLOWED_ORIGINS` | the environment, plus `gateway/.env` when started with `make gateway` (see `gateway/.env.example`). A missing or invalid one stops the gateway at startup |
+| Where | Settings |
+|---|---|
+| `backend/.env` (from `backend/.env.example`), read by `npm run dev` | `GEMINI_API_KEY`, `ALLOWED_ORIGINS`. A missing or invalid one stops the backend at startup |
+| `.env` at the root (from `.env.example`), read by Docker Compose | `POSTGRES_PASSWORD`, `DASHGEN_DB_PASSWORD` |
 
 ## Known limits
 
-- **The rate limit is per process.** Counts live in memory, so each running copy of the gateway keeps its own, and a restart resets them. Step 4's [daily cap](design.md#the-daily-cap) is shared by every copy.
-- **Behind CloudFront and a load balancer,** every request would come from the load balancer's IP, so all visitors would share one limit. Step 5 takes the visitor's IP from CloudFront instead ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
-- **The data is 7 hardcoded days.** Step 2 moves it to Postgres, with 30 days of hourly data that always ends today.
-- **The metrics service has no auth and allows any origin.** It serves only sample data, and on AWS it will sit in private subnets, reachable only from the gateway.
+- **The rate limit is per process,** in memory, so a restart resets it. Step 4's [daily cap](design.md#the-daily-cap) is shared.
+- **Behind a load balancer,** every request would come from its IP. Step 5 takes the visitor's IP from CloudFront instead ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
+- **There's no sample data yet.** The Go service that served 7 hardcoded days is gone, and step 2's Drizzle work brings 30 days of hourly data in Postgres.

@@ -1,7 +1,7 @@
 {
-  "name": "gateway",
+  "name": "backend",
   "version": "0.1.0",
-  "description": "DashGen gateway: turns a question into a chart",
+  "description": "DashGen backend: turns a question into a chart",
   "private": true,
   "type": "module",
   "scripts": {
