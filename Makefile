@@ -23,7 +23,8 @@ db:
 	docker compose up --detach --wait postgres
 
 fmt:
-	cd gateway && npx prettier --write --log-level warn . ../.claude/hooks
+	cd gateway && npm run --silent format
+	cd .claude/hooks && ../../gateway/node_modules/.bin/prettier --write --log-level warn .
 	cd metrics && gofmt -w .
 
 check:

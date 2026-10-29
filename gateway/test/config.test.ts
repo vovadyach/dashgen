@@ -39,9 +39,16 @@ test("needs at least one origin", () => {
   );
 });
 
-test("needs a valid metrics URL", () => {
-  assert.throws(
-    () => loadConfig({ ...VALID_ENV, METRICS_BASE_URL: "not a url" }),
-    /METRICS_BASE_URL/,
-  );
+test("needs an http or https metrics URL", () => {
+  for (const url of ["not a url", "file:///etc/passwd", "ftp://metrics.test"]) {
+    assert.throws(
+      () => loadConfig({ ...VALID_ENV, METRICS_BASE_URL: url }),
+      /METRICS_BASE_URL/,
+    );
+  }
+  const config = loadConfig({
+    ...VALID_ENV,
+    METRICS_BASE_URL: "https://metrics.test",
+  });
+  assert.equal(config.metricsBaseUrl, "https://metrics.test");
 });

@@ -113,6 +113,15 @@ test("unknown routes answer with the error shape", async (t) => {
   assert.equal(response.json<ErrorBody>().error.code, "not_found");
 });
 
+test("a malformed URL answers with the error shape", async (t) => {
+  const app = await startApp(t);
+
+  const response = await app.inject({ method: "GET", url: "/%world" });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json<ErrorBody>().error.code, "bad_request");
+});
+
 test("the docs page is served", async (t) => {
   const app = await startApp(t);
 

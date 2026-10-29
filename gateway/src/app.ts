@@ -2,7 +2,7 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import scalar from "@scalar/fastify-api-reference";
-import Fastify from "fastify";
+import Fastify, { type FastifyReply } from "fastify";
 import {
   hasZodFastifySchemaValidationErrors,
   jsonSchemaTransform,
@@ -32,6 +32,14 @@ export interface AppOptions {
 export async function buildApp(config: Config, options: AppOptions = {}) {
   const app = Fastify({
     logger: options.logger ?? false,
+    // Errors Fastify raises before routing, like a malformed URL, never reach
+    // the error handler below, so they get the same shape here.
+    frameworkErrors: (error, _request, reply) => {
+      // This reply belongs to no route, so its types allow no status or
+      // body. Plain FastifyReply is what it is at runtime.
+      const plain = reply as unknown as FastifyReply;
+      void plain.code(400).send(errorBody("bad_request", error.message));
+    },
   }).withTypeProvider<ZodTypeProvider>();
 
   // Route schemas are Zod schemas: they validate requests, type the handlers

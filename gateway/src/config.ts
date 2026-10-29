@@ -30,7 +30,8 @@ export class Secret {
 // Empty values fail like missing ones, so `GEMINI_API_KEY=` stops the gateway at startup.
 const Env = z.object({
   GEMINI_API_KEY: z.string().min(1),
-  METRICS_BASE_URL: z.url(),
+  // Only http and https: the gateway calls the metrics service over HTTP.
+  METRICS_BASE_URL: z.url({ protocol: /^https?$/ }),
   ALLOWED_ORIGINS: z
     .string()
     .transform((value) =>
