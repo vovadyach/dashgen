@@ -21,7 +21,7 @@ export interface AppOptions {
   logger?: boolean;
 }
 
-/** Builds the gateway from `config`, so each test can pass its own. Nothing else reads the environment. */
+/** Builds the backend from `config`, so each test can pass its own. Nothing else reads the environment. */
 export async function buildApp(config: Config, options: AppOptions = {}) {
   const app = Fastify({
     logger: options.logger ?? false,
@@ -94,7 +94,7 @@ export async function buildApp(config: Config, options: AppOptions = {}) {
   });
 
   await app.register(swagger, {
-    openapi: { info: { title: "DashGen gateway", version: "0.1.0" } },
+    openapi: { info: { title: "DashGen backend", version: "0.1.0" } },
     transform: jsonSchemaTransform,
   });
   // Scalar draws the docs page from the OpenAPI document @fastify/swagger builds.

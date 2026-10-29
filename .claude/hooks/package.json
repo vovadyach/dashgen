@@ -1,5 +1,5 @@
 {
-  "description": "Claude Code hooks. Node runs them directly, and scripts/check.sh checks them with the gateway's tools.",
+  "description": "Claude Code hooks. Node runs them directly, and scripts/check.sh checks them with the root's tools.",
   "private": true,
   "type": "module"
 }

@@ -7,9 +7,8 @@ services:
     image: postgres:18-alpine
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env}
-      # Read only by the init script, which creates each service's user.
-      METRICS_DB_PASSWORD: ${METRICS_DB_PASSWORD:?copy .env.example to .env}
-      GATEWAY_DB_PASSWORD: ${GATEWAY_DB_PASSWORD:?copy .env.example to .env}
+      # Read only by the init script, which creates the backend's user.
+      DASHGEN_DB_PASSWORD: ${DASHGEN_DB_PASSWORD:?copy .env.example to .env}
     # Reachable from this machine only, not from the rest of the network.
     ports:
       - "127.0.0.1:5432:5432"

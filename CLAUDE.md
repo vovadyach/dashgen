@@ -1,16 +1,15 @@
 # DashGen
 
-Type a question in plain English, get a chart. A Gemini agent in the gateway picks tools, fetches the metrics and returns the chart. `README.md` describes the design; `docs/roadmap.md` is the plan.
+Type a question in plain English, get a chart. A Gemini agent in the backend picks tools, fetches the metrics and returns the chart. `README.md` describes the design; `docs/roadmap.md` is the plan.
 
 ## Layout
 
-- `gateway/`: Node.js + Fastify gateway in TypeScript, where the agent will live. See `gateway/CLAUDE.md`.
-- `packages/contracts/`: Zod schemas shared between packages, imported as `@dashgen/contracts`. The root `package.json` makes `gateway` and `packages/*` one npm workspace, with the shared tools and settings ([ADR-0004](docs/decisions/0004-npm-workspaces.md)).
+- `backend/`: the one Node.js + Fastify service, in TypeScript, where the agent will live. See `backend/CLAUDE.md`.
+- `packages/contracts/`: Zod schemas shared between packages, imported as `@dashgen/contracts`. The root `package.json` makes `backend` and `packages/*` one npm workspace, with the shared tools and settings ([ADR-0004](docs/decisions/0004-npm-workspaces.md)).
 - `.claude/hooks/`: the format and stop hooks, in TypeScript. Node runs them directly, and `make check` checks them with the root's tools.
-- `metrics/`: Go service that serves the sample metrics. See `metrics/CLAUDE.md`.
 - `frontend/`: React + Vite app, empty until step 3.
-- `compose.yaml` and `postgres/`: Postgres in Docker for local development, with a database and a user per service.
-- `docs/architecture.md`: how the services fit together, and their APIs. Update it whenever an API changes.
+- `compose.yaml` and `postgres/`: Postgres in Docker for local development, with one `dashgen` database and user.
+- `docs/architecture.md`: what runs today, and its API. Update it whenever an API changes.
 - `docs/design.md`: the target design, with requirements, estimates and diagrams. Update it when a design choice changes.
 - `docs/roadmap.md`: the nine steps. Tick an item when it's done.
 - `docs/decisions/`: ADRs. Write new ones with `/adr`.
@@ -19,9 +18,9 @@ Type a question in plain English, get a chart. A Gemini agent in the gateway pic
 
 - `make check` runs every formatter, linter, type checker and test. The stop hook runs it when you finish a turn that changed files, and CI (`.github/workflows/ci.yml`) runs it on every pull request. It must pass.
 - `make install` runs `npm ci` at the root, which installs every TypeScript workspace and the shared tools.
-- `make fmt` formats the TypeScript and Go code.
-- `make metrics` and `make gateway` start the services on :8080 and :3000.
-- `make db` starts Postgres in Docker on localhost:5432, with the passwords from the root `.env` that the user makes from `.env.example`. Don't create that file: for a test run, set the three passwords as environment variables instead.
+- `make fmt` formats the TypeScript code.
+- `npm run dev` starts the backend on :3000. `make` is for repo-wide and infrastructure commands, npm scripts for the TypeScript packages.
+- `make db` starts Postgres in Docker on localhost:5432, with the passwords from the root `.env` that the user makes from `.env.example`. Don't create that file: for a test run, set `POSTGRES_PASSWORD` and `DASHGEN_DB_PASSWORD` as environment variables instead.
 - `/fix-issue <number>` works a GitHub issue through to passing checks.
 
 ## Rules

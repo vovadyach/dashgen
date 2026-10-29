@@ -438,7 +438,7 @@ The day's first question creates the item, and later ones add 1 only while it's 
 
 ### The metrics module
 
-The agent's tools are its only callers. It replaces [today's Go metrics service](architecture.md#metrics-api), and gains 30 days, hourly or daily buckets, units, a summary, and timestamps instead of dates. Its `index.ts` offers two functions, with their inputs and results as Zod schemas in `@dashgen/contracts`:
+The agent's tools are its only callers. It replaces the first version, a Go service with 7 hardcoded days, and adds 30 days, hourly or daily buckets, units, a summary, and timestamps instead of dates. Its `index.ts` offers two functions, with their inputs and results as Zod schemas in `@dashgen/contracts`:
 
 | Function | Result |
 |---|---|

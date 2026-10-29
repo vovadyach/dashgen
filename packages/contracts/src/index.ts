@@ -13,13 +13,13 @@ export const ErrorBody = z.object({
 });
 export type ErrorBody = z.infer<typeof ErrorBody>;
 
-/** The gateway's `GET /health` answer. */
+/** The backend's `GET /health` answer. */
 export const Health = z.object({
   status: z.literal("ok"),
 });
 export type Health = z.infer<typeof Health>;
 
-/** The body of the gateway's `POST /ask`. */
+/** The body of the backend's `POST /ask`. */
 export const AskRequest = z.object({
   question: z.string().min(1),
 });

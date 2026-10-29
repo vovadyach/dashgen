@@ -7,12 +7,13 @@
     "node": ">=24"
   },
   "workspaces": [
-    "gateway",
+    "backend",
     "packages/*"
   ],
   "scripts": {
-    "format": "prettier --write \"*.{js,json}\" \"{gateway,packages/*}/{src,test}/**\" \"{gateway,packages/*}/*.{js,json}\" \".claude/hooks/*.{ts,json}\"",
-    "format:check": "prettier --check \"*.{js,json}\" \"{gateway,packages/*}/{src,test}/**\" \"{gateway,packages/*}/*.{js,json}\" \".claude/hooks/*.{ts,json}\"",
+    "dev": "npm run dev --workspace backend",
+    "format": "prettier --write \"*.{js,json}\" \"{backend,packages/*}/{src,test}/**\" \"{backend,packages/*}/*.{js,json}\" \".claude/hooks/*.{ts,json}\"",
+    "format:check": "prettier --check \"*.{js,json}\" \"{backend,packages/*}/{src,test}/**\" \"{backend,packages/*}/*.{js,json}\" \".claude/hooks/*.{ts,json}\"",
     "lint": "eslint .",
     "typecheck": "tsc --project .claude/hooks && npm run --workspaces --if-present typecheck",
     "test": "npm run --workspaces --if-present test"

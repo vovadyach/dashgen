@@ -4,11 +4,10 @@
 ![Node.js](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 ![Fastify](https://img.shields.io/badge/Fastify-000000?logo=fastify&logoColor=white)
-![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
 
 Natural-language dashboard generator. Type a question in plain English, an LLM agent decides which tools to call, fetches the data, and renders a chart.
 
-> **Work in progress.** The Go metrics service and the gateway's skeleton run today. The agent, the frontend and the AWS deploy come next; see the [roadmap](docs/roadmap.md).
+> **Work in progress.** The backend's skeleton runs today. The agent, the frontend and the AWS deploy come next; see the [roadmap](docs/roadmap.md).
 
 ## What it will do
 
@@ -25,7 +24,7 @@ Each question gets one chart. A vague question gets a few complete questions to 
 
 ## The data
 
-DashGen comes with made-up sample data, so anyone can try it without bringing their own: error counts and latency for five fake services (`auth-service`, `payments-service`, `checkout-api`, `search-service`, `notifications-worker`). Today that's 7 days hardcoded in the Go service. In step 2 it moves to Postgres, filled by a seed script with 30 days of hourly data ending today, so a question about "this week" always has data.
+DashGen comes with made-up sample data, so anyone can try it without bringing their own: error counts and latency for five fake services (`auth-service`, `payments-service`, `checkout-api`, `search-service`, `notifications-worker`). Step 2 puts it in Postgres, filled by a seed script with 30 days of hourly data ending today, so a question about "this week" always has data.
 
 Uploading your own CSV or Excel file is on the roadmap's Later list.
 
@@ -62,35 +61,35 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 
 | Part | Tech | Today |
 |---|---|---|
-| Metrics (`metrics/`) | Go 1.27+, standard library | Serves 7 days of hardcoded sample data ([API](docs/architecture.md#metrics-api)) |
-| Gateway (`gateway/`) | Node.js 24, Fastify, TypeScript, Zod | Takes questions with a per-IP rate limit, and answers 501 until the agent exists ([API](docs/architecture.md#gateway-api)) |
-| Database | Postgres 18, Docker Compose | Runs locally, with an empty database and user per service. Step 2 fills it |
-| Data access | Drizzle | Planned (step 2), replacing the Go service with the backend's `metrics` module |
+| Backend (`backend/`) | Node.js 24, Fastify, TypeScript, Zod | Takes questions with a per-IP rate limit, and answers 501 until the agent exists ([API](docs/architecture.md#backend-api)) |
+| Database | Postgres 18, Docker Compose | Runs locally, with one empty `dashgen` database. Step 2 fills it |
+| Data access | Drizzle | Planned (step 2): the backend's `metrics` module |
 | Agent | Gemini (`@google/genai`) | Planned (step 3) |
 | Frontend | React, TypeScript, Vite, Tailwind, Recharts, tRPC, TanStack Query | Planned (step 3) |
 | Hosting | AWS, Terraform | Planned (step 5) |
 
 ## Running locally
 
-You'll need Go 1.27+ and Node.js 24+.
+You'll need Node.js 24+, and Docker for Postgres.
 
 ```bash
 make install                           # install every TypeScript package
-cp gateway/.env.example gateway/.env   # any placeholder works for GEMINI_API_KEY for now
-make metrics                           # terminal 1: metrics service on :8080
-make gateway                           # terminal 2: gateway on :3000
+cp backend/.env.example backend/.env   # any placeholder works for GEMINI_API_KEY for now
+npm run dev                            # the backend on :3000
 ```
 
-Open http://localhost:3000/docs to try the gateway's endpoints in the browser.
+Open http://localhost:3000/docs to try the backend's endpoints in the browser.
 
-Postgres runs in Docker (Docker Desktop or [OrbStack](https://orbstack.dev)). Nothing reads from it yet: step 2 is moving the metrics there.
+Postgres runs in Docker (Docker Desktop or [OrbStack](https://orbstack.dev)). Nothing reads from it yet: step 2 adds the tables and the sample data.
 
 ```bash
 cp .env.example .env   # then replace each placeholder with a password
 make db                # Postgres on localhost:5432
 ```
 
-`docker compose down` stops it, and `docker compose down --volumes` also deletes its data. Postgres sets the passwords only the first time it starts, while its volume is empty, so changing them in `.env` later doesn't change the existing users. To switch to new ones, run `docker compose down --volumes` and then `make db`.
+`docker compose down` stops it, and `docker compose down --volumes` also deletes its data. Postgres runs `postgres/init.sh`, which creates the users and the database, only the first time it starts, while its volume is empty. So after changing the passwords in `.env` or the init script, recreate the volume: run `docker compose down --volumes`, then `make db`. Local data is disposable, because the seed recreates it.
+
+> **Upgrading from the two-database setup** (`metrics` and `gateway`): `make db` still reports healthy, but the `dashgen` database doesn't exist. Replace the two old passwords in `.env` with `DASHGEN_DB_PASSWORD`, then recreate the volume as above.
 
 Run every formatter, linter, type checker and test with `make check`, and fix formatting with `make fmt`. GitHub Actions runs the same checks on every pull request and every push to `main`.
 
@@ -102,10 +101,9 @@ dashgen/
 ├── .github/       # CI workflow: runs scripts/check.sh
 ├── docs/          # architecture, design, roadmap and decision records
 ├── frontend/      # React + Vite app (planned)
-├── gateway/       # Node.js + Fastify gateway, in TypeScript
-├── metrics/       # Go metrics service
+├── backend/       # the Node.js + Fastify backend, in TypeScript
 ├── packages/      # shared TypeScript packages: contracts (API schemas)
-├── postgres/      # init script: a database and a user per service
+├── postgres/      # init script: the `dashgen` database and user
 ├── scripts/       # check.sh: every check in one command
 ├── CLAUDE.md      # project rules for Claude Code
 ├── compose.yaml   # Postgres for local development
@@ -118,9 +116,9 @@ dashgen/
 
 The repo is set up for [Claude Code](https://claude.com/claude-code):
 
-- `CLAUDE.md` holds the project rules, and `gateway/CLAUDE.md` and `metrics/CLAUDE.md` hold each service's conventions.
+- `CLAUDE.md` holds the project rules, and `backend/CLAUDE.md` holds the backend's conventions.
 - `.claude/settings.json` stops Claude from committing or pushing, so every change is reviewed and committed by hand. It also keeps Claude's file tools, and shell commands like `cat`, away from `.env` files other than `.env.example`. A script that opens a file itself isn't covered; only Claude Code's [sandbox](https://code.claude.com/docs/en/sandboxing) blocks that.
-- Hooks, written in TypeScript and run by Node, format each TypeScript or Go file Claude edits, and run `scripts/check.sh` when Claude finishes a turn that changed files. If a check fails, Claude is sent back to fix it, up to twice; after that it stops with a warning.
+- Hooks, written in TypeScript and run by Node, format each TypeScript file Claude edits, and run `scripts/check.sh` when Claude finishes a turn that changed files. If a check fails, Claude is sent back to fix it, up to twice; after that it stops with a warning.
 - Skills: `/fix-issue <number>` works a GitHub issue through to passing checks, and `/adr` records a decision in `docs/decisions/`.
 
 ## Decisions

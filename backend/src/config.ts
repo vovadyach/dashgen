@@ -27,11 +27,9 @@ export class Secret {
   }
 }
 
-// Empty values fail like missing ones, so `GEMINI_API_KEY=` stops the gateway at startup.
+// Empty values fail like missing ones, so `GEMINI_API_KEY=` stops the backend at startup.
 const Env = z.object({
   GEMINI_API_KEY: z.string().min(1),
-  // Only http and https: the gateway calls the metrics service over HTTP.
-  METRICS_BASE_URL: z.url({ protocol: /^https?$/ }),
   ALLOWED_ORIGINS: z
     .string()
     .transform((value) =>
@@ -43,10 +41,9 @@ const Env = z.object({
     .pipe(z.array(z.string()).min(1)),
 });
 
-/** Gateway settings, read from environment variables. */
+/** Backend settings, read from environment variables. */
 export interface Config {
   geminiApiKey: Secret;
-  metricsBaseUrl: string;
   allowedOrigins: string[];
 }
 
@@ -60,7 +57,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   return {
     geminiApiKey: new Secret(result.data.GEMINI_API_KEY),
-    metricsBaseUrl: result.data.METRICS_BASE_URL,
     allowedOrigins: result.data.ALLOWED_ORIGINS,
   };
 }
