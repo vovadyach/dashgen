@@ -113,10 +113,25 @@ test("unknown routes answer with the error shape", async (t) => {
   assert.equal(response.json<ErrorBody>().error.code, "not_found");
 });
 
-test("the API docs describe /ask", async (t) => {
+test("the docs page is served", async (t) => {
   const app = await startApp(t);
 
-  const response = await app.inject({ method: "GET", url: "/docs/json" });
+  const redirect = await app.inject({ method: "GET", url: "/docs" });
+  const page = await app.inject({ method: "GET", url: "/docs/" });
+
+  assert.equal(redirect.statusCode, 301);
+  assert.equal(redirect.headers.location, "/docs/");
+  assert.equal(page.statusCode, 200);
+  assert.match(page.headers["content-type"] ?? "", /text\/html/);
+});
+
+test("the OpenAPI document describes /ask", async (t) => {
+  const app = await startApp(t);
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/docs/openapi.json",
+  });
 
   assert.equal(response.statusCode, 200);
   const spec = response.json<{ paths: Record<string, unknown> }>();

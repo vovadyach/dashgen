@@ -24,7 +24,7 @@ The options considered:
 The gateway is TypeScript on Node.js 24, with Fastify.
 
 - **Zod for every schema:** settings, requests and responses now, and from step 4 the agent's tool arguments and charts. `fastify-type-provider-zod` types each handler from its route's schemas and checks the replies against them.
-- **@fastify/swagger and @fastify/swagger-ui** serve the API docs at `/docs` from the same schemas. **@fastify/cors** and **@fastify/rate-limit** handle CORS and the per-IP limit.
+- **@fastify/swagger** builds an OpenAPI document from the same schemas, and **Scalar** draws it as the API docs at `/docs`. Swagger UI does the same job, but Scalar looks more current and has a request client built in. **@fastify/cors** and **@fastify/rate-limit** handle CORS and the per-IP limit.
 - **Node's built-ins instead of more packages:** Node runs the `.ts` files directly by stripping the types, `node:test` runs the tests, `--watch` restarts on changes and `--env-file-if-exists` loads `.env`. TypeScript only checks types.
 - **ESLint with typescript-eslint's type-aware rules, and Prettier.** TypeScript stays on 6.0, because typescript-eslint doesn't support 7 yet.
 - **One error shape,** `{"error": {"code", "message"}}`, as [design.md](../design.md#the-public-api) plans for the public API.

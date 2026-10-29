@@ -1,7 +1,7 @@
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
-import swaggerUi from "@fastify/swagger-ui";
+import scalar from "@scalar/fastify-api-reference";
 import Fastify from "fastify";
 import {
   hasZodFastifySchemaValidationErrors,
@@ -96,7 +96,11 @@ export async function buildApp(config: Config, options: AppOptions = {}) {
     openapi: { info: { title: "DashGen gateway", version: "0.1.0" } },
     transform: jsonSchemaTransform,
   });
-  await app.register(swaggerUi, { routePrefix: "/docs" });
+  // Scalar draws the docs page from the OpenAPI document @fastify/swagger builds.
+  await app.register(scalar, {
+    routePrefix: "/docs",
+    configuration: { metaData: { title: "DashGen API" } },
+  });
 
   app.get("/health", { schema: { response: { 200: Health } } }, () => ({
     status: "ok" as const,

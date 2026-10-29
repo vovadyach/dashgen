@@ -65,7 +65,7 @@ The other messages are `missing required query param: service` (or `metric`) and
 
 ## Gateway API
 
-`http://localhost:3000`. Interactive docs, generated from the routes' Zod schemas, are at `/docs`, and the OpenAPI document behind them at `/docs/json`.
+`http://localhost:3000`. Interactive docs, generated from the routes' Zod schemas and drawn by Scalar, are at `/docs`, and the OpenAPI document behind them at `/docs/openapi.json`.
 
 **`GET /health`** returns `200 {"status":"ok"}`.
 
