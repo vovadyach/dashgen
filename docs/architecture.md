@@ -11,7 +11,8 @@ Browser ──▶ Backend ──────────────▶ Postgres
 ```
 
 - **Backend** (`backend/`): one TypeScript service. Its HTTP API takes questions and answers 501, because the agent arrives in step 3.
-- **The `metrics` module** (`backend/src/metrics/`): `listServices()` and `query()` over the seeded data. Nothing calls it yet; the agent's tools will.
+- **The `metrics` module** (`backend/src/metrics/`): `listServices()` and `query()` over the seeded data. The agent's tools call it.
+- **The `agent` module** (`backend/src/agent/`): the [five tools](design.md#the-agents-tools) and the Gemini adapter. The API doesn't use them yet; the agent loop, next in step 3, will. `npm run gemini:check` tries the adapter with two real requests.
 - **Postgres** runs in Docker Compose (`make db`), with one `dashgen` database and user. The tables come from Drizzle migrations, and the data from the seed.
 - **Frontend:** planned for step 3.
 
