@@ -32,6 +32,15 @@ export class Secret {
 // Empty values fail like missing ones, so `GEMINI_API_KEY=` stops the backend at startup.
 const Env = z.object({
   GEMINI_API_KEY: z.string().min(1),
+  // The cost estimates in docs/design.md are for this model's prices. Gemini 3
+  // only: the adapter sets a thinking level and sends thought signatures back.
+  GEMINI_MODEL: z
+    .string()
+    .regex(
+      /^gemini-3[.-]/,
+      "Use a Gemini 3 model, like gemini-3.1-flash-lite: DashGen sets its thinking level and sends its thought signatures back.",
+    )
+    .default("gemini-3.1-flash-lite"),
   ALLOWED_ORIGINS: z
     .string()
     .transform((value) =>
@@ -47,6 +56,7 @@ const Env = z.object({
 /** Backend settings, read from environment variables. */
 export interface Config {
   geminiApiKey: Secret;
+  geminiModel: string;
   allowedOrigins: string[];
   // debug adds every SQL statement; info suits AWS.
   logLevel: LogLevel;
@@ -68,12 +78,27 @@ function parseEnv<T extends z.ZodType>(
 
 /** Reads the backend's settings from `env`. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const { GEMINI_API_KEY, ALLOWED_ORIGINS, LOG_LEVEL } = parseEnv(Env, env);
+  const { GEMINI_API_KEY, GEMINI_MODEL, ALLOWED_ORIGINS, LOG_LEVEL } = parseEnv(
+    Env,
+    env,
+  );
   return {
     geminiApiKey: new Secret(GEMINI_API_KEY),
+    geminiModel: GEMINI_MODEL,
     allowedOrigins: ALLOWED_ORIGINS,
     logLevel: LOG_LEVEL,
   };
+}
+
+const GeminiEnv = Env.pick({ GEMINI_API_KEY: true, GEMINI_MODEL: true });
+
+/** Reads the Gemini key and model alone, for scripts that don't need the backend's other settings. */
+export function loadGeminiSettings(env: NodeJS.ProcessEnv = process.env): {
+  apiKey: Secret;
+  model: string;
+} {
+  const { GEMINI_API_KEY, GEMINI_MODEL } = parseEnv(GeminiEnv, env);
+  return { apiKey: new Secret(GEMINI_API_KEY), model: GEMINI_MODEL };
 }
 
 const DatabaseEnv = z.object({

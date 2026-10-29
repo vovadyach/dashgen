@@ -153,6 +153,7 @@ export function createMetrics(
       service,
       metric,
       unit: info.unit,
+      days,
       bucket,
       points: buckets.map((row) => ({
         t: row.t.toISOString(),

@@ -64,13 +64,13 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 | Backend (`backend/`) | Node.js 24, Fastify, TypeScript, Zod | Takes questions with a per-IP rate limit, and answers 501 until the agent exists ([API](docs/architecture.md#backend-api)) |
 | Database | Postgres 18, Docker Compose | Runs locally: one `dashgen` database, with tables from Drizzle migrations |
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
-| Agent | Gemini (`@google/genai`) | Planned (step 3) |
+| Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools) and the Gemini adapter. The loop that runs them comes next (step 3) |
 | Frontend | React, TypeScript, Vite, Tailwind, Recharts, tRPC, TanStack Query | Planned (step 3) |
 | Hosting | AWS, Terraform | Planned (step 5) |
 
 ## Running locally
 
-You'll need Node.js 24+, and Docker for Postgres.
+You'll need Node.js 24.16+, and Docker for Postgres.
 
 ```bash
 make install                           # install every TypeScript package
@@ -79,6 +79,8 @@ npm run dev                            # the backend on :3000
 ```
 
 Open http://localhost:3000/docs to try the backend's endpoints in the browser.
+
+With a real `GEMINI_API_KEY` in `backend/.env` (free from [Google AI Studio](https://aistudio.google.com)), `npm run gemini:check` sends Gemini two test requests and prints its replies, to show the key and the model work. `npm run gemini:check -- --json` also prints each reply's JSON, exactly as Gemini sent it.
 
 Postgres runs in Docker (Docker Desktop or [OrbStack](https://orbstack.dev)):
 
@@ -107,7 +109,8 @@ dashgen/
 ├── packages/      # shared TypeScript packages: contracts (API schemas)
 ├── postgres/      # init script: the `dashgen` database and user
 ├── scripts/       # check.sh: every check in one command
-├── CLAUDE.md      # project rules for Claude Code
+├── AGENTS.md      # project rules for every coding agent
+├── CLAUDE.md      # imports AGENTS.md, plus Claude Code's own bits
 ├── compose.yaml   # Postgres for local development
 ├── compose.test.yaml  # throwaway Postgres for tests
 ├── Makefile
@@ -119,7 +122,7 @@ dashgen/
 
 The repo is set up for [Claude Code](https://claude.com/claude-code):
 
-- `CLAUDE.md` holds the project rules, and `backend/CLAUDE.md` holds the backend's conventions.
+- `AGENTS.md` holds the project rules, and `backend/AGENTS.md` the backend's conventions, for any coding agent, Codex included. Each `CLAUDE.md` imports its folder's `AGENTS.md` (`@AGENTS.md`) and adds only what's specific to Claude Code, so there's one copy of each rule.
 - `.claude/settings.json` stops Claude from committing or pushing, so every change is reviewed and committed by hand. It also keeps Claude's file tools, and shell commands like `cat`, away from `.env` files other than `.env.example`. A script that opens a file itself isn't covered; only Claude Code's [sandbox](https://code.claude.com/docs/en/sandboxing) blocks that.
 - Hooks, written in TypeScript and run by Node, format each TypeScript file Claude edits, and run `scripts/check.sh` when Claude finishes a turn that changed files. If a check fails, Claude is sent back to fix it, up to twice; after that it stops with a warning.
 - Skills: `/fix-issue <number>` works a GitHub issue through to passing checks, and `/adr` records a decision in `docs/decisions/`.
@@ -134,6 +137,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [6. Drizzle for data access](docs/decisions/0006-drizzle.md)
 - [7. tRPC between the React app and the backend](docs/decisions/0007-trpc.md)
 - [8. Postgres for the metrics and the runs](docs/decisions/0008-postgres.md)
+- [9. UUIDv7 for IDs](docs/decisions/0009-uuidv7-ids.md)
 
 ## License
 

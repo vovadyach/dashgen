@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUIDv7 } from "node:crypto";
 
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
@@ -28,15 +28,19 @@ export interface AppOptions {
 export async function buildApp(config: Config, options: AppOptions = {}) {
   const app = Fastify({
     logger: options.logger === true ? { level: config.logLevel } : false,
-    // A UUID per request, so it can double as a run's ID and be found in the logs.
-    genReqId: () => randomUUID(),
+    // A UUIDv7 per request, to find its log lines. A run gets its own ID, since
+    // tRPC can batch several questions into one request (ADR-0009).
+    genReqId: () => randomUUIDv7(),
     // Errors Fastify raises before routing, like a malformed URL, never reach
     // the error handler below, so they get the same shape here.
-    frameworkErrors: (error, _request, reply) => {
+    frameworkErrors: (error, request, reply) => {
       // This reply belongs to no route, so its types allow no status or
       // body. Plain FastifyReply is what it is at runtime.
       const plain = reply as unknown as FastifyReply;
-      void plain.code(400).send(errorBody("bad_request", error.message));
+      void plain
+        .header("x-request-id", request.id)
+        .code(400)
+        .send(errorBody("bad_request", error.message));
     },
   }).withTypeProvider<ZodTypeProvider>();
 
@@ -56,7 +60,10 @@ export async function buildApp(config: Config, options: AppOptions = {}) {
       return reply
         .code(422)
         .send(
-          errorBody("invalid_question", "The question is missing or empty."),
+          errorBody(
+            "invalid_question",
+            "The question must be 1 to 300 characters.",
+          ),
         );
     }
     // Fastify's own client errors, like a body that isn't valid JSON.

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import type { ErrorBody } from "@dashgen/contracts";
 
 import { startApp, VALID_ENV } from "../helpers/app.ts";
+import { assertRecentUuidV7 } from "../helpers/uuid.ts";
 
 const QUESTION = { question: "Show errors for payments-service this week" };
 
@@ -16,7 +17,7 @@ test("health answers ok", async (t) => {
   assert.deepEqual(response.json(), { status: "ok" });
 });
 
-test("each response carries its own request ID, a UUID", async (t) => {
+test("each response carries its own request ID, a UUIDv7 with the time in it", async (t) => {
   const app = await startApp(t);
 
   const ids = await Promise.all(
@@ -26,9 +27,7 @@ test("each response carries its own request ID, a UUID", async (t) => {
     }),
   );
 
-  const uuid =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-  for (const id of ids) assert.match(String(id), uuid);
+  for (const id of ids) assertRecentUuidV7(id);
   assert.notEqual(ids[0], ids[1]);
 });
 
@@ -47,15 +46,28 @@ test("ask answers 501 until the agent exists", async (t) => {
   });
 });
 
-test("ask requires a question", async (t) => {
+test("ask requires a question of 1 to 300 characters, after trimming", async (t) => {
   const app = await startApp(t);
 
-  for (const payload of [{}, { question: "" }]) {
+  for (const payload of [
+    {},
+    { question: "" },
+    { question: "   " },
+    { question: "x".repeat(301) },
+  ]) {
     const response = await app.inject({ method: "POST", url: "/ask", payload });
 
     assert.equal(response.statusCode, 422);
     assert.equal(response.json<ErrorBody>().error.code, "invalid_question");
   }
+
+  // The longest allowed question, with spaces around it that trimming removes.
+  const longest = await app.inject({
+    method: "POST",
+    url: "/ask",
+    payload: { question: `  ${"x".repeat(300)}  ` },
+  });
+  assert.equal(longest.statusCode, 501);
 });
 
 test("ask is rate limited per client IP", async (t) => {
@@ -130,13 +142,14 @@ test("unknown routes answer with the error shape", async (t) => {
   assert.equal(response.json<ErrorBody>().error.code, "not_found");
 });
 
-test("a malformed URL answers with the error shape", async (t) => {
+test("a malformed URL answers with the error shape, and a request ID", async (t) => {
   const app = await startApp(t);
 
   const response = await app.inject({ method: "GET", url: "/%world" });
 
   assert.equal(response.statusCode, 400);
   assert.equal(response.json<ErrorBody>().error.code, "bad_request");
+  assertRecentUuidV7(response.headers["x-request-id"]);
 });
 
 test("the docs page is served", async (t) => {

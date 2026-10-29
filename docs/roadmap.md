@@ -39,31 +39,31 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 ## 3. First slice: question to chart
 
-- [ ] Chart format first: what the backend sends and the page draws ([design](design.md#the-frontends-api))
-- [ ] [Tools](design.md#the-agents-tools): `list_services`, `query_metrics` and `create_chart`, each with a description that also says what it doesn't handle
+- [x] Chart format first: what the backend sends and the page draws ([design](design.md#the-frontends-api))
+- [x] [Tools](design.md#the-agents-tools): `list_services`, `query_metrics`, `create_chart`, `clarify` and `decline`, each with a description that also says what it doesn't handle
 - [ ] Hand-written Gemini function-calling loop that records each step. The model sits behind an interface the loop receives, so tests use a scripted fake model and never call Gemini
 - [ ] The [per-run limits](design.md#the-daily-cap) from the first live call: 6 model calls, the token budgets, a timeout on each call and 25 seconds per run
-- [ ] The backend builds each chart from the query results `create_chart` names
-- [ ] Read-only tools that accept only known service and metric names
-- [ ] Tool arguments and the final chart validated against their schemas
-- [ ] The question schema in `contracts`: 1 to 300 characters after trimming
+- [x] The backend builds each chart from the query results `create_chart` names
+- [x] Read-only tools that accept only known service and metric names
+- [x] Tool arguments and the final chart validated against their schemas
+- [x] The question schema in `contracts`: 1 to 300 characters after trimming
 - [ ] tRPC router: the `ask` mutation starts a run and returns its ID, and the `run` subscription streams its events over SSE, replaying missed ones on reconnect ([ADR-0007](decisions/0007-trpc.md))
 - [ ] Errors carry our codes through tRPC's error formatter; the per-IP limit counts each `ask`, not each HTTP request
-- [ ] Each run saved to `runs`
+- [ ] Each run saved to `runs`, under its UUIDv7 ID ([ADR-0009](decisions/0009-uuidv7-ids.md))
 - [ ] React + Vite + Tailwind + Recharts, with tRPC and TanStack Query: question box, steps panel, chart
 - [ ] Vite's dev server forwards `/api` to the backend, so the app calls the same paths locally and on AWS
-- [ ] Component tests with Vitest, frontend checks in `scripts/check.sh`, and a `frontend/CLAUDE.md`
+- [ ] Component tests with Vitest, frontend checks in `scripts/check.sh`, and a `frontend/AGENTS.md` with a `CLAUDE.md` that imports it
 
 **Done when:** locally, asking "Show errors for payments-service this week" in the browser streams the steps and draws the chart.
 
 ## 4. Guardrails and cost
 
 - [ ] `clarify` with clickable choices when the question is vague, and `decline` with example questions when it's off-topic
-- [ ] Errors classified as retryable or not; retries use exponential backoff with jitter
+- [ ] Errors classified as retryable or not; a retryable one gets one retry, after a short random wait
 - [ ] [Daily cap](design.md#the-daily-cap) of 150 questions, counted in DynamoDB, with DynamoDB Local in Docker Compose
 - [ ] A friendly message when the daily cap is hit, with a link to the demo video
 - [ ] A $20 monthly spend cap on the Gemini project, noted in the runbook
-- [ ] Model name in config
+- [x] Model name in config
 - [ ] Tokens, cost and latency recorded for every run, and cost per day and per question read from `runs`
 
 **Done when:** a vague question gets a clarifying question back, at the daily cap the backend stops calling Gemini, and every run's cost is recorded.
@@ -112,6 +112,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] Example questions under the box for first-time visitors
 - [ ] Pin charts to a dashboard, saved in the browser with their data, so they still draw while the backend is offline
 - [ ] A note under the question box says questions are saved
+- [ ] A mascot of our own: an animal (a meerkat, a lookout watching the metrics) drawn as one flat SVG, no memes since the repo is public. Animated with CSS and still for visitors who turned on reduced motion. Its mood follows the outcome: playful on `decline`, curious on `clarify`, sorry on errors, asleep when the backend is offline or the daily cap is reached. No mascot next to a chart
 - [ ] Works on a phone
 - [ ] Invisible bot check (Cloudflare Turnstile)
 

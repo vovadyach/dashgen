@@ -249,7 +249,7 @@ sequenceDiagram
     B-->>F: runId
     F->>B: tRPC subscription run(runId): from here the stream is open, with HTTP 200
     B->>LLM: question + tools
-    break Gemini still errors after its retries
+    break Gemini fails, after one retry if retrying can help
         B-->>F: error event: unavailable, "Try again in a moment"
     end
     LLM-->>B: call query_metrics(...)
@@ -265,7 +265,7 @@ sequenceDiagram
 ```
 
 - **Two kinds of error.** Before a run starts, `ask` fails like a normal request, with an HTTP status. Once `run` is streaming, the HTTP status is already 200, so a failure arrives as the stream's last event instead. Both carry one of [our error codes](#the-frontends-api), so the page shows the right message either way.
-- **Timeouts and retries:** every outside call has a timeout, and only errors worth retrying are retried, after a short random wait, so retries from many requests don't all land at once.
+- **Timeouts and retries:** every outside call has a timeout. An error that retrying can fix, like a timeout or a 503, gets one retry, after a short random wait, so retries from many requests don't all land at once. Any other error, like a wrong key, fails at once.
 - **25 seconds per question,** under CloudFront's 30-second timeout, so a slow question gets the backend's own error ([ADR-0003](decisions/0003-cloudfront-front-door.md) explains the three timeouts).
 - **A run always finishes within its limits,** even if the visitor leaves, so a reconnect finds it intact. Its cost is already capped: at most 6 model calls and 25 seconds, and the question was reserved when it started.
 - The numbers here (6 calls, 25 seconds per question, a 2-second timeout, one retry) are starting values for the evals to tune.
@@ -373,14 +373,14 @@ erDiagram
 - **`services` and `metrics` list what exists.** The metrics module checks names against them, the foreign keys stop a typo from inventing a service, and `list_services` reads them.
 - **Each metric says how it rolls up.** Hourly errors add up to daily errors, while latency averages. The metrics module reads the rule from `metrics` and applies it in SQL, so the model can't add up latencies.
 - **The seed gives questions something to find:** daily and weekly cycles, some noise, and a few incidents, such as an error spike on `payments-service` two days ago. Each hour's value comes from a hash of its service, metric and hour, so it's the same whichever day the seed runs, and evals can know the right answers. Only the incidents move, counted back from today. It writes everything in one transaction, so a failed seed leaves the old data intact.
-- **All times are UTC.** The frontend shows them in the visitor's time zone.
+- **All times are UTC.** The frontend shows hours in the visitor's time zone, but days in UTC: a daily bucket starts at UTC midnight, so in local time west of UTC it would show as the day before.
 
 ### The runs table
 
 ```mermaid
 erDiagram
     runs {
-        uuid id PK "also the request ID in the logs"
+        uuid id PK "UUIDv7, made when the question is asked"
         timestamptz created_at "indexed"
         text question
         text outcome "chart, clarify, decline or error"
@@ -397,6 +397,7 @@ erDiagram
 
 - **One `runs` row per question that reached the agent,** whatever the outcome. Questions turned away before that (invalid, rate-limited or over the cap) cost nothing, so they aren't runs.
 - **Steps are a `jsonb` column, not a table of their own:** they're always read with their run and never searched by themselves. Tokens, cost and latency are real columns, because step 4 adds them up per day.
+- **IDs are UUIDv7** ([ADR-0009](decisions/0009-uuidv7-ids.md)): each starts with the time it was made, so new rows go to the end of the index and IDs sort by time. The backend makes the ID when the question arrives, since `ask` returns it before the run is saved. It's the run's own ID, not the request's, because tRPC can batch several questions into one request; a run's log lines carry both.
 - **No IP addresses.** The question is kept, for evals and debugging, and the page says so. On AWS, runs last only as long as the session's database.
 
 ### The daily cap
@@ -405,12 +406,12 @@ The cap keeps a runaway day from becoming a runaway bill. That takes two things:
 
 **What one question can cost.** The backend enforces four limits:
 
-- **6 model calls.** Every request to Gemini counts, including retries after an error, the reminder after a prose answer and the second try after a chart fails validation.
-- **512 output tokens a call,** with thinking at its lowest level. The limit includes thinking tokens, which Gemini bills as output, so a question writes at most 3,072.
+- **6 model calls.** Every request to Gemini counts, including a retry after an error or after a reply with no tool call, and the second try after a chart is refused. The Gemini SDK's own retries stay off, so none go uncounted.
+- **512 output tokens a call,** with thinking at its lowest level (`MINIMAL`). The limit includes thinking tokens, which Gemini bills as output, so a question writes at most 3,072.
 - **24,000 input tokens a question,** across all its calls, since each call resends the conversation so far. Gemini reports every call's tokens, and before the next call the backend checks that it can't take the question past this budget. If it could, the run ends with `agent_failed`.
 - **Short tool results.** The model sees a summary of each query, never its points, so a typical question needs about 8,000 input tokens, whatever the time range.
 
-At Flash-Lite's prices that's at most $0.006 of input and $0.005 of output, about $0.011 a question. A different model means redoing this sum.
+At the prices of `gemini-3.1-flash-lite` ($0.25 per million input tokens and $1.50 per million output, in October 2026), that's at most $0.006 of input and $0.005 of output, about $0.011 a question. The model is the `GEMINI_MODEL` setting, and a different one means redoing this sum: `gemini-3.5-flash-lite`, at $0.30 and $2.50, would make it $0.015.
 
 **The cap is 150 questions a day,** so Gemini costs at most about $1.60 a day. A month with ten session days comes to about $16, which leaves room for AWS's ~$5 within the $25 budget. A busier day gets the cap's message instead of charts.
 
@@ -443,7 +444,7 @@ The agent's tools are its only callers. It replaces the first version, a Go serv
 | Function | Result |
 |---|---|
 | `listServices()` | the services, plus each metric's unit and rollup |
-| `query({ service, metric, days, bucket })` | one series and its summary. `days` runs from 1 to 30, 7 by default. `bucket` is `hour` or `day`: hourly up to 2 days and daily beyond, unless the agent asks for the other |
+| `query({ service, metric, days, bucket })` | one series and its summary. `days` runs from 1 to 30, 7 by default. `bucket` is `hour` or `day`: hourly up to 2 days and daily beyond, unless the agent asks for the other. Daily buckets cover that many UTC days, today included; hourly ones the last `days` × 24 hours |
 
 For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 
@@ -452,6 +453,7 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
   "service": "checkout-api",
   "metric": "errors",
   "unit": "count",
+  "days": 3,
   "bucket": "day",
   "points": [
     {"t": "2026-10-25T00:00:00Z", "value": 38},
@@ -477,9 +479,12 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 | `clarify` | `message`, and 2–4 `choices`, each a complete question | ends the run with the choices |
 | `decline` | `reason` | ends the run with a short refusal and fixed example questions |
 
-- **Every way to finish is a tool call** with a schema, so the backend never parses free text. If the model answers in prose, it gets one reminder, and then the run fails.
-- **A bad argument,** such as an unknown service, goes back to the model as a tool error and counts toward the 6 calls.
-- **`aggregation`** (average, maximum, minimum, total or latest) turns each series into one number per service, for bar and pie charts that compare services. The number is that statistic from the query's [summary](#the-metrics-module). Pie charts show parts of a whole, so they only take totals. A chart can't mix metrics with different units.
+- **Every answer is a tool call.** Gemini runs in its `ANY` function-calling mode, which rules out prose, so the backend never parses free text. A run ends with `create_chart`, `clarify` or `decline`. Gemini can still send a reply without a tool call. If its safety filters blocked the question or the answer, the run ends at once as a `decline`, with a fixed message and the example questions: asking again would get the same block. For any other reason, like a malformed call or no tokens left, the backend sends the same request once more, as one of the 6 calls. A second reply without a tool call ends the run with `agent_failed`.
+- **A bad argument,** such as an unknown service, goes back to the model as a tool error and counts toward the 6 calls. Arguments are strict: a misspelled one, like `day` for `days`, is an error too, never silently dropped, which would quietly change the chart.
+- **Several calls in one reply.** To compare 5 services, the model queries them all in one reply, so the question fits in 3 model calls (list, query, chart) instead of 7. The backend runs a reply's calls in order, one at a time, since each takes milliseconds: a later call can use an earlier one's result, so a chart in the same reply as its queries works, which saves a model call. Query IDs follow the order of the calls, failed ones included, so such a chart gets the right results or a refusal, never another service's.
+- **Each run gets its own tools,** which keep its results (`q1`, `q2`…) and query with a clock fixed when the run starts, so results fetched seconds apart still cover the same window. A question can make at most 10 queries, since every result is resent with each later model call.
+- **`aggregation`** (`avg`, `max`, `min`, `total` or `latest`) turns each series into one number per service, for bar and pie charts that compare services. The number is that statistic from the query's [summary](#the-metrics-module). Pie charts show each service's share of a total, so they need 2 or more services and `total`.
+- **A chart shows one metric,** one result per service, all over the same days and bucket, since a 7-day average next to a 30-day one would mislead. `create_chart` refuses anything else with a tool error that says what to change.
 - **The title says what's plotted, not a conclusion,** because the model writes it: "Average latency by service, last 7 days", not "checkout-api is the slowest".
 
 ### The frontend's API
@@ -503,7 +508,7 @@ The React app calls the backend through [tRPC](decisions/0007-trpc.md) under `/a
     "type": "line",
     "title": "payments-service errors per day, last 7 days",
     "unit": "count",
-    "x": "time",
+    "x": "day",
     "series": [
       {"name": "payments-service", "points": [{"x": "2026-10-21T00:00:00Z", "y": 41}]}
     ]
@@ -512,7 +517,8 @@ The React app calls the backend through [tRPC](decisions/0007-trpc.md) under `/a
 ```
 
 - `outcome` is `chart`, `clarify` (with `message` and `choices`) or `decline` (with `message` and `examples`).
-- `x` is `time` for a chart over time, or `category` when each point is a service.
+- `x` says what the x values are: `hour` or `day` timestamps for a chart over time, so the page can label the axis, or `category` when each point is a service.
+- The schema is `Chart` in `@dashgen/contracts`, and the backend validates every chart against it before sending it.
 - A point marked `"partial": true` is a day with fewer than 24 hours of data, in a daily chart: usually today so far, or a gap in the data. The frontend draws it lighter, so it doesn't read as a drop.
 - A chart carries its own numbers, so charts pinned in the browser still draw while the backend is offline.
 
@@ -524,7 +530,7 @@ Every error carries our own code and a message that's safe to show visitors. Whe
 | `rate_limited` | `ask` fails, HTTP 429 | the 11th question in a minute from one IP |
 | `daily_cap` | `ask` fails, HTTP 503 | the day's questions are used up |
 | `agent_failed` | `error` event in `run`; HTTP stays 200 | no chart, clarifying question or refusal within the [run's limits](#the-daily-cap) |
-| `unavailable` | `error` event in `run` | the database or Gemini still fails after retries |
+| `unavailable` | `error` event in `run` | the database or Gemini fails, after one retry if retrying can help |
 | `timeout` | `error` event in `run` | the run took over 25 seconds |
 | `run_not_found` | `run` fails, HTTP 404 | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page says the answer was interrupted and offers to ask again |
 

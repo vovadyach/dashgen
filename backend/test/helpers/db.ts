@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUIDv7 } from "node:crypto";
 
 import { Pool } from "pg";
 
@@ -19,7 +19,7 @@ export interface TestDb {
 /** Creates a fresh, migrated database for one test file. Call `drop()` after its tests. */
 export async function createTestDb(log?: Logger): Promise<TestDb> {
   // A random name, so test files running in parallel never share a database.
-  const name = `test_${randomUUID().replaceAll("-", "")}`;
+  const name = `test_${randomUUIDv7().replaceAll("-", "")}`;
   const admin = new Pool({ connectionString: ADMIN_URL, max: 1 });
   let db: Db | undefined;
 

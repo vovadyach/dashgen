@@ -1,41 +1,6 @@
-# DashGen
+@AGENTS.md
 
-Type a question in plain English, get a chart. A Gemini agent in the backend picks tools, fetches the metrics and returns the chart. `README.md` describes the design; `docs/roadmap.md` is the plan.
+## Claude Code only
 
-## Layout
-
-- `backend/`: the one Node.js + Fastify service, in TypeScript, where the agent will live. See `backend/CLAUDE.md`.
-- `packages/contracts/`: Zod schemas shared between packages, imported as `@dashgen/contracts`. The root `package.json` makes `backend` and `packages/*` one npm workspace, with the shared tools and settings ([ADR-0004](docs/decisions/0004-npm-workspaces.md)).
-- `.claude/hooks/`: the format and stop hooks, in TypeScript. Node runs them directly, and `make check` checks them with the root's tools.
-- `frontend/`: React + Vite app, empty until step 3.
-- `compose.yaml` and `postgres/`: Postgres in Docker for local development, with one `dashgen` database and user.
-- `docs/architecture.md`: what runs today, and its API. Update it whenever an API changes.
-- `docs/design.md`: the target design, with requirements, estimates and diagrams. Update it when a design choice changes.
-- `docs/roadmap.md`: the nine steps. Tick an item when it's done.
-- `docs/decisions/`: ADRs. Write new ones with `/adr`.
-
-## Commands
-
-- `make check` runs every formatter, linter, type checker and test. The stop hook runs it when you finish a turn that changed files, and CI (`.github/workflows/ci.yml`) runs it on every pull request. It must pass.
-- `make install` runs `npm ci` at the root, which installs every TypeScript workspace and the shared tools.
-- `make fmt` formats the TypeScript code.
-- `npm run dev` starts the backend on :3000. `make` is for repo-wide and infrastructure commands, npm scripts for the TypeScript packages.
-- `make db` starts Postgres in Docker on localhost:5432, with the passwords from the root `.env` that the user makes from `.env.example`. Don't create that file: for a test run, set `POSTGRES_PASSWORD` and `DASHGEN_DB_PASSWORD` as environment variables instead.
-- `npm run db:migrate` and `npm run db:seed` create the tables and the sample data. After a schema change, `npm run db:generate --workspace backend` writes the SQL migration to commit with it. Never edit a migration that has been merged; add a new one.
-- `make check` also starts a throwaway test Postgres on port 5433 (`compose.test.yaml`), so Docker must be running. `npm run test:unit` runs only the tests that need no database.
-- `/fix-issue <number>` works a GitHub issue through to passing checks.
-
-## Rules
-
-- Never commit, push or open PRs. The user reviews and commits everything, so leave changes uncommitted and list what changed.
-- Ask before adding a dependency, in any language.
-- Never read or edit `.env` files, not even through a script: they hold secrets. Put every new setting in `.env.example` with a placeholder.
-- The repo is public. No keys, secrets or personal details in any file.
-- A choice someone could question (a library, a data model, a trade-off) gets an ADR.
-
-## AWS (from step 5)
-
-- All infrastructure is Terraform; nothing is changed only in the console.
-- GitHub Actions reaches AWS through OIDC. No AWS keys in GitHub.
-- Never create an AWS Organization or Control Tower: that ends the Free plan and its credits.
-- Run `terraform destroy` at the end of every AWS work session.
+- `.claude/hooks/`: the format hook formats each TypeScript file you edit, and the stop hook runs `make check` when you finish a turn that changed files. They're TypeScript that Node runs directly, and `make check` checks them too.
+- `/adr` writes a new ADR, and `/fix-issue <number>` works a GitHub issue through to passing checks (`.claude/skills/`).
