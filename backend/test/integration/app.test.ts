@@ -4,6 +4,7 @@ import { test } from "node:test";
 import type { ErrorBody } from "@dashgen/contracts";
 
 import { startApp, VALID_ENV } from "../helpers/app.ts";
+import { assertRecentUuidV7 } from "../helpers/uuid.ts";
 
 const QUESTION = { question: "Show errors for payments-service this week" };
 
@@ -16,7 +17,7 @@ test("health answers ok", async (t) => {
   assert.deepEqual(response.json(), { status: "ok" });
 });
 
-test("each response carries its own request ID, a UUID", async (t) => {
+test("each response carries its own request ID, a UUIDv7 with the time in it", async (t) => {
   const app = await startApp(t);
 
   const ids = await Promise.all(
@@ -26,9 +27,7 @@ test("each response carries its own request ID, a UUID", async (t) => {
     }),
   );
 
-  const uuid =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-  for (const id of ids) assert.match(String(id), uuid);
+  for (const id of ids) assertRecentUuidV7(id);
   assert.notEqual(ids[0], ids[1]);
 });
 

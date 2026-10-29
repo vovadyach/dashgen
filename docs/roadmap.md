@@ -49,7 +49,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] The question schema in `contracts`: 1 to 300 characters after trimming
 - [ ] tRPC router: the `ask` mutation starts a run and returns its ID, and the `run` subscription streams its events over SSE, replaying missed ones on reconnect ([ADR-0007](decisions/0007-trpc.md))
 - [ ] Errors carry our codes through tRPC's error formatter; the per-IP limit counts each `ask`, not each HTTP request
-- [ ] Each run saved to `runs`
+- [ ] Each run saved to `runs`, under its UUIDv7 ID ([ADR-0009](decisions/0009-uuidv7-ids.md))
 - [ ] React + Vite + Tailwind + Recharts, with tRPC and TanStack Query: question box, steps panel, chart
 - [ ] Vite's dev server forwards `/api` to the backend, so the app calls the same paths locally and on AWS
 - [ ] Component tests with Vitest, frontend checks in `scripts/check.sh`, and a `frontend/AGENTS.md` with a `CLAUDE.md` that imports it

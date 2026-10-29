@@ -10,6 +10,7 @@ Node.js 24 + Fastify, in TypeScript. Takes a question and returns a chart; the G
 
 - Settings are read in `loadConfig` in `config.ts`, through a Zod schema. A new setting goes there and into `.env.example`. Secrets are wrapped in `Secret`, so they never reach logs.
 - Each module keeps its tables in its own `schema.ts` (`metrics/`, `runs/`), and `db.ts` opens the connection pool and runs the migrations.
+- IDs are UUIDv7 ([ADR-0009](../docs/decisions/0009-uuidv7-ids.md)): `randomUUIDv7()` from `node:crypto` in code, and `uuidv7()` as a Postgres column default. Never v4 (`randomUUID()`, `gen_random_uuid()`, Drizzle's `defaultRandom()`).
 - Inside a transaction, use `tx`, never `db`, and `await` each query in turn (`seedMetrics`). A transaction is one connection, so `Promise.all` there runs nothing in parallel, and after a failure the rest of its queries fail too. Outside transactions, `Promise.all` does run independent reads in parallel, on separate pool connections (`listServices`).
 - A module's own Zod schemas and their types go in `types.ts`, checks beyond a schema's shape in `validation.ts`, and small general helpers, like `distinct`, in `helpers.ts`, so the other files only do the work (`agent/`). Schemas that another package also needs go in `packages/contracts` instead.
 - A helper that a second module needs moves to `src/shared/`, so modules never import each other's internals. The app's foundations (`config.ts`, `db.ts`, `logger.ts`, `errors.ts`) stay at the top of `src/`.

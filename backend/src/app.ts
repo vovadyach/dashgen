@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUIDv7 } from "node:crypto";
 
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
@@ -28,8 +28,8 @@ export interface AppOptions {
 export async function buildApp(config: Config, options: AppOptions = {}) {
   const app = Fastify({
     logger: options.logger === true ? { level: config.logLevel } : false,
-    // A UUID per request, so it can double as a run's ID and be found in the logs.
-    genReqId: () => randomUUID(),
+    // A UUIDv7 per request, so it can double as a run's ID and be found in the logs.
+    genReqId: () => randomUUIDv7(),
     // Errors Fastify raises before routing, like a malformed URL, never reach
     // the error handler below, so they get the same shape here.
     frameworkErrors: (error, _request, reply) => {

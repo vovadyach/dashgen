@@ -380,7 +380,7 @@ erDiagram
 ```mermaid
 erDiagram
     runs {
-        uuid id PK "also the request ID in the logs"
+        uuid id PK "UUIDv7, also the request ID in the logs"
         timestamptz created_at "indexed"
         text question
         text outcome "chart, clarify, decline or error"
@@ -397,6 +397,7 @@ erDiagram
 
 - **One `runs` row per question that reached the agent,** whatever the outcome. Questions turned away before that (invalid, rate-limited or over the cap) cost nothing, so they aren't runs.
 - **Steps are a `jsonb` column, not a table of their own:** they're always read with their run and never searched by themselves. Tokens, cost and latency are real columns, because step 4 adds them up per day.
+- **IDs are UUIDv7** ([ADR-0009](decisions/0009-uuidv7-ids.md)): each starts with the time it was made, so new rows go to the end of the index and IDs sort by time. The backend makes the ID when the question arrives, since `ask` returns it before the run is saved.
 - **No IP addresses.** The question is kept, for evals and debugging, and the page says so. On AWS, runs last only as long as the session's database.
 
 ### The daily cap

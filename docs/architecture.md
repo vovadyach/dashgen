@@ -21,6 +21,8 @@ How a question will become a chart is drawn in [design.md](design.md#one-questio
 
 `http://localhost:3000`. Interactive docs, generated from the routes' Zod schemas, are at `/docs`, and the OpenAPI document at `/docs/openapi.json`.
 
+Every response carries an `x-request-id` header: a UUIDv7, which also appears in that request's log lines ([ADR-0009](decisions/0009-uuidv7-ids.md)).
+
 **`GET /health`** returns `200 {"status":"ok"}`.
 
 **`POST /ask`** takes `{"question": "..."}`, 1 to 300 characters after trimming.

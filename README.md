@@ -70,7 +70,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 
 ## Running locally
 
-You'll need Node.js 24+, and Docker for Postgres.
+You'll need Node.js 24.16+, and Docker for Postgres.
 
 ```bash
 make install                           # install every TypeScript package
@@ -135,6 +135,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [6. Drizzle for data access](docs/decisions/0006-drizzle.md)
 - [7. tRPC between the React app and the backend](docs/decisions/0007-trpc.md)
 - [8. Postgres for the metrics and the runs](docs/decisions/0008-postgres.md)
+- [9. UUIDv7 for IDs](docs/decisions/0009-uuidv7-ids.md)
 
 ## License
 

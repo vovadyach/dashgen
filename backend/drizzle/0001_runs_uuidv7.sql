@@ -1,0 +1,1 @@
+ALTER TABLE "runs" ALTER COLUMN "id" SET DEFAULT uuidv7();
