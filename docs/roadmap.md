@@ -10,7 +10,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 ## 1. Foundation
 
 - [x] Metrics service in Go with hardcoded data
-- [x] Move the gateway from Node.js to Python + FastAPI ([ADR-0001](decisions/0001-python-gateway.md)), renaming `POST /chat` to `POST /ask` ([ADR-0002](decisions/0002-question-box.md))
+- [x] Move the gateway from Express to Fastify and TypeScript ([ADR-0001](decisions/0001-node-gateway.md)), renaming `POST /chat` to `POST /ask` ([ADR-0002](decisions/0002-question-box.md))
 - [x] Tests for the metrics service and the gateway
 - [x] `scripts/check.sh`: one command that runs every formatter, linter, type checker and test
 - [x] CI on GitHub Actions that runs `scripts/check.sh`
@@ -71,7 +71,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] Read-only tools that accept only known service and metric names
 - [ ] Hand-written Gemini function-calling loop that records each step, with timeouts on each call, 25 seconds per question, and the [per-question limits](design.md#the-daily-cap) on model calls and tokens
 - [ ] Tool arguments and the final chart validated against their schemas
-- [ ] The OpenAPI schema (the API description FastAPI generates, shown at `/docs`) lists every status `/api/ask` can return, with one error shape, checked by a test, before the frontend generates types from it
+- [ ] `/api/ask`'s Zod schemas cover every status it can return, with one error shape, checked by a test. The API docs at `/docs` and the frontend's types (step 5) both come from them
 - [ ] Errors classified as retryable or not; retries use exponential backoff with jitter
 - [ ] A clarifying question with clickable choices, instead of a guess, when the question is vague
 - [ ] Off-topic questions get a short refusal and example questions
@@ -92,7 +92,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] Pin charts to a dashboard, saved in the browser with their data, so they still draw while the backend is offline
 - [ ] A note under the question box says questions are saved
 - [ ] Works on a phone
-- [ ] TypeScript API types generated from the gateway's OpenAPI schema
+- [ ] API types shared with the gateway: the frontend imports its Zod schemas, so an API change that breaks the page fails `tsc` ([ADR-0001](decisions/0001-node-gateway.md))
 - [ ] Component tests with Vitest
 - [ ] Frontend checks added to `scripts/check.sh`, and a `frontend/CLAUDE.md`
 - [ ] Vite's dev server forwards `/api` to the gateway, so the app calls the same paths locally and on AWS

@@ -6,18 +6,28 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# uv uses the gateway's own .venv; an already active one (a hook's, say) only adds warnings.
-unset VIRTUAL_ENV
-
-echo "==> gateway and Claude Code hooks (Python)"
+echo "==> gateway (TypeScript)"
 (
   cd gateway
-  uv sync --locked --quiet
-  # The hooks live outside gateway/, so --config gives them the gateway's ruff rules.
-  uv run ruff format --check --config pyproject.toml . ../.claude/hooks
-  uv run ruff check --config pyproject.toml . ../.claude/hooks
-  uv run mypy src tests ../.claude/hooks
-  uv run pytest --quiet
+  # npm ci reinstalls everything, so it runs only when node_modules is missing
+  # or older than the lockfile. In CI it always runs.
+  if [[ ! -f node_modules/.package-lock.json || package-lock.json -nt node_modules/.package-lock.json ]]; then
+    npm ci --no-audit --no-fund --loglevel=error
+  fi
+  npm run --silent format:check
+  npm run --silent lint
+  npm run --silent typecheck
+  npm test --silent
+)
+
+echo "==> Claude Code hooks (TypeScript)"
+(
+  cd .claude/hooks
+  # The hooks have no packages of their own, so the gateway's tools check them.
+  tools=../../gateway/node_modules/.bin
+  "$tools/prettier" --check .
+  "$tools/eslint" --config ../../gateway/eslint.config.js .
+  "$tools/tsc" --project .
 )
 
 echo "==> metrics (Go)"

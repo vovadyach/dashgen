@@ -4,9 +4,11 @@
     "allow": [
       "Bash(make check)",
       "Bash(scripts/check.sh)",
-      "Bash(uv run pytest *)",
-      "Bash(uv run ruff *)",
-      "Bash(uv run mypy *)",
+      "Bash(npm test)",
+      "Bash(npm run lint)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run format)",
+      "Bash(npm run format:check)",
       "Bash(go test *)",
       "Bash(go vet *)",
       "Bash(gofmt -l *)",
@@ -31,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --script \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop_check.py\"",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop_check.ts\"",
             "timeout": 30
           }
         ]
@@ -43,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --script \"$CLAUDE_PROJECT_DIR/.claude/hooks/format.py\"",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/format.ts\"",
             "timeout": 30
           }
         ]
@@ -54,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --script \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop_check.py\"",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop_check.ts\"",
             "timeout": 300,
             "statusMessage": "Running scripts/check.sh"
           }

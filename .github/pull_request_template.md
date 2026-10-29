@@ -13,7 +13,7 @@
 <!-- Keep the parts this touches, and delete the rest. -->
 
 - Metrics service (Go)
-- Gateway (Python)
+- Gateway (Node.js)
 - Frontend
 - Database: schema, migrations or seed
 - Local setup: Docker Compose, Makefile or `.env.example`
