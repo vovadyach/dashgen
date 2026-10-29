@@ -16,8 +16,8 @@ You type: *"Show errors for payments-service this week"*
 
 The agent:
 1. Calls `query_metrics(service="payments-service", metric="errors", days=7)`
-2. Calls `create_chart(type="line", sources=["q1"], title="Payments errors this week")`, naming the query result to draw. The gateway fills in the real numbers, so the model never copies data.
-3. Returns the chart to the frontend, which draws it with Recharts.
+2. Calls `create_chart(type="line", sources=["q1"], title="Payments errors this week")`, naming the query result to draw. The backend fills in the real numbers, so the model never copies data.
+3. Streams each step to the page as it happens, then the chart, which the page draws with Recharts.
 
 Different questions lead to different tool calls. Ask *"What's the slowest service?"* and the agent calls `list_services`, then `query_metrics` for each service, then picks a chart type for the result.
 
@@ -36,26 +36,25 @@ Where it's headed (the [status](#status) table says what exists today):
 ```
 ┌─────────────────┐
 │   Frontend      │  React + TypeScript + Recharts
-│   (CloudFront)  │
+│   (CloudFront)  │  tRPC + TanStack Query
 └────────┬────────┘
-         │ HTTPS
+         │ HTTPS: tRPC calls, steps streamed over SSE
          ▼
 ┌─────────────────┐
-│   Gateway       │  Node.js + Fastify + TypeScript
-│   (ECS Fargate) │  Gemini function-calling loop
+│   Backend       │  Node.js + Fastify + TypeScript
+│   (ECS Fargate) │  modules: api, agent (Gemini loop), metrics, runs, cap
 └────────┬────────┘
-         │ HTTP (private network)
+         │ SQL through Drizzle
          ▼
 ┌─────────────────┐
-│   Metrics       │  Go (net/http stdlib)
-│   (ECS Fargate) │  Time-series data in Postgres (RDS)
+│   Postgres      │  metric time series and the log of questions
+│   (RDS)         │
 └─────────────────┘
 ```
 
-**Three services, each doing one job:**
-- **Frontend** — question box, chart display, steps panel
-- **Gateway** — runs the agent: calls the tools, returns the chart
-- **Metrics** — a small REST API over the sample metrics
+**Two parts, each doing one job:**
+- **Frontend:** question box, the steps as they happen, the chart, pinned charts
+- **Backend:** one service that runs the agent, answers its metric queries and enforces the limits. Its modules talk as function calls, and could become separate services if they ever need to ([why one backend](docs/decisions/0005-one-backend.md))
 
 More detail: [docs/architecture.md](docs/architecture.md) covers what runs today, including each API, and [docs/design.md](docs/design.md) the target design, with requirements, cost estimates and diagrams.
 
@@ -66,9 +65,10 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 | Metrics (`metrics/`) | Go 1.27+, standard library | Serves 7 days of hardcoded sample data ([API](docs/architecture.md#metrics-api)) |
 | Gateway (`gateway/`) | Node.js 24, Fastify, TypeScript, Zod | Takes questions with a per-IP rate limit, and answers 501 until the agent exists ([API](docs/architecture.md#gateway-api)) |
 | Database | Postgres 18, Docker Compose | Runs locally, with an empty database and user per service. Step 2 fills it |
-| Hosting | AWS, Terraform | Planned (step 3) |
-| Agent | Gemini (`@google/genai`) | Planned (step 4) |
-| Frontend | React, TypeScript, Vite, Tailwind, Recharts | Planned (step 5) |
+| Data access | Drizzle | Planned (step 2), replacing the Go service with the backend's `metrics` module |
+| Agent | Gemini (`@google/genai`) | Planned (step 3) |
+| Frontend | React, TypeScript, Vite, Tailwind, Recharts, tRPC, TanStack Query | Planned (step 3) |
+| Hosting | AWS, Terraform | Planned (step 5) |
 
 ## Running locally
 
@@ -129,6 +129,9 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [2. A question box, not a chat](docs/decisions/0002-question-box.md)
 - [3. CloudFront as the front door, with no domain](docs/decisions/0003-cloudfront-front-door.md)
 - [4. npm workspaces for the TypeScript code](docs/decisions/0004-npm-workspaces.md)
+- [5. One TypeScript backend, with modules inside](docs/decisions/0005-one-backend.md)
+- [6. Drizzle for data access](docs/decisions/0006-drizzle.md)
+- [7. tRPC between the React app and the backend](docs/decisions/0007-trpc.md)
 
 ## License
 

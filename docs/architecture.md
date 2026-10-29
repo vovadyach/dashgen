@@ -73,12 +73,12 @@ The other messages are `missing required query param: service` (or `metric`) and
 
 | Status | When | Body |
 |---|---|---|
-| 501 | the question is valid, until the agent arrives in step 4 | `{"error":{"code":"not_implemented","message":"Not implemented yet."}}` |
+| 501 | the question is valid, until the agent arrives in step 3 | `{"error":{"code":"not_implemented","message":"Not implemented yet."}}` |
 | 422 | `question` is missing or empty | `{"error":{"code":"invalid_question","message":"The question is missing or empty."}}` |
 | 429 | an IP's 11th request in a minute, counted from its first | `{"error":{"code":"rate_limited","message":"Rate limit exceeded, try again later."}}`, plus a `Retry-After` header in seconds |
 | 400 | the body isn't valid JSON, or Fastify rejects the request for another reason | `{"error":{"code":"bad_request","message":"..."}}`, with Fastify's description of the problem |
 
-Every error has the shape [design.md](design.md#the-public-api) plans for the public API, `{"error": {"code": "...", "message": "..."}}`: the code is for programs, and the message is safe to show visitors. An unknown route gets `404` with the code `not_found`, and an unexpected failure gets `500` with `internal_error`. The metrics service uses `{"error": "..."}` instead.
+Every error has the shape `{"error": {"code": "...", "message": "..."}}`: the code is for programs, and the message is safe to show visitors. The [target design](design.md#the-frontends-api) keeps these codes but sends them through tRPC. An unknown route gets `404` with the code `not_found`, and an unexpected failure gets `500` with `internal_error`. The metrics service uses `{"error": "..."}` instead.
 
 CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
 
@@ -92,6 +92,6 @@ CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
 ## Known limits
 
 - **The rate limit is per process.** Counts live in memory, so each running copy of the gateway keeps its own, and a restart resets them. Step 4's [daily cap](design.md#the-daily-cap) is shared by every copy.
-- **Behind CloudFront and a load balancer,** every request would come from the load balancer's IP, so all visitors would share one limit. Step 3 takes the visitor's IP from CloudFront instead ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
+- **Behind CloudFront and a load balancer,** every request would come from the load balancer's IP, so all visitors would share one limit. Step 5 takes the visitor's IP from CloudFront instead ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
 - **The data is 7 hardcoded days.** Step 2 moves it to Postgres, with 30 days of hourly data that always ends today.
 - **The metrics service has no auth and allows any origin.** It serves only sample data, and on AWS it will sit in private subnets, reachable only from the gateway.

@@ -8,7 +8,7 @@ Type a question in plain English, get a chart. A Gemini agent in the gateway pic
 - `packages/contracts/`: Zod schemas shared between packages, imported as `@dashgen/contracts`. The root `package.json` makes `gateway` and `packages/*` one npm workspace, with the shared tools and settings ([ADR-0004](docs/decisions/0004-npm-workspaces.md)).
 - `.claude/hooks/`: the format and stop hooks, in TypeScript. Node runs them directly, and `make check` checks them with the root's tools.
 - `metrics/`: Go service that serves the sample metrics. See `metrics/CLAUDE.md`.
-- `frontend/`: React + Vite app, empty until step 5.
+- `frontend/`: React + Vite app, empty until step 3.
 - `compose.yaml` and `postgres/`: Postgres in Docker for local development, with a database and a user per service.
 - `docs/architecture.md`: how the services fit together, and their APIs. Update it whenever an API changes.
 - `docs/design.md`: the target design, with requirements, estimates and diagrams. Update it when a design choice changes.
@@ -32,7 +32,7 @@ Type a question in plain English, get a chart. A Gemini agent in the gateway pic
 - The repo is public. No keys, secrets or personal details in any file.
 - A choice someone could question (a library, a data model, a trade-off) gets an ADR.
 
-## AWS (from step 3)
+## AWS (from step 5)
 
 - All infrastructure is Terraform; nothing is changed only in the console.
 - GitHub Actions reaches AWS through OIDC. No AWS keys in GitHub.
