@@ -127,7 +127,7 @@ flowchart LR
     end
 
     subgraph private ["Private network"]
-        gateway["Gateway<br/>Python, FastAPI<br/>rate limit, daily cap,<br/>agent loop, validation"]
+        gateway["Gateway<br/>Node.js, Fastify<br/>rate limit, daily cap,<br/>agent loop, validation"]
         metrics["Metrics service<br/>Go, net/http<br/>read-only queries"]
         subgraph pg ["Postgres, one instance"]
             gwdb[("gateway database<br/>runs")]
@@ -386,13 +386,16 @@ At Flash-Lite's prices that's at most $0.006 of input and $0.005 of output, abou
 
 **The count lives in the always-on stack.** `make down` destroys the session's database, so a count kept in Postgres would start over with every session, and two sessions on one day would get two days' worth. Instead, a DynamoDB table holds one item per UTC day, and one conditional write reserves a question:
 
-```python
-table.update_item(
-    Key={"day": "2026-10-27"},  # today, in UTC
-    UpdateExpression="ADD used :one SET expires_at = :expires",
-    ConditionExpression="attribute_not_exists(used) OR used < :cap",
-    ExpressionAttributeValues={":one": 1, ":cap": 150, ":expires": a_month_from_now},
-)
+```ts
+await dynamo.send(
+  new UpdateCommand({
+    TableName: tableName,
+    Key: { day: "2026-10-27" }, // today, in UTC
+    UpdateExpression: "ADD used :one SET expires_at = :expires",
+    ConditionExpression: "attribute_not_exists(used) OR used < :cap",
+    ExpressionAttributeValues: { ":one": 1, ":cap": 150, ":expires": aMonthFromNow },
+  }),
+);
 ```
 
 The day's first question creates the item, and later ones add 1 only while it's under the cap. DynamoDB checks the condition and makes the change as one step, so two requests can't both take the last question, and every gateway container shares the count. A failed condition means the cap is reached. DynamoDB deletes old days by itself some time after `expires_at`.

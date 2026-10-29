@@ -4,7 +4,8 @@ Type a question in plain English, get a chart. A Gemini agent in the gateway pic
 
 ## Layout
 
-- `gateway/`: Python + FastAPI gateway, where the agent will live. See `gateway/CLAUDE.md`.
+- `gateway/`: Node.js + Fastify gateway in TypeScript, where the agent will live. See `gateway/CLAUDE.md`.
+- `.claude/hooks/`: the format and stop hooks, in TypeScript. Node runs them directly, and `make check` checks them with the gateway's tools.
 - `metrics/`: Go service that serves the sample metrics. See `metrics/CLAUDE.md`.
 - `frontend/`: React + Vite app, empty until step 5.
 - `compose.yaml` and `postgres/`: Postgres in Docker for local development, with a database and a user per service.
@@ -16,7 +17,8 @@ Type a question in plain English, get a chart. A Gemini agent in the gateway pic
 ## Commands
 
 - `make check` runs every formatter, linter, type checker and test. The stop hook runs it when you finish a turn that changed files, and CI (`.github/workflows/ci.yml`) runs it on every pull request. It must pass.
-- `make fmt` formats the Python and Go code and sorts imports.
+- `make install` installs the gateway's packages, which the checks and hooks also use.
+- `make fmt` formats the TypeScript and Go code.
 - `make metrics` and `make gateway` start the services on :8080 and :3000.
 - `make db` starts Postgres in Docker on localhost:5432, with the passwords from the root `.env` that the user makes from `.env.example`. Don't create that file: for a test run, set the three passwords as environment variables instead.
 - `/fix-issue <number>` works a GitHub issue through to passing checks.
@@ -25,7 +27,6 @@ Type a question in plain English, get a chart. A Gemini agent in the gateway pic
 
 - Never commit, push or open PRs. The user reviews and commits everything, so leave changes uncommitted and list what changed.
 - Ask before adding a dependency, in any language.
-- Run Python through uv (`uv run`, `uv add`), never `python` or `pip` directly.
 - Never read or edit `.env` files, not even through a script: they hold secrets. Put every new setting in `.env.example` with a placeholder.
 - The repo is public. No keys, secrets or personal details in any file.
 - A choice someone could question (a library, a data model, a trade-off) gets an ADR.

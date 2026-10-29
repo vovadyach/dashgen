@@ -65,7 +65,7 @@ The other messages are `missing required query param: service` (or `metric`) and
 
 ## Gateway API
 
-`http://localhost:3000`. FastAPI serves interactive docs, generated from the code, at `/docs`.
+`http://localhost:3000`. Interactive docs, generated from the routes' Zod schemas and drawn by Scalar, are at `/docs`, and the OpenAPI document behind them at `/docs/openapi.json`.
 
 **`GET /health`** returns `200 {"status":"ok"}`.
 
@@ -73,11 +73,12 @@ The other messages are `missing required query param: service` (or `metric`) and
 
 | Status | When | Body |
 |---|---|---|
-| 501 | the question is valid, until the agent arrives in step 4 | `{"detail":"Not implemented yet."}` |
-| 422 | `question` is missing or empty | `{"detail":[{"type":"missing","loc":["body","question"],"msg":"Field required","input":{}}]}` |
-| 429 | an IP's 11th request within a minute | `{"detail":"Rate limit exceeded, try again later."}`, plus a `Retry-After` header in seconds |
+| 501 | the question is valid, until the agent arrives in step 4 | `{"error":{"code":"not_implemented","message":"Not implemented yet."}}` |
+| 422 | `question` is missing or empty | `{"error":{"code":"invalid_question","message":"The question is missing or empty."}}` |
+| 429 | an IP's 11th request in a minute, counted from its first | `{"error":{"code":"rate_limited","message":"Rate limit exceeded, try again later."}}`, plus a `Retry-After` header in seconds |
+| 400 | the body isn't valid JSON, or Fastify rejects the request for another reason | `{"error":{"code":"bad_request","message":"..."}}`, with Fastify's description of the problem |
 
-Errors use FastAPI's shape, `{"detail": ...}`: a string for errors the code raises, a list for validation errors. The metrics service uses `{"error": "..."}` instead.
+Every error has the shape [design.md](design.md#the-public-api) plans for the public API, `{"error": {"code": "...", "message": "..."}}`: the code is for programs, and the message is safe to show visitors. An unknown route gets `404` with the code `not_found`, and an unexpected failure gets `500` with `internal_error`. The metrics service uses `{"error": "..."}` instead.
 
 CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
 
@@ -86,7 +87,7 @@ CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
 | Service | Settings | Where they come from |
 |---|---|---|
 | Metrics | `PORT`, default 8080 | the environment only, for example `PORT=8081 make metrics` |
-| Gateway | `GEMINI_API_KEY`, `METRICS_BASE_URL`, `ALLOWED_ORIGINS` | the environment or `gateway/.env` (see `gateway/.env.example`). A missing one stops the gateway at startup |
+| Gateway | `GEMINI_API_KEY`, `METRICS_BASE_URL`, `ALLOWED_ORIGINS` | the environment, plus `gateway/.env` when started with `make gateway` (see `gateway/.env.example`). A missing or invalid one stops the gateway at startup |
 
 ## Known limits
 

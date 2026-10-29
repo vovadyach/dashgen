@@ -1,8 +1,9 @@
 # DashGen
 
 [![CI](https://github.com/vovadyach/dashgen/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vovadyach/dashgen/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Fastify](https://img.shields.io/badge/Fastify-000000?logo=fastify&logoColor=white)
 ![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
 
 Natural-language dashboard generator. Type a question in plain English, an LLM agent decides which tools to call, fetches the data, and renders a chart.
@@ -40,7 +41,7 @@ Where it's headed (the [status](#status) table says what exists today):
          │ HTTPS
          ▼
 ┌─────────────────┐
-│   Gateway       │  Python + FastAPI
+│   Gateway       │  Node.js + Fastify + TypeScript
 │   (ECS Fargate) │  Gemini function-calling loop
 └────────┬────────┘
          │ HTTP (private network)
@@ -63,15 +64,15 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 | Part | Tech | Today |
 |---|---|---|
 | Metrics (`metrics/`) | Go 1.27+, standard library | Serves 7 days of hardcoded sample data ([API](docs/architecture.md#metrics-api)) |
-| Gateway (`gateway/`) | Python 3.14, FastAPI, uv | Takes questions with a per-IP rate limit, and answers 501 until the agent exists ([API](docs/architecture.md#gateway-api)) |
+| Gateway (`gateway/`) | Node.js 24, Fastify, TypeScript, Zod | Takes questions with a per-IP rate limit, and answers 501 until the agent exists ([API](docs/architecture.md#gateway-api)) |
 | Database | Postgres 18, Docker Compose | Runs locally, with an empty database and user per service. Step 2 fills it |
 | Hosting | AWS, Terraform | Planned (step 3) |
-| Agent | Gemini (`google-genai`) | Planned (step 4) |
+| Agent | Gemini (`@google/genai`) | Planned (step 4) |
 | Frontend | React, TypeScript, Vite, Tailwind, Recharts | Planned (step 5) |
 
 ## Running locally
 
-You'll need Go 1.27+ and [uv](https://docs.astral.sh/uv/), which installs the right Python version for you.
+You'll need Go 1.27+ and Node.js 24+.
 
 ```bash
 make install                           # install the gateway's packages
@@ -101,7 +102,7 @@ dashgen/
 ├── .github/       # CI workflow: runs scripts/check.sh
 ├── docs/          # architecture, design, roadmap and decision records
 ├── frontend/      # React + Vite app (planned)
-├── gateway/       # Python + FastAPI gateway
+├── gateway/       # Node.js + Fastify gateway, in TypeScript
 ├── metrics/       # Go metrics service
 ├── postgres/      # init script: a database and a user per service
 ├── scripts/       # check.sh: every check in one command
@@ -116,12 +117,12 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 
 - `CLAUDE.md` holds the project rules, and `gateway/CLAUDE.md` and `metrics/CLAUDE.md` hold each service's conventions.
 - `.claude/settings.json` stops Claude from committing or pushing, so every change is reviewed and committed by hand. It also keeps Claude's file tools, and shell commands like `cat`, away from `.env` files other than `.env.example`. A script that opens a file itself isn't covered; only Claude Code's [sandbox](https://code.claude.com/docs/en/sandboxing) blocks that.
-- Hooks format each Python or Go file Claude edits, and run `scripts/check.sh` when Claude finishes a turn that changed files. If a check fails, Claude is sent back to fix it, up to twice; after that it stops with a warning.
+- Hooks, written in TypeScript and run by Node, format each TypeScript or Go file Claude edits, and run `scripts/check.sh` when Claude finishes a turn that changed files. If a check fails, Claude is sent back to fix it, up to twice; after that it stops with a warning.
 - Skills: `/fix-issue <number>` works a GitHub issue through to passing checks, and `/adr` records a decision in `docs/decisions/`.
 
 ## Decisions
 
-- [1. Python and FastAPI for the gateway](docs/decisions/0001-python-gateway.md)
+- [1. Node.js, Fastify and TypeScript for the gateway](docs/decisions/0001-node-gateway.md)
 - [2. A question box, not a chat](docs/decisions/0002-question-box.md)
 - [3. CloudFront as the front door, with no domain](docs/decisions/0003-cloudfront-front-door.md)
 

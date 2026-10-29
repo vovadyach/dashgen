@@ -1,0 +1,9 @@
+{
+  // The hooks have no packages of their own: they use the gateway's settings,
+  // and the Node types the gateway installs.
+  "extends": "../../gateway/tsconfig.json",
+  "compilerOptions": {
+    "typeRoots": ["../../gateway/node_modules/@types"]
+  },
+  "include": ["*.ts"]
+}

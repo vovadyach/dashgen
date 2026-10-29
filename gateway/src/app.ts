@@ -1,0 +1,132 @@
+import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
+import swagger from "@fastify/swagger";
+import scalar from "@scalar/fastify-api-reference";
+import Fastify, { type FastifyReply } from "fastify";
+import {
+  hasZodFastifySchemaValidationErrors,
+  jsonSchemaTransform,
+  serializerCompiler,
+  validatorCompiler,
+  type ZodTypeProvider,
+} from "fastify-type-provider-zod";
+import { z } from "zod";
+
+import type { Config } from "./config.ts";
+import { ApiError, ErrorBody, errorBody } from "./errors.ts";
+
+const AskRequest = z.object({
+  question: z.string().min(1),
+});
+
+const Health = z.object({
+  status: z.literal("ok"),
+});
+
+export interface AppOptions {
+  /** JSON logs with an ID for each request. Off unless asked for, so tests stay quiet. */
+  logger?: boolean;
+}
+
+/** Builds the gateway from `config`, so each test can pass its own. Nothing else reads the environment. */
+export async function buildApp(config: Config, options: AppOptions = {}) {
+  const app = Fastify({
+    logger: options.logger ?? false,
+    // Errors Fastify raises before routing, like a malformed URL, never reach
+    // the error handler below, so they get the same shape here.
+    frameworkErrors: (error, _request, reply) => {
+      // This reply belongs to no route, so its types allow no status or
+      // body. Plain FastifyReply is what it is at runtime.
+      const plain = reply as unknown as FastifyReply;
+      void plain.code(400).send(errorBody("bad_request", error.message));
+    },
+  }).withTypeProvider<ZodTypeProvider>();
+
+  // Route schemas are Zod schemas: they validate requests, type the handlers
+  // and check responses, and @fastify/swagger turns them into the API docs.
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
+
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof ApiError) {
+      return reply
+        .code(error.statusCode)
+        .send(errorBody(error.code, error.message));
+    }
+    // Only /ask has a request body to validate.
+    if (hasZodFastifySchemaValidationErrors(error)) {
+      return reply
+        .code(422)
+        .send(
+          errorBody("invalid_question", "The question is missing or empty."),
+        );
+    }
+    // Fastify's own client errors, like a body that isn't valid JSON.
+    if (
+      error instanceof Error &&
+      "statusCode" in error &&
+      typeof error.statusCode === "number" &&
+      error.statusCode < 500
+    ) {
+      return reply
+        .code(error.statusCode)
+        .send(errorBody("bad_request", error.message));
+    }
+    request.log.error(error);
+    return reply
+      .code(500)
+      .send(errorBody("internal_error", "Something went wrong."));
+  });
+
+  app.setNotFoundHandler((_request, reply) =>
+    reply.code(404).send(errorBody("not_found", "Not found.")),
+  );
+
+  await app.register(cors, {
+    origin: config.allowedOrigins,
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
+  });
+
+  // Routes opt in with `config.rateLimit`. Counts are kept in memory, per
+  // client IP: the address of whoever opened the connection.
+  await app.register(rateLimit, {
+    global: false,
+    errorResponseBuilder: () =>
+      new ApiError(
+        429,
+        "rate_limited",
+        "Rate limit exceeded, try again later.",
+      ),
+  });
+
+  await app.register(swagger, {
+    openapi: { info: { title: "DashGen gateway", version: "0.1.0" } },
+    transform: jsonSchemaTransform,
+  });
+  // Scalar draws the docs page from the OpenAPI document @fastify/swagger builds.
+  await app.register(scalar, {
+    routePrefix: "/docs",
+    configuration: { metaData: { title: "DashGen API" } },
+  });
+
+  app.get("/health", { schema: { response: { 200: Health } } }, () => ({
+    status: "ok" as const,
+  }));
+
+  app.post(
+    "/ask",
+    {
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+      schema: {
+        body: AskRequest,
+        response: { 422: ErrorBody, 429: ErrorBody, 501: ErrorBody },
+      },
+    },
+    () => {
+      throw new ApiError(501, "not_implemented", "Not implemented yet.");
+    },
+  );
+
+  return app;
+}
