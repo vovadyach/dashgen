@@ -46,7 +46,7 @@ The tables are in [design.md](design.md#the-metrics-tables), and the module's re
 |---|---|
 | `npm run db:migrate` | Applies the SQL migrations in `backend/drizzle/` that haven't run yet |
 | `npm run db:seed` | Replaces the sample data with 30 days of hourly points ending this hour, in one transaction |
-| `npm run db:generate --workspace backend` | After a schema change: writes the next SQL migration, to commit with it |
+| `npm run db:generate --workspace backend -- --name <change>` | After a schema change: writes the next SQL migration, to commit with it. Never `npx drizzle-kit`, which reads `backend/.env` |
 
 Database tests run against a separate throwaway Postgres on port 5433 (`compose.test.yaml`), which `make check` starts. Each test file creates its own database there and drops it afterwards. To use another Postgres, set `TEST_DATABASE_URL` in the shell to its admin URL.
 
@@ -54,7 +54,7 @@ Database tests run against a separate throwaway Postgres on port 5433 (`compose.
 
 | Where | Settings |
 |---|---|
-| `backend/.env` (from `backend/.env.example`), read by `npm run dev` and the `db:` scripts | `GEMINI_API_KEY`, `ALLOWED_ORIGINS`, `DATABASE_URL`, `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
+| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed` and `gemini:check` | `GEMINI_API_KEY`, `GEMINI_MODEL` (`gemini-3.1-flash-lite` by default), `ALLOWED_ORIGINS`, `DATABASE_URL`, `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
 | `.env` at the root (from `.env.example`), read by Docker Compose | `POSTGRES_PASSWORD`, `DASHGEN_DB_PASSWORD` |
 
 ## Known limits

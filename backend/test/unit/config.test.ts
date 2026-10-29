@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inspect } from "node:util";
 
-import { loadConfig } from "../../src/config.ts";
+import { loadConfig, loadGeminiSettings } from "../../src/config.ts";
 import { VALID_ENV } from "../helpers/app.ts";
 
 test("reads comma-separated origins", () => {
@@ -48,5 +48,29 @@ test("the log level defaults to info, and rejects a typo", () => {
   assert.throws(
     () => loadConfig({ ...VALID_ENV, LOG_LEVEL: "verbose" }),
     /LOG_LEVEL/,
+  );
+});
+
+test("the Gemini model defaults to the one the cost estimates use", () => {
+  assert.equal(loadConfig(VALID_ENV).geminiModel, "gemini-3.1-flash-lite");
+  assert.equal(
+    loadConfig({ ...VALID_ENV, GEMINI_MODEL: "gemini-3.5-flash-lite" })
+      .geminiModel,
+    "gemini-3.5-flash-lite",
+  );
+});
+
+test("the Gemini settings load alone, for scripts, with the key hidden", () => {
+  const settings = loadGeminiSettings({ GEMINI_API_KEY: "test-key" });
+
+  assert.equal(settings.model, "gemini-3.1-flash-lite");
+  assert.ok(!inspect(settings).includes("test-key"));
+  assert.throws(() => loadGeminiSettings({}), /GEMINI_API_KEY/);
+});
+
+test("only Gemini 3 models, whose thinking level and signatures DashGen uses", () => {
+  assert.throws(
+    () => loadConfig({ ...VALID_ENV, GEMINI_MODEL: "gemini-2.5-flash-lite" }),
+    /Use a Gemini 3 model[\s\S]*at GEMINI_MODEL/,
   );
 });

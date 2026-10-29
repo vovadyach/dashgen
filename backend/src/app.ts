@@ -28,15 +28,19 @@ export interface AppOptions {
 export async function buildApp(config: Config, options: AppOptions = {}) {
   const app = Fastify({
     logger: options.logger === true ? { level: config.logLevel } : false,
-    // A UUIDv7 per request, so it can double as a run's ID and be found in the logs.
+    // A UUIDv7 per request, to find its log lines. A run gets its own ID, since
+    // tRPC can batch several questions into one request (ADR-0009).
     genReqId: () => randomUUIDv7(),
     // Errors Fastify raises before routing, like a malformed URL, never reach
     // the error handler below, so they get the same shape here.
-    frameworkErrors: (error, _request, reply) => {
+    frameworkErrors: (error, request, reply) => {
       // This reply belongs to no route, so its types allow no status or
       // body. Plain FastifyReply is what it is at runtime.
       const plain = reply as unknown as FastifyReply;
-      void plain.code(400).send(errorBody("bad_request", error.message));
+      void plain
+        .header("x-request-id", request.id)
+        .code(400)
+        .send(errorBody("bad_request", error.message));
     },
   }).withTypeProvider<ZodTypeProvider>();
 

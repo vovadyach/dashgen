@@ -155,7 +155,13 @@ const refusals: [string, CreateChartArgs, RegExp][] = [
   [
     "a line chart that compares services",
     { type: "line", sources: ["q1", "q2"], title: "t", aggregation: "max" },
-    /line chart shows change over time/,
+    /line chart shows change over time: leave out aggregation, or compare services with a bar chart\./,
+  ],
+  [
+    // In full, so the bar chart it suggests isn't refused for its total next.
+    "a line chart of latency totals",
+    { type: "line", sources: ["q3", "q4"], title: "t", aggregation: "total" },
+    /compare services with a bar chart and aggregation avg, max, min or latest\./,
   ],
   [
     "a total of latencies",

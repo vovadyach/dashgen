@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { ToolError } from "./errors.ts";
 import { distinct } from "./helpers.ts";
-import type { CreateChartArgs } from "./types.ts";
+import type { CreateChartArgs, Message } from "./types.ts";
 
 /** Every result is resent with each later model call, so a question gets this many. */
 export const MAX_QUERIES = 10;
@@ -99,13 +99,36 @@ export function checkChart(
     }
   }
   if (args.type === "line" && args.aggregation !== undefined) {
+    // In full: a bar chart of an averaged metric can't take "total" either.
+    const barAggregation =
+      averaged && args.aggregation === "total"
+        ? " and aggregation avg, max, min or latest"
+        : "";
     throw new ToolError(
-      "A line chart shows change over time: leave out aggregation, or compare services with a bar chart.",
+      `A line chart shows change over time: leave out aggregation, or compare services with a bar chart${barAggregation}.`,
     );
   }
   if (args.aggregation === "total" && averaged) {
     throw new ToolError(
       `${averaged.metric} has no total, since it averages. Use avg, max, min or latest.`,
     );
+  }
+}
+
+/**
+ * The rules every model's conversation follows, real or fake, so a loop that
+ * breaks them fails in tests too. Breaking one is the caller's bug, not the
+ * model's, so it's a plain Error.
+ */
+export function checkConversation(messages: Message[]): void {
+  for (const message of messages) {
+    if (message.role === "model" && message.reply.calls.length === 0) {
+      throw new Error(
+        `A reply without tool calls (${message.reply.finishReason}) can't go back in the conversation: send the request again instead.`,
+      );
+    }
+    if (message.role === "tools" && message.outputs.length === 0) {
+      throw new Error("A tools message needs at least one output.");
+    }
   }
 }

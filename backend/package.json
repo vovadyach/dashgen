@@ -13,7 +13,8 @@
     "typecheck": "tsc",
     "db:generate": "DOTENV_CONFIG_PATH=/dev/null drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env src/scripts/migrate.ts",
-    "db:seed": "node --env-file-if-exists=.env src/scripts/seed.ts"
+    "db:seed": "node --env-file-if-exists=.env src/scripts/seed.ts",
+    "gemini:check": "node --env-file-if-exists=.env src/scripts/gemini-check.ts"
   },
   "dependencies": {
     "@dashgen/contracts": "*",

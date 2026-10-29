@@ -63,7 +63,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] [Daily cap](design.md#the-daily-cap) of 150 questions, counted in DynamoDB, with DynamoDB Local in Docker Compose
 - [ ] A friendly message when the daily cap is hit, with a link to the demo video
 - [ ] A $20 monthly spend cap on the Gemini project, noted in the runbook
-- [ ] Model name in config
+- [x] Model name in config
 - [ ] Tokens, cost and latency recorded for every run, and cost per day and per question read from `runs`
 
 **Done when:** a vague question gets a clarifying question back, at the daily cap the backend stops calling Gemini, and every run's cost is recorded.

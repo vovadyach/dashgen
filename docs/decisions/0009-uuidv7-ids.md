@@ -5,7 +5,7 @@
 
 ## Context
 
-Each request gets an ID, and a question's request ID becomes its run's ID: the primary key of `runs`, the `runId` the page uses to watch the run, and the key to find the question in the logs. The first version used random UUIDs (version 4): `randomUUID()` for requests, and `gen_random_uuid()` as the default for `runs.id`.
+Each request gets an ID, to find its log lines, and each question gets a run ID: the primary key of `runs`, and the `runId` the page uses to watch the run. The two are separate because tRPC can batch several questions into one request. The first version used random UUIDs (version 4): `randomUUID()` for requests, and `gen_random_uuid()` as the default for `runs.id`.
 
 A random primary key puts each new row at a random place in the index, so inserts touch pages all over it, and the IDs say nothing about order or time.
 
@@ -19,7 +19,7 @@ The options considered:
 
 ## Decision
 
-UUIDv7 everywhere: `randomUUIDv7()` for request IDs, and so for run IDs, with Postgres 18's `uuidv7()` as the `runs.id` default for rows inserted any other way (migration `0001_runs_uuidv7`). Nothing new to install. They're 16 bytes in the same `uuid` column as v4, so the switch needed only a new default.
+UUIDv7 everywhere: `randomUUIDv7()` for request IDs, and for run IDs, which the backend makes when each question is asked, with Postgres 18's `uuidv7()` as the `runs.id` default for rows inserted any other way (migration `0001_runs_uuidv7`). Nothing new to install. They're 16 bytes in the same `uuid` column as v4, so the switch needed only a new default.
 
 ## Consequences
 

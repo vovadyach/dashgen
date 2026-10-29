@@ -15,9 +15,10 @@ import {
 export const runs = pgTable(
   "runs",
   {
-    // Also the request ID in the logs. A UUIDv7, which starts with the time, so
-    // new rows go to the end of the index (ADR-0009). The backend sets it; the
-    // default, Postgres 18's own uuidv7(), covers rows inserted any other way.
+    // Made by the backend when the question is asked, so `ask` can return it
+    // before the run is saved. A UUIDv7, which starts with the time, so new rows
+    // go to the end of the index (ADR-0009). The default, Postgres 18's own
+    // uuidv7(), covers rows inserted any other way.
     id: uuid("id")
       .primaryKey()
       .default(sql`uuidv7()`),

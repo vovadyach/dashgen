@@ -5,3 +5,19 @@ export class ToolError extends Error {
     this.name = "ToolError";
   }
 }
+
+/** The model's provider failed. `retryable` when trying again could work: a timeout, a rate limit or an outage. */
+export class ModelError extends Error {
+  readonly retryable: boolean;
+  readonly status: number | undefined;
+
+  constructor(
+    message: string,
+    options: { retryable: boolean; status?: number; cause?: unknown },
+  ) {
+    super(message, { cause: options.cause });
+    this.name = "ModelError";
+    this.retryable = options.retryable;
+    this.status = options.status;
+  }
+}

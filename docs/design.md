@@ -380,7 +380,7 @@ erDiagram
 ```mermaid
 erDiagram
     runs {
-        uuid id PK "UUIDv7, also the request ID in the logs"
+        uuid id PK "UUIDv7, made when the question is asked"
         timestamptz created_at "indexed"
         text question
         text outcome "chart, clarify, decline or error"
@@ -397,7 +397,7 @@ erDiagram
 
 - **One `runs` row per question that reached the agent,** whatever the outcome. Questions turned away before that (invalid, rate-limited or over the cap) cost nothing, so they aren't runs.
 - **Steps are a `jsonb` column, not a table of their own:** they're always read with their run and never searched by themselves. Tokens, cost and latency are real columns, because step 4 adds them up per day.
-- **IDs are UUIDv7** ([ADR-0009](decisions/0009-uuidv7-ids.md)): each starts with the time it was made, so new rows go to the end of the index and IDs sort by time. The backend makes the ID when the question arrives, since `ask` returns it before the run is saved.
+- **IDs are UUIDv7** ([ADR-0009](decisions/0009-uuidv7-ids.md)): each starts with the time it was made, so new rows go to the end of the index and IDs sort by time. The backend makes the ID when the question arrives, since `ask` returns it before the run is saved. It's the run's own ID, not the request's, because tRPC can batch several questions into one request; a run's log lines carry both.
 - **No IP addresses.** The question is kept, for evals and debugging, and the page says so. On AWS, runs last only as long as the session's database.
 
 ### The daily cap
@@ -406,12 +406,12 @@ The cap keeps a runaway day from becoming a runaway bill. That takes two things:
 
 **What one question can cost.** The backend enforces four limits:
 
-- **6 model calls.** Every request to Gemini counts, including retries after an error, the reminder after a prose answer and the second try after a chart fails validation.
-- **512 output tokens a call,** with thinking at its lowest level. The limit includes thinking tokens, which Gemini bills as output, so a question writes at most 3,072.
+- **6 model calls.** Every request to Gemini counts, including a retry after an error or after a reply with no tool call, and the second try after a chart is refused. The Gemini SDK's own retries stay off, so none go uncounted.
+- **512 output tokens a call,** with thinking at its lowest level (`MINIMAL`). The limit includes thinking tokens, which Gemini bills as output, so a question writes at most 3,072.
 - **24,000 input tokens a question,** across all its calls, since each call resends the conversation so far. Gemini reports every call's tokens, and before the next call the backend checks that it can't take the question past this budget. If it could, the run ends with `agent_failed`.
 - **Short tool results.** The model sees a summary of each query, never its points, so a typical question needs about 8,000 input tokens, whatever the time range.
 
-At Flash-Lite's prices that's at most $0.006 of input and $0.005 of output, about $0.011 a question. A different model means redoing this sum.
+At the prices of `gemini-3.1-flash-lite` ($0.25 per million input tokens and $1.50 per million output, in October 2026), that's at most $0.006 of input and $0.005 of output, about $0.011 a question. The model is the `GEMINI_MODEL` setting, and a different one means redoing this sum: `gemini-3.5-flash-lite`, at $0.30 and $2.50, would make it $0.015.
 
 **The cap is 150 questions a day,** so Gemini costs at most about $1.60 a day. A month with ten session days comes to about $16, which leaves room for AWS's ~$5 within the $25 budget. A busier day gets the cap's message instead of charts.
 
@@ -479,9 +479,9 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 | `clarify` | `message`, and 2–4 `choices`, each a complete question | ends the run with the choices |
 | `decline` | `reason` | ends the run with a short refusal and fixed example questions |
 
-- **Every way to finish is a tool call** with a schema, so the backend never parses free text. If the model answers in prose, it gets one reminder, and then the run fails.
+- **Every answer is a tool call.** Gemini runs in its `ANY` function-calling mode, which rules out prose, so the backend never parses free text. A run ends with `create_chart`, `clarify` or `decline`. Gemini can still send a reply without a tool call (a malformed call, a safety block, or no tokens left). The backend drops that reply and sends the same request again, which counts toward the 6 calls. When they run out, the run ends with `agent_failed`.
 - **A bad argument,** such as an unknown service, goes back to the model as a tool error and counts toward the 6 calls. Arguments are strict: a misspelled one, like `day` for `days`, is an error too, never silently dropped, which would quietly change the chart.
-- **Several calls in one reply.** To compare 5 services, the model queries them all in one reply, so the question fits in 3 model calls (list, query, chart) instead of 7. The tools are safe to run side by side: query IDs follow the order of the calls, and the 10-query limit holds.
+- **Several calls in one reply.** To compare 5 services, the model queries them all in one reply, so the question fits in 3 model calls (list, query, chart) instead of 7. The backend runs a reply's calls in order, one at a time, since each takes milliseconds: a later call can use an earlier one's result, so a chart in the same reply as its queries works, which saves a model call.
 - **Each run gets its own tools,** which keep its results (`q1`, `q2`…) and query with a clock fixed when the run starts, so results fetched seconds apart still cover the same window. A question can make at most 10 queries, since every result is resent with each later model call.
 - **`aggregation`** (`avg`, `max`, `min`, `total` or `latest`) turns each series into one number per service, for bar and pie charts that compare services. The number is that statistic from the query's [summary](#the-metrics-module). Pie charts show each service's share of a total, so they need 2 or more services and `total`.
 - **A chart shows one metric,** one result per service, all over the same days and bucket, since a 7-day average next to a 30-day one would mislead. `create_chart` refuses anything else with a tool error that says what to change.

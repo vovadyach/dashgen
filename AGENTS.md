@@ -22,7 +22,8 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 - `make fmt` formats the TypeScript code.
 - `npm run dev` starts the backend on :3000. `make` is for repo-wide and infrastructure commands, npm scripts for the TypeScript packages.
 - `make db` starts Postgres in Docker on localhost:5432, with the passwords from the root `.env` that the user makes from `.env.example`. Don't create that file: for a test run, set `POSTGRES_PASSWORD` and `DASHGEN_DB_PASSWORD` as environment variables instead.
-- `npm run db:migrate` and `npm run db:seed` create the tables and the sample data. After a schema change, `npm run db:generate --workspace backend` writes the SQL migration to commit with it. Never edit a migration that has been merged; add a new one.
+- `npm run db:migrate` and `npm run db:seed` create the tables and the sample data. After a schema change, `npm run db:generate --workspace backend -- --name <change>` writes the SQL migration to commit with it. Never run `npx drizzle-kit` itself: it reads `backend/.env`. Never edit a migration that has been merged; add a new one.
+- `npm run gemini:check` sends two real requests to Gemini, to check the key, the model and the request format. It reads the key from `backend/.env`, so only the user runs it, never an agent.
 - `make check` also starts a throwaway test Postgres on port 5433 (`compose.test.yaml`), so Docker must be running. `npm run test:unit` runs only the tests that need no database.
 
 ## Rules

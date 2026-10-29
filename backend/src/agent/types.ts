@@ -95,7 +95,77 @@ export interface Tool {
   /**
    * Checks the model's arguments against `args`, then runs. Always a promise:
    * a wrong call rejects with a ToolError, for the model to correct, and never
-   * throws on the spot, so calls can safely run side by side.
+   * throws on the spot. Run a reply's calls in order, one at a time, so a later
+   * call can use an earlier one's result, like a chart of the queries before it.
    */
   call: (input: unknown) => Promise<ToolResult>;
 }
+
+// The model, behind an interface: the agent loop talks to this, so tests pass
+// a scripted fake and never call Gemini.
+
+/** A tool call the model asked for. Gemini may give it an `id`, sent back with its result. */
+export interface ToolCall {
+  id?: string;
+  name: string;
+  args: unknown;
+}
+
+/** What one tool call returned, for the model: its result, or the ToolError's message. */
+export type ToolOutput =
+  | { call: ToolCall; result: Record<string, unknown> }
+  | { call: ToolCall; error: string };
+
+/** The model's answer to one request. */
+export interface ModelReply {
+  /**
+   * The tools it asked for, often several at once. Empty when the model failed
+   * to call one (a malformed call, a safety block, or no tokens left): such a
+   * reply mustn't go back in the conversation, so send the request again instead.
+   */
+  calls: ToolCall[];
+  /** Any text beside the calls; usually empty, since every answer must be a tool call. */
+  text: string;
+  /** Why the model stopped, as the provider says it, like "STOP" or "MAX_TOKENS". */
+  finishReason: string;
+  usage: { inputTokens: number; outputTokens: number };
+  /**
+   * The reply exactly as the provider sent it, whenever it has calls. Put the
+   * whole ModelReply back in the conversation: Gemini 3 checks the signatures
+   * inside it on the next request.
+   */
+  raw?: unknown;
+}
+
+/** The conversation so far, oldest first. */
+export type Message =
+  | { role: "user"; text: string }
+  | { role: "model"; reply: ModelReply }
+  | { role: "tools"; outputs: ToolOutput[] };
+
+export interface ModelRequest {
+  /** The instructions: what DashGen is and the rules it follows. */
+  system: string;
+  messages: Message[];
+  tools: Tool[];
+  /** Aborts the request, for the run's own deadline. */
+  signal?: AbortSignal;
+}
+
+export interface Model {
+  /** The model's name, saved with each run, like "gemini-3.1-flash-lite". */
+  name: string;
+  /**
+   * Sends the conversation, and resolves with the model's reply. Rejects with:
+   * - a ModelError when the provider fails;
+   * - any error once `signal` has fired, so check `signal.aborted` first;
+   * - a plain Error for a bug in the caller, like a conversation that breaks
+   *   checkConversation's rules.
+   */
+  next: (request: ModelRequest) => Promise<ModelReply>;
+}
+
+/** The body of an error from the Gemini API, for its own reason in our messages. */
+export const GeminiErrorBody = z.object({
+  error: z.object({ message: z.string() }),
+});

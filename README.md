@@ -80,6 +80,8 @@ npm run dev                            # the backend on :3000
 
 Open http://localhost:3000/docs to try the backend's endpoints in the browser.
 
+With a real `GEMINI_API_KEY` in `backend/.env` (free from [Google AI Studio](https://aistudio.google.com)), `npm run gemini:check` sends Gemini two test requests and prints its replies, to show the key and the model work. `npm run gemini:check -- --json` also prints each reply's JSON, exactly as Gemini sent it.
+
 Postgres runs in Docker (Docker Desktop or [OrbStack](https://orbstack.dev)):
 
 ```bash

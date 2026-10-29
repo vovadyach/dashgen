@@ -5,7 +5,7 @@ import { DAY_MS, HOUR_MS, startOfDay, startOfHour } from "./time.ts";
 const SEED_DAYS = 30;
 
 /** The sample services, with each one's typical errors per hour and latency. */
-const SERVICES = [
+export const SERVICES = [
   { name: "auth-service", errorsPerHour: 1, latencyMs: 80 },
   { name: "payments-service", errorsPerHour: 1.5, latencyMs: 230 },
   { name: "checkout-api", errorsPerHour: 2, latencyMs: 420 },
@@ -13,7 +13,7 @@ const SERVICES = [
   { name: "notifications-worker", errorsPerHour: 0.5, latencyMs: 150 },
 ] as const;
 
-const METRICS = [
+export const METRICS = [
   { name: "errors", unit: "count", rollup: "sum" },
   { name: "latency_ms", unit: "ms", rollup: "avg" },
 ] as const;
