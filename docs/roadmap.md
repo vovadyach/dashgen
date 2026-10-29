@@ -41,8 +41,8 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 - [x] Chart format first: what the backend sends and the page draws ([design](design.md#the-frontends-api))
 - [x] [Tools](design.md#the-agents-tools): `list_services`, `query_metrics`, `create_chart`, `clarify` and `decline`, each with a description that also says what it doesn't handle
-- [ ] Hand-written Gemini function-calling loop that records each step. The model sits behind an interface the loop receives, so tests use a scripted fake model and never call Gemini
-- [ ] The [per-run limits](design.md#the-daily-cap) from the first live call: 6 model calls, the token budgets, a timeout on each call and 25 seconds per run
+- [x] Hand-written Gemini function-calling loop that records each step ([ADR-0010](decisions/0010-agent-loop.md)). The model sits behind an interface the loop receives, so tests use a scripted fake model and never call Gemini
+- [x] The [per-run limits](design.md#the-daily-cap) from the first live call: 6 model calls, the token budgets, a timeout on each call and 25 seconds per run
 - [x] The backend builds each chart from the query results `create_chart` names
 - [x] Read-only tools that accept only known service and metric names
 - [x] Tool arguments and the final chart validated against their schemas
@@ -59,7 +59,8 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 ## 4. Guardrails and cost
 
 - [ ] `clarify` with clickable choices when the question is vague, and `decline` with example questions when it's off-topic
-- [ ] Errors classified as retryable or not; a retryable one gets one retry, after a short random wait
+- [x] Gemini errors classified as retryable or not; a retryable one gets one retry, after a short random wait
+- [ ] The same for database errors: one retry, then `unavailable`
 - [ ] [Daily cap](design.md#the-daily-cap) of 150 questions, counted in DynamoDB, with DynamoDB Local in Docker Compose
 - [ ] A friendly message when the daily cap is hit, with a link to the demo video
 - [ ] A $20 monthly spend cap on the Gemini project, noted in the runbook

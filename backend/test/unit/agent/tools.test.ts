@@ -1,43 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { type MetricsQuery, Outcome } from "@dashgen/contracts";
+import { Outcome } from "@dashgen/contracts";
 import { z } from "zod";
 
 import { createTools, EXAMPLE_QUESTIONS } from "../../../src/agent/tools.ts";
 import { MAX_QUERIES } from "../../../src/agent/validation.ts";
-import { type Metrics, MetricsError } from "../../../src/metrics/index.ts";
-import { errorsResult } from "../../helpers/results.ts";
+import { CATALOG, fakeMetrics } from "../../helpers/metrics.ts";
 
-const CATALOG = {
-  services: ["checkout-api", "payments-service"],
-  metrics: [
-    { name: "errors", unit: "count", rollup: "sum" as const },
-    { name: "latency_ms", unit: "ms", rollup: "avg" as const },
-  ],
-};
-
-/** The metrics module without a database: a known service gets the sample result. */
-function fakeMetrics(): Metrics & { queries: MetricsQuery[] } {
-  const queries: MetricsQuery[] = [];
-  return {
-    queries,
-    listServices: () => Promise.resolve(CATALOG),
-    query: (input) => {
-      queries.push(input);
-      if (!CATALOG.services.includes(input.service)) {
-        return Promise.reject(
-          new MetricsError(
-            `Unknown service "${input.service}". Known services: ${CATALOG.services.join(", ")}.`,
-          ),
-        );
-      }
-      return Promise.resolve(errorsResult(input.service));
-    },
-  };
-}
-
-/** One run's tools, and a way to call one by name, as the agent loop will. */
+/** One run's tools, and a way to call one by name, as the agent loop does. */
 function startRun() {
   const metrics = fakeMetrics();
   const tools = createTools(metrics);

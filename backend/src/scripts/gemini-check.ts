@@ -5,13 +5,11 @@
 // `npm run gemini:check -- --json` also prints each answer as Gemini sent it.
 // Its requests are billed to the key in backend/.env, so people run it, never agents.
 import { createGeminiModel } from "../agent/gemini.ts";
+import { instructions } from "../agent/instructions.ts";
 import { createTools } from "../agent/tools.ts";
 import type { Message, ModelReply, ToolOutput } from "../agent/types.ts";
 import { loadGeminiSettings } from "../config.ts";
 import { METRICS, SERVICES } from "../metrics/seed.ts";
-
-const SYSTEM =
-  "You are DashGen. You answer questions about the errors and latency of a few sample services by calling tools.";
 
 // Only the tools' declarations matter: nothing runs here.
 const notRun = () => Promise.reject(new Error("gemini:check runs no tools."));
@@ -39,7 +37,11 @@ async function check(): Promise<void> {
 
   const ask = async (label: string): Promise<ModelReply> => {
     const started = performance.now();
-    const reply = await model.next({ system: SYSTEM, messages, tools });
+    const reply = await model.next({
+      system: instructions(new Date()),
+      messages,
+      tools,
+    });
     const ms = Math.round(performance.now() - started);
     const { inputTokens, outputTokens } = reply.usage;
     console.log(

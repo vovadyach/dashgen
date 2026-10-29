@@ -47,18 +47,18 @@ function defineTool<S extends z.ZodType>(tool: {
     call: async (input) => {
       calls += 1;
       const callNumber = calls;
-      return await tool.run(
-        parseArgs(tool.name, tool.args, input ?? {}),
-        callNumber,
+      return tool.run(
+          parseArgs(tool.name, tool.args, input ?? {}),
+          callNumber,
       );
     },
   };
 }
 
 /**
- * The tools for one run. They keep that run's query results, so make a new set
- * for each run, with a Metrics whose clock is fixed when the run starts: then
- * every query covers the same window, even a few seconds apart.
+ * The tools for one run. They keep that run's query results, so runAgent makes
+ * a new set for each run, with a Metrics whose clock it fixes at the run's
+ * start: then every query covers the same window, even a few seconds apart.
  */
 export function createTools(metrics: Metrics): Tool[] {
   const results = new Map<string, MetricsResult>();
