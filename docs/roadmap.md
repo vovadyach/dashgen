@@ -39,14 +39,14 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 ## 3. First slice: question to chart
 
-- [ ] Chart format first: what the backend sends and the page draws ([design](design.md#the-frontends-api))
+- [x] Chart format first: what the backend sends and the page draws ([design](design.md#the-frontends-api))
 - [ ] [Tools](design.md#the-agents-tools): `list_services`, `query_metrics` and `create_chart`, each with a description that also says what it doesn't handle
 - [ ] Hand-written Gemini function-calling loop that records each step. The model sits behind an interface the loop receives, so tests use a scripted fake model and never call Gemini
 - [ ] The [per-run limits](design.md#the-daily-cap) from the first live call: 6 model calls, the token budgets, a timeout on each call and 25 seconds per run
 - [ ] The backend builds each chart from the query results `create_chart` names
 - [ ] Read-only tools that accept only known service and metric names
 - [ ] Tool arguments and the final chart validated against their schemas
-- [ ] The question schema in `contracts`: 1 to 300 characters after trimming
+- [x] The question schema in `contracts`: 1 to 300 characters after trimming
 - [ ] tRPC router: the `ask` mutation starts a run and returns its ID, and the `run` subscription streams its events over SSE, replaying missed ones on reconnect ([ADR-0007](decisions/0007-trpc.md))
 - [ ] Errors carry our codes through tRPC's error formatter; the per-IP limit counts each `ask`, not each HTTP request
 - [ ] Each run saved to `runs`
@@ -112,6 +112,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] Example questions under the box for first-time visitors
 - [ ] Pin charts to a dashboard, saved in the browser with their data, so they still draw while the backend is offline
 - [ ] A note under the question box says questions are saved
+- [ ] A mascot of our own: an animal (a meerkat, a lookout watching the metrics) drawn as one flat SVG, no memes since the repo is public. Animated with CSS and still for visitors who turned on reduced motion. Its mood follows the outcome: playful on `decline`, curious on `clarify`, sorry on errors, asleep when the backend is offline or the daily cap is reached. No mascot next to a chart
 - [ ] Works on a phone
 - [ ] Invisible bot check (Cloudflare Turnstile)
 

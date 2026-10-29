@@ -23,12 +23,12 @@ How a question will become a chart is drawn in [design.md](design.md#one-questio
 
 **`GET /health`** returns `200 {"status":"ok"}`.
 
-**`POST /ask`** takes `{"question": "..."}`, at least one character long.
+**`POST /ask`** takes `{"question": "..."}`, 1 to 300 characters after trimming.
 
 | Status | Code | When |
 |---|---|---|
 | 501 | `not_implemented` | the question is valid, until the agent arrives |
-| 422 | `invalid_question` | `question` is missing or empty |
+| 422 | `invalid_question` | `question` is missing, blank or over 300 characters |
 | 429 | `rate_limited` | an IP's 11th request in a minute, counted from its first, with `Retry-After` |
 | 400 | `bad_request` | the body isn't valid JSON, or Fastify rejects the request |
 | 404 | `not_found` | an unknown route |

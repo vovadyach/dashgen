@@ -10,6 +10,9 @@ Node.js 24 + Fastify, in TypeScript. Takes a question and returns a chart; the G
 
 - Settings are read in `loadConfig` in `config.ts`, through a Zod schema. A new setting goes there and into `.env.example`. Secrets are wrapped in `Secret`, so they never reach logs.
 - Each module keeps its tables in its own `schema.ts` (`metrics/`, `runs/`), and `db.ts` opens the connection pool and runs the migrations.
+- Inside a transaction, use `tx`, never `db`, and `await` each query in turn (`seedMetrics`). A transaction is one connection, so `Promise.all` there runs nothing in parallel, and after a failure the rest of its queries fail too. Outside transactions, `Promise.all` does run independent reads in parallel, on separate pool connections (`listServices`).
+- A module's own Zod schemas and their types go in `types.ts`, checks beyond a schema's shape in `validation.ts`, and small general helpers, like `distinct`, in `helpers.ts`, so the other files only do the work (`agent/`). Schemas that another package also needs go in `packages/contracts` instead.
+- A helper that a second module needs moves to `src/shared/`, so modules never import each other's internals. The app's foundations (`config.ts`, `db.ts`, `logger.ts`, `errors.ts`) stay at the top of `src/`.
 - Modules take what they need as parameters, like `createMetrics(db, { now, log })`, so tests can pass a test database, a fixed clock and their own logger. Logging levels and the "log once, where it's handled" rule are in `src/logger.ts`.
 - `buildApp(config)` builds the app, so each test can pass its own config. Nothing else reads the environment.
 - Each route declares Zod schemas for its body and responses. They validate requests, type the handler, check replies and generate the docs at `/docs`. A schema that a client also needs lives in `packages/contracts` and is imported from `@dashgen/contracts`.

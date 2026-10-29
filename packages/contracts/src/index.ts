@@ -19,9 +19,9 @@ export const Health = z.object({
 });
 export type Health = z.infer<typeof Health>;
 
-/** The body of the backend's `POST /ask`. */
+/** The body of the backend's `POST /ask`: a question of 1 to 300 characters, after trimming. */
 export const AskRequest = z.object({
-  question: z.string().min(1),
+  question: z.string().trim().min(1).max(300),
 });
 export type AskRequest = z.infer<typeof AskRequest>;
 
@@ -55,6 +55,7 @@ export const MetricsResult = z.object({
   service: z.string(),
   metric: z.string(),
   unit: z.string(),
+  days: z.number(),
   bucket: Bucket,
   points: z.array(
     z.object({
@@ -72,3 +73,39 @@ export const MetricsResult = z.object({
   }),
 });
 export type MetricsResult = z.infer<typeof MetricsResult>;
+
+export const ChartType = z.enum(["line", "bar", "pie"]);
+export type ChartType = z.infer<typeof ChartType>;
+
+/**
+ * A chart the backend built from real query results. It carries its own numbers,
+ * so the page can draw it, or redraw a pinned one, without asking for anything else.
+ */
+export const Chart = z.object({
+  type: ChartType,
+  title: z.string().trim().min(1).max(120),
+  unit: z.string(),
+  /**
+   * What the x values are: hours or days (ISO timestamps), or categories (service names).
+   * Days are UTC midnights, so label them in UTC: in local time, every day west of UTC shows as the day before.
+   */
+  x: z.enum(["hour", "day", "category"]),
+  series: z
+    .array(
+      z.object({
+        name: z.string(),
+        points: z
+          .array(
+            z.object({
+              x: z.string(),
+              y: z.number(),
+              /** A day with fewer than 24 hours of data. The page draws it lighter. */
+              partial: z.literal(true).optional(),
+            }),
+          )
+          .min(1),
+      }),
+    )
+    .min(1),
+});
+export type Chart = z.infer<typeof Chart>;

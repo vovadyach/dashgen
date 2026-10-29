@@ -70,6 +70,7 @@ test("3 days come in daily buckets, with today partial (the design's example)", 
     service: "checkout-api",
     metric: "errors",
     unit: "count",
+    days: 3,
     bucket: "day",
     points: [
       { t: "2026-10-25T00:00:00.000Z", value: 38 },

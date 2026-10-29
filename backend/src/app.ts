@@ -56,7 +56,10 @@ export async function buildApp(config: Config, options: AppOptions = {}) {
       return reply
         .code(422)
         .send(
-          errorBody("invalid_question", "The question is missing or empty."),
+          errorBody(
+            "invalid_question",
+            "The question must be 1 to 300 characters.",
+          ),
         );
     }
     // Fastify's own client errors, like a body that isn't valid JSON.

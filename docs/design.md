@@ -373,7 +373,7 @@ erDiagram
 - **`services` and `metrics` list what exists.** The metrics module checks names against them, the foreign keys stop a typo from inventing a service, and `list_services` reads them.
 - **Each metric says how it rolls up.** Hourly errors add up to daily errors, while latency averages. The metrics module reads the rule from `metrics` and applies it in SQL, so the model can't add up latencies.
 - **The seed gives questions something to find:** daily and weekly cycles, some noise, and a few incidents, such as an error spike on `payments-service` two days ago. Each hour's value comes from a hash of its service, metric and hour, so it's the same whichever day the seed runs, and evals can know the right answers. Only the incidents move, counted back from today. It writes everything in one transaction, so a failed seed leaves the old data intact.
-- **All times are UTC.** The frontend shows them in the visitor's time zone.
+- **All times are UTC.** The frontend shows hours in the visitor's time zone, but days in UTC: a daily bucket starts at UTC midnight, so in local time west of UTC it would show as the day before.
 
 ### The runs table
 
@@ -452,6 +452,7 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
   "service": "checkout-api",
   "metric": "errors",
   "unit": "count",
+  "days": 3,
   "bucket": "day",
   "points": [
     {"t": "2026-10-25T00:00:00Z", "value": 38},
@@ -479,7 +480,8 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 
 - **Every way to finish is a tool call** with a schema, so the backend never parses free text. If the model answers in prose, it gets one reminder, and then the run fails.
 - **A bad argument,** such as an unknown service, goes back to the model as a tool error and counts toward the 6 calls.
-- **`aggregation`** (average, maximum, minimum, total or latest) turns each series into one number per service, for bar and pie charts that compare services. The number is that statistic from the query's [summary](#the-metrics-module). Pie charts show parts of a whole, so they only take totals. A chart can't mix metrics with different units.
+- **`aggregation`** (`avg`, `max`, `min`, `total` or `latest`) turns each series into one number per service, for bar and pie charts that compare services. The number is that statistic from the query's [summary](#the-metrics-module). Pie charts show each service's share of a total, so they need 2 or more services and `total`.
+- **A chart shows one metric,** one result per service, all over the same days and bucket, since a 7-day average next to a 30-day one would mislead. `create_chart` refuses anything else with a tool error that says what to change.
 - **The title says what's plotted, not a conclusion,** because the model writes it: "Average latency by service, last 7 days", not "checkout-api is the slowest".
 
 ### The frontend's API
@@ -503,7 +505,7 @@ The React app calls the backend through [tRPC](decisions/0007-trpc.md) under `/a
     "type": "line",
     "title": "payments-service errors per day, last 7 days",
     "unit": "count",
-    "x": "time",
+    "x": "day",
     "series": [
       {"name": "payments-service", "points": [{"x": "2026-10-21T00:00:00Z", "y": 41}]}
     ]
@@ -512,7 +514,8 @@ The React app calls the backend through [tRPC](decisions/0007-trpc.md) under `/a
 ```
 
 - `outcome` is `chart`, `clarify` (with `message` and `choices`) or `decline` (with `message` and `examples`).
-- `x` is `time` for a chart over time, or `category` when each point is a service.
+- `x` says what the x values are: `hour` or `day` timestamps for a chart over time, so the page can label the axis, or `category` when each point is a service.
+- The schema is `Chart` in `@dashgen/contracts`, and the backend validates every chart against it before sending it.
 - A point marked `"partial": true` is a day with fewer than 24 hours of data, in a daily chart: usually today so far, or a gap in the data. The frontend draws it lighter, so it doesn't read as a drop.
 - A chart carries its own numbers, so charts pinned in the browser still draw while the backend is offline.
 

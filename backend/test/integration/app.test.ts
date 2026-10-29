@@ -47,15 +47,28 @@ test("ask answers 501 until the agent exists", async (t) => {
   });
 });
 
-test("ask requires a question", async (t) => {
+test("ask requires a question of 1 to 300 characters, after trimming", async (t) => {
   const app = await startApp(t);
 
-  for (const payload of [{}, { question: "" }]) {
+  for (const payload of [
+    {},
+    { question: "" },
+    { question: "   " },
+    { question: "x".repeat(301) },
+  ]) {
     const response = await app.inject({ method: "POST", url: "/ask", payload });
 
     assert.equal(response.statusCode, 422);
     assert.equal(response.json<ErrorBody>().error.code, "invalid_question");
   }
+
+  // The longest allowed question, with spaces around it that trimming removes.
+  const longest = await app.inject({
+    method: "POST",
+    url: "/ask",
+    payload: { question: `  ${"x".repeat(300)}  ` },
+  });
+  assert.equal(longest.statusCode, 501);
 });
 
 test("ask is rate limited per client IP", async (t) => {
