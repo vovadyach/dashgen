@@ -107,7 +107,8 @@ dashgen/
 ├── packages/      # shared TypeScript packages: contracts (API schemas)
 ├── postgres/      # init script: the `dashgen` database and user
 ├── scripts/       # check.sh: every check in one command
-├── CLAUDE.md      # project rules for Claude Code
+├── AGENTS.md      # project rules for every coding agent
+├── CLAUDE.md      # imports AGENTS.md, plus Claude Code's own bits
 ├── compose.yaml   # Postgres for local development
 ├── compose.test.yaml  # throwaway Postgres for tests
 ├── Makefile
@@ -119,7 +120,7 @@ dashgen/
 
 The repo is set up for [Claude Code](https://claude.com/claude-code):
 
-- `CLAUDE.md` holds the project rules, and `backend/CLAUDE.md` holds the backend's conventions.
+- `AGENTS.md` holds the project rules, and `backend/AGENTS.md` the backend's conventions, for any coding agent, Codex included. Each `CLAUDE.md` imports its folder's `AGENTS.md` (`@AGENTS.md`) and adds only what's specific to Claude Code, so there's one copy of each rule.
 - `.claude/settings.json` stops Claude from committing or pushing, so every change is reviewed and committed by hand. It also keeps Claude's file tools, and shell commands like `cat`, away from `.env` files other than `.env.example`. A script that opens a file itself isn't covered; only Claude Code's [sandbox](https://code.claude.com/docs/en/sandboxing) blocks that.
 - Hooks, written in TypeScript and run by Node, format each TypeScript file Claude edits, and run `scripts/check.sh` when Claude finishes a turn that changed files. If a check fails, Claude is sent back to fix it, up to twice; after that it stops with a warning.
 - Skills: `/fix-issue <number>` works a GitHub issue through to passing checks, and `/adr` records a decision in `docs/decisions/`.

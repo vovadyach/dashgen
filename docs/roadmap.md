@@ -52,7 +52,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] Each run saved to `runs`
 - [ ] React + Vite + Tailwind + Recharts, with tRPC and TanStack Query: question box, steps panel, chart
 - [ ] Vite's dev server forwards `/api` to the backend, so the app calls the same paths locally and on AWS
-- [ ] Component tests with Vitest, frontend checks in `scripts/check.sh`, and a `frontend/CLAUDE.md`
+- [ ] Component tests with Vitest, frontend checks in `scripts/check.sh`, and a `frontend/AGENTS.md` with a `CLAUDE.md` that imports it
 
 **Done when:** locally, asking "Show errors for payments-service this week" in the browser streams the steps and draws the chart.
 
