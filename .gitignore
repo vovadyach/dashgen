@@ -17,9 +17,6 @@ build/
 .DS_Store
 Thumbs.db
 
-# Compiled Go binary (the file, not the folder)
-metrics/metrics
-
 # Editor files
 .vscode/
 .idea/

@@ -87,7 +87,9 @@ cp .env.example .env   # then replace each placeholder with a password
 make db                # Postgres on localhost:5432
 ```
 
-`docker compose down` stops it, and `docker compose down --volumes` also deletes its data. Postgres sets the passwords only the first time it starts, while its volume is empty, so changing them in `.env` later doesn't change the existing users. To switch to new ones, run `docker compose down --volumes` and then `make db`.
+`docker compose down` stops it, and `docker compose down --volumes` also deletes its data. Postgres runs `postgres/init.sh`, which creates the users and the database, only the first time it starts, while its volume is empty. So after changing the passwords in `.env` or the init script, recreate the volume: run `docker compose down --volumes`, then `make db`. Local data is disposable, because the seed recreates it.
+
+> **Upgrading from the two-database setup** (`metrics` and `gateway`): `make db` still reports healthy, but the `dashgen` database doesn't exist. Replace the two old passwords in `.env` with `DASHGEN_DB_PASSWORD`, then recreate the volume as above.
 
 Run every formatter, linter, type checker and test with `make check`, and fix formatting with `make fmt`. GitHub Actions runs the same checks on every pull request and every push to `main`.
 
