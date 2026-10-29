@@ -372,7 +372,7 @@ erDiagram
 - **Its primary key is the index the queries need.** In `(metric, service, recorded_at)`, the columns that queries match exactly come first and the range comes last. "payments-service errors this week" reads one slice of the index, and "every service's latency this week" still uses its first column. An `id` column would only add a second index that nothing reads. At 7,200 rows Postgres reads the whole table in under a millisecond anyway; the key starts to matter at millions of rows.
 - **`services` and `metrics` list what exists.** The metrics module checks names against them, the foreign keys stop a typo from inventing a service, and `list_services` reads them.
 - **Each metric says how it rolls up.** Hourly errors add up to daily errors, while latency averages. The metrics module applies the rollup in SQL, joining `points` to `metrics` for the rule, so the model can't add up latencies.
-- **The seed gives questions something to find:** daily and weekly cycles, some noise, and a few incidents, such as an error spike on `payments-service` two days ago. It uses a fixed random seed, so a given day always gets the same numbers and evals can know the right answers. It writes everything in one transaction, so a failed seed leaves nothing half-written.
+- **The seed gives questions something to find:** daily and weekly cycles, some noise, and a few incidents, such as an error spike on `payments-service` two days ago. Each hour's value comes from a hash of its service, metric and hour, so it's the same whichever day the seed runs, and evals can know the right answers. Only the incidents move, counted back from today. It writes everything in one transaction, so a failed seed leaves the old data intact.
 - **All times are UTC.** The frontend shows them in the visitor's time zone.
 
 ### The runs table
@@ -465,7 +465,7 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 - **The summary comes from the hourly rows,** over the same window, whatever the bucket. So `max` is the worst hour, not the worst day, and `latest` is the last hour, not today so far. `avg` counts every hour the same. Only metrics that add up, like errors, get a `total`: a total of latencies means nothing.
 - **Daily buckets are whole UTC days,** ending with today so far, so only the last one can be incomplete, and it's marked `partial`. Otherwise a day whose total is still growing would look like a drop.
 - **Daily buckets keep long charts readable:** 30 days is 30 points instead of 720.
-- **One query per call.** The bucketing, the rollup and the summary all happen in Postgres, with `date_trunc` and `GROUP BY` over the primary key's index, written as typed Drizzle queries.
+- **One query for the data.** The buckets, the rollup and the summary come from a single SQL query over the primary key's index: `date_trunc` buckets, plus `GROUPING SETS` for a summary row over all the hours.
 
 ### The agent's tools
 
@@ -538,10 +538,6 @@ Every error carries our own code and a message that's safe to show visitors. Whe
 
 ### Why Postgres
 
-- The agent's questions aren't known in advance, and SQL answers new ones with filters, ranges and `GROUP BY`, without redesigning the tables. DynamoDB needs every query designed up front and can't group. MongoDB suits documents whose shape varies, and this data's shape is fixed.
-- One engine covers the time series and the runs, and it runs the same in Docker, in CI and on RDS.
-- **The daily cap is the exception.** Its count has to outlive the session's database, and a single item read and written by its key is what DynamoDB does best.
-- At millions of points a day, the time series would move to TimescaleDB or ClickHouse, and the metrics module could become its own service with its own database ([ADR-0005](decisions/0005-one-backend.md) says when).
-- [Drizzle](decisions/0006-drizzle.md) keeps the SQL visible: the bucketing and rollups are written as typed queries, not hidden behind an ORM's own API.
+The agent's questions aren't known in advance, and SQL answers new ones without redesigning anything. [ADR-0008](decisions/0008-postgres.md) compares the options and says what changes at scale, and [ADR-0006](decisions/0006-drizzle.md) explains Drizzle.
 
 Next: deep dives into the backend's modules and the agent loop, then how the design grows.

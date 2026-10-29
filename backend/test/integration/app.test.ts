@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { ErrorBody } from "@dashgen/contracts";
 
-import { startApp, VALID_ENV } from "./helpers.ts";
+import { startApp, VALID_ENV } from "../helpers/app.ts";
 
 const QUESTION = { question: "Show errors for payments-service this week" };
 

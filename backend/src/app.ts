@@ -17,14 +17,14 @@ import type { Config } from "./config.ts";
 import { ApiError, errorBody } from "./errors.ts";
 
 export interface AppOptions {
-  /** JSON logs with an ID for each request. Off unless asked for, so tests stay quiet. */
+  /** JSON logs at `config.logLevel`, with an ID for each request. Off unless asked for, so tests stay quiet. */
   logger?: boolean;
 }
 
 /** Builds the backend from `config`, so each test can pass its own. Nothing else reads the environment. */
 export async function buildApp(config: Config, options: AppOptions = {}) {
   const app = Fastify({
-    logger: options.logger ?? false,
+    logger: options.logger === true ? { level: config.logLevel } : false,
     // Errors Fastify raises before routing, like a malformed URL, never reach
     // the error handler below, so they get the same shape here.
     frameworkErrors: (error, _request, reply) => {

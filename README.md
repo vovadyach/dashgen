@@ -62,8 +62,8 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 | Part | Tech | Today |
 |---|---|---|
 | Backend (`backend/`) | Node.js 24, Fastify, TypeScript, Zod | Takes questions with a per-IP rate limit, and answers 501 until the agent exists ([API](docs/architecture.md#backend-api)) |
-| Database | Postgres 18, Docker Compose | Runs locally, with one empty `dashgen` database. Step 2 fills it |
-| Data access | Drizzle | Planned (step 2): the backend's `metrics` module |
+| Database | Postgres 18, Docker Compose | Runs locally: one `dashgen` database, with tables from Drizzle migrations |
+| Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
 | Agent | Gemini (`@google/genai`) | Planned (step 3) |
 | Frontend | React, TypeScript, Vite, Tailwind, Recharts, tRPC, TanStack Query | Planned (step 3) |
 | Hosting | AWS, Terraform | Planned (step 5) |
@@ -80,18 +80,20 @@ npm run dev                            # the backend on :3000
 
 Open http://localhost:3000/docs to try the backend's endpoints in the browser.
 
-Postgres runs in Docker (Docker Desktop or [OrbStack](https://orbstack.dev)). Nothing reads from it yet: step 2 adds the tables and the sample data.
+Postgres runs in Docker (Docker Desktop or [OrbStack](https://orbstack.dev)):
 
 ```bash
 cp .env.example .env   # then replace each placeholder with a password
 make db                # Postgres on localhost:5432
+npm run db:migrate     # create the tables (set DATABASE_URL in backend/.env first)
+npm run db:seed        # 30 days of hourly sample data, ending this hour
 ```
 
 `docker compose down` stops it, and `docker compose down --volumes` also deletes its data. Postgres runs `postgres/init.sh`, which creates the users and the database, only the first time it starts, while its volume is empty. So after changing the passwords in `.env` or the init script, recreate the volume: run `docker compose down --volumes`, then `make db`. Local data is disposable, because the seed recreates it.
 
 > **Upgrading from the two-database setup** (`metrics` and `gateway`): `make db` still reports healthy, but the `dashgen` database doesn't exist. Replace the two old passwords in `.env` with `DASHGEN_DB_PASSWORD`, then recreate the volume as above.
 
-Run every formatter, linter, type checker and test with `make check`, and fix formatting with `make fmt`. GitHub Actions runs the same checks on every pull request and every push to `main`.
+Run every formatter, linter, type checker and test with `make check`, and fix formatting with `make fmt`. Docker must be running: database tests use a throwaway Postgres on port 5433, which `make check` starts. GitHub Actions runs the same checks on every pull request and every push to `main`.
 
 ## Repo layout
 
@@ -107,6 +109,7 @@ dashgen/
 ├── scripts/       # check.sh: every check in one command
 ├── CLAUDE.md      # project rules for Claude Code
 ├── compose.yaml   # Postgres for local development
+├── compose.test.yaml  # throwaway Postgres for tests
 ├── Makefile
 ├── package.json   # npm workspace: the shared tools and scripts
 └── tsconfig.base.json  # TypeScript settings every package extends
@@ -130,6 +133,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [5. One TypeScript backend, with modules inside](docs/decisions/0005-one-backend.md)
 - [6. Drizzle for data access](docs/decisions/0006-drizzle.md)
 - [7. tRPC between the React app and the backend](docs/decisions/0007-trpc.md)
+- [8. Postgres for the metrics and the runs](docs/decisions/0008-postgres.md)
 
 ## License
 

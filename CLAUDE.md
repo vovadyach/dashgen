@@ -21,6 +21,8 @@ Type a question in plain English, get a chart. A Gemini agent in the backend pic
 - `make fmt` formats the TypeScript code.
 - `npm run dev` starts the backend on :3000. `make` is for repo-wide and infrastructure commands, npm scripts for the TypeScript packages.
 - `make db` starts Postgres in Docker on localhost:5432, with the passwords from the root `.env` that the user makes from `.env.example`. Don't create that file: for a test run, set `POSTGRES_PASSWORD` and `DASHGEN_DB_PASSWORD` as environment variables instead.
+- `npm run db:migrate` and `npm run db:seed` create the tables and the sample data. After a schema change, `npm run db:generate --workspace backend` writes the SQL migration to commit with it. Never edit a migration that has been merged; add a new one.
+- `make check` also starts a throwaway test Postgres on port 5433 (`compose.test.yaml`), so Docker must be running. `npm run test:unit` runs only the tests that need no database.
 - `/fix-issue <number>` works a GitHub issue through to passing checks.
 
 ## Rules

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inspect } from "node:util";
 
-import { loadConfig } from "../src/config.ts";
-import { VALID_ENV } from "./helpers.ts";
+import { loadConfig } from "../../src/config.ts";
+import { VALID_ENV } from "../helpers/app.ts";
 
 test("reads comma-separated origins", () => {
   const config = loadConfig({
@@ -36,5 +36,17 @@ test("needs at least one origin", () => {
   assert.throws(
     () => loadConfig({ ...VALID_ENV, ALLOWED_ORIGINS: " , " }),
     /ALLOWED_ORIGINS/,
+  );
+});
+
+test("the log level defaults to info, and rejects a typo", () => {
+  assert.equal(loadConfig(VALID_ENV).logLevel, "info");
+  assert.equal(
+    loadConfig({ ...VALID_ENV, LOG_LEVEL: "debug" }).logLevel,
+    "debug",
+  );
+  assert.throws(
+    () => loadConfig({ ...VALID_ENV, LOG_LEVEL: "verbose" }),
+    /LOG_LEVEL/,
   );
 });
