@@ -11,6 +11,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 - [x] Metrics service in Go with hardcoded data
 - [x] Move the gateway from Express to Fastify and TypeScript ([ADR-0001](decisions/0001-node-gateway.md)), renaming `POST /chat` to `POST /ask` ([ADR-0002](decisions/0002-question-box.md))
+- [x] npm workspaces: shared TypeScript tooling, and a `contracts` package for API schemas ([ADR-0004](decisions/0004-npm-workspaces.md))
 - [x] Tests for the metrics service and the gateway
 - [x] `scripts/check.sh`: one command that runs every formatter, linter, type checker and test
 - [x] CI on GitHub Actions that runs `scripts/check.sh`

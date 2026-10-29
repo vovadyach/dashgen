@@ -1,14 +1,4 @@
-import { z } from "zod";
-
-/** Every error response: a code for programs, and a message that's safe to show visitors. */
-export const ErrorBody = z.object({
-  error: z.object({
-    code: z.string(),
-    message: z.string(),
-  }),
-});
-
-export type ErrorBody = z.infer<typeof ErrorBody>;
+import type { ErrorBody } from "@dashgen/contracts";
 
 export function errorBody(code: string, message: string): ErrorBody {
   return { error: { code, message } };

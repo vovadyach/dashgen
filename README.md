@@ -75,7 +75,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 You'll need Go 1.27+ and Node.js 24+.
 
 ```bash
-make install                           # install the gateway's packages
+make install                           # install every TypeScript package
 cp gateway/.env.example gateway/.env   # any placeholder works for GEMINI_API_KEY for now
 make metrics                           # terminal 1: metrics service on :8080
 make gateway                           # terminal 2: gateway on :3000
@@ -104,11 +104,14 @@ dashgen/
 ├── frontend/      # React + Vite app (planned)
 ├── gateway/       # Node.js + Fastify gateway, in TypeScript
 ├── metrics/       # Go metrics service
+├── packages/      # shared TypeScript packages: contracts (API schemas)
 ├── postgres/      # init script: a database and a user per service
 ├── scripts/       # check.sh: every check in one command
 ├── CLAUDE.md      # project rules for Claude Code
 ├── compose.yaml   # Postgres for local development
-└── Makefile
+├── Makefile
+├── package.json   # npm workspace: the shared tools and scripts
+└── tsconfig.base.json  # TypeScript settings every package extends
 ```
 
 ## Working with Claude Code
@@ -125,6 +128,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [1. Node.js, Fastify and TypeScript for the gateway](docs/decisions/0001-node-gateway.md)
 - [2. A question box, not a chat](docs/decisions/0002-question-box.md)
 - [3. CloudFront as the front door, with no domain](docs/decisions/0003-cloudfront-front-door.md)
+- [4. npm workspaces for the TypeScript code](docs/decisions/0004-npm-workspaces.md)
 
 ## License
 

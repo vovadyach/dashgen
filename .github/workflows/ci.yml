@@ -29,7 +29,7 @@ jobs:
           cache: false # no Go dependencies yet, so nothing to cache
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: gateway/.nvmrc
+          node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: gateway/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: scripts/check.sh

@@ -1,0 +1,16 @@
+{
+  "name": "@dashgen/contracts",
+  "version": "0.1.0",
+  "description": "Zod schemas for DashGen's APIs, shared by the services and the frontend",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
+}
