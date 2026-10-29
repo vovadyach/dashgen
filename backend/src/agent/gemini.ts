@@ -2,6 +2,7 @@ import {
   ApiError,
   type Content,
   type Fetch,
+  FinishReason,
   type FunctionDeclaration,
   FunctionCallingConfigMode,
   type GenerateContentResponse,
@@ -26,6 +27,14 @@ const GEMINI_API_URL = "https://generativelanguage.googleapis.com/";
 
 /** Statuses worth one more try: a timeout, a rate limit, or an outage on Google's side. */
 const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
+/** Why an answer stops when a safety filter blocks it: asking again gets the same block. */
+const SAFETY_STOPS = new Set<string>([
+  FinishReason.SAFETY,
+  FinishReason.PROHIBITED_CONTENT,
+  FinishReason.BLOCKLIST,
+  FinishReason.SPII,
+]);
 
 export interface GeminiOptions {
   apiKey: string;
@@ -52,7 +61,9 @@ export function createGeminiModel({
   fetch,
 }: GeminiOptions): Model {
   // Pinned to the Gemini API: the SDK would otherwise follow GOOGLE_GENAI_USE_VERTEXAI
-  // or GOOGLE_GEMINI_BASE_URL from the environment, which only loadConfig reads.
+  // or GOOGLE_GEMINI_BASE_URL from the environment. It still reads GOOGLE_API_KEY
+  // and GEMINI_API_KEY, and warns that it uses GOOGLE_API_KEY when both are set,
+  // but this apiKey always wins.
   const ai = new GoogleGenAI({
     apiKey,
     vertexai: false,
@@ -162,6 +173,11 @@ function toReply(response: GenerateContentResponse): ModelReply {
   const usage = response.usageMetadata;
   return {
     calls,
+    // A filter on the question, before any answer, or on the answer itself.
+    blocked:
+      calls.length === 0 &&
+      (response.promptFeedback?.blockReason !== undefined ||
+        SAFETY_STOPS.has(candidate?.finishReason ?? "")),
     // The model's thoughts are parts too, but only for its own use.
     text: parts
       .filter((part) => part.text !== undefined && part.thought !== true)

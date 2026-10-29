@@ -161,6 +161,7 @@ test("reads the calls, the text and the tokens, with thinking counted as output"
 
   assert.deepEqual(reply, {
     calls: [{ name: "list_services", args: {} }],
+    blocked: false,
     // The thought isn't part of the answer.
     text: "",
     finishReason: "STOP",
@@ -170,10 +171,30 @@ test("reads the calls, the text and the tokens, with thinking counted as output"
 });
 
 test("sends the model's reply back as it came, signature included, and each tool's output or error", async () => {
-  const { model, bodies } = fakeGemini();
+  // Two calls in one reply, one of them with Gemini's own call ID.
+  const content = {
+    role: "model",
+    parts: [
+      {
+        functionCall: { name: "list_services", args: {} },
+        thoughtSignature: "signature-1",
+      },
+      {
+        functionCall: {
+          id: "c2",
+          name: "query_metrics",
+          args: { service: "billing", metric: "errors" },
+        },
+      },
+    ],
+  };
+  const { model, bodies } = fakeGemini({
+    status: 200,
+    body: { candidates: [{ content, finishReason: "STOP" }] },
+  });
   const reply = await model.next(request());
-  const [call] = reply.calls;
-  assert.ok(call);
+  const [list, query] = reply.calls;
+  assert.ok(list && query);
 
   await model.next(
     request([
@@ -182,18 +203,15 @@ test("sends the model's reply back as it came, signature included, and each tool
       {
         role: "tools",
         outputs: [
-          { call, result: { services: ["checkout-api"] } },
-          {
-            call: { id: "c2", name: "query_metrics", args: {} },
-            error: 'Unknown service "billing".',
-          },
+          { call: list, result: { services: ["checkout-api"] } },
+          { call: query, error: 'Unknown service "billing".' },
         ],
       },
     ]),
   );
 
   const contents = bodies[1]?.contents as unknown[];
-  assert.deepEqual(contents[1], MODEL_CONTENT);
+  assert.deepEqual(contents[1], content);
   assert.deepEqual(contents[2], {
     role: "user",
     parts: [
@@ -212,6 +230,70 @@ test("sends the model's reply back as it came, signature included, and each tool
       },
     ],
   });
+});
+
+test("a conversation Gemini would refuse is refused before it's sent", async () => {
+  const { model, bodies } = fakeGemini();
+  const reply = await model.next(request());
+  const [call] = reply.calls;
+  assert.ok(call);
+  const output = { call, result: {} };
+  const broken: [string, Message[], RegExp][] = [
+    [
+      "no question first",
+      [
+        { role: "model", reply },
+        { role: "tools", outputs: [output] },
+      ],
+      /starts with the question/,
+    ],
+    [
+      "a reply without its outputs",
+      [QUESTION, { role: "model", reply }],
+      /needs one output, in the same order/,
+    ],
+    [
+      "an output too many",
+      [
+        QUESTION,
+        { role: "model", reply },
+        { role: "tools", outputs: [output, output] },
+      ],
+      /needs one output, in the same order/,
+    ],
+    [
+      "an output for another call",
+      [
+        QUESTION,
+        { role: "model", reply },
+        {
+          role: "tools",
+          outputs: [{ call: { name: "decline", args: {} }, result: {} }],
+        },
+      ],
+      /needs one output, in the same order/,
+    ],
+    [
+      "outputs without the reply that asked for them",
+      [QUESTION, { role: "tools", outputs: [output] }],
+      /right after the reply that asked for them/,
+    ],
+    [
+      "a reply without its raw",
+      [
+        QUESTION,
+        { role: "model", reply: { ...reply, raw: undefined } },
+        { role: "tools", outputs: [output] },
+      ],
+      /with its raw/,
+    ],
+  ];
+
+  for (const [what, messages, message] of broken) {
+    await assert.rejects(model.next(request(messages)), { message }, what);
+  }
+  // Refused before sending anything.
+  assert.equal(bodies.length, 1);
 });
 
 test("a rate limit or an outage is worth one more try; a bad request isn't", async () => {
@@ -314,11 +396,12 @@ test("requests go to the Gemini API, whatever GOOGLE_* variables say", async (t)
   ]);
 });
 
-test("a reply without tool calls keeps no raw, and can't go back in the conversation", async () => {
-  const empties: [unknown, string][] = [
+test("a reply without tool calls says if a safety filter blocked it, keeps no raw, and can't go back in the conversation", async () => {
+  const empties: [unknown, string, boolean][] = [
     [
       { candidates: [{ finishReason: "MALFORMED_FUNCTION_CALL" }] },
       "MALFORMED_FUNCTION_CALL",
+      false,
     ],
     [
       {
@@ -327,23 +410,28 @@ test("a reply without tool calls keeps no raw, and can't go back in the conversa
         ],
       },
       "MAX_TOKENS",
+      false,
     ],
-    [{ promptFeedback: { blockReason: "SAFETY" } }, "SAFETY"],
+    // A filter on the question, before any answer, and one on the answer.
+    [
+      { promptFeedback: { blockReason: "PROHIBITED_CONTENT" } },
+      "PROHIBITED_CONTENT",
+      true,
+    ],
+    [{ candidates: [{ finishReason: "SAFETY" }] }, "SAFETY", true],
   ];
-  for (const [body, finishReason] of empties) {
+  for (const [body, finishReason, blocked] of empties) {
     const { model, bodies } = fakeGemini({ status: 200, body });
 
     const reply = await model.next(request());
 
     assert.deepEqual(reply.calls, []);
     assert.equal(reply.finishReason, finishReason);
+    assert.equal(reply.blocked, blocked);
     assert.equal(reply.raw, undefined);
     await assert.rejects(
       model.next(request([QUESTION, { role: "model", reply }])),
-      {
-        message:
-          /can't go back in the conversation: send the request again instead/,
-      },
+      { message: /can't go back in the conversation/ },
     );
     // Refused before sending anything.
     assert.equal(bodies.length, 1);

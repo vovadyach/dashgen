@@ -249,7 +249,7 @@ sequenceDiagram
     B-->>F: runId
     F->>B: tRPC subscription run(runId): from here the stream is open, with HTTP 200
     B->>LLM: question + tools
-    break Gemini still errors after its retries
+    break Gemini fails, after one retry if retrying can help
         B-->>F: error event: unavailable, "Try again in a moment"
     end
     LLM-->>B: call query_metrics(...)
@@ -265,7 +265,7 @@ sequenceDiagram
 ```
 
 - **Two kinds of error.** Before a run starts, `ask` fails like a normal request, with an HTTP status. Once `run` is streaming, the HTTP status is already 200, so a failure arrives as the stream's last event instead. Both carry one of [our error codes](#the-frontends-api), so the page shows the right message either way.
-- **Timeouts and retries:** every outside call has a timeout, and only errors worth retrying are retried, after a short random wait, so retries from many requests don't all land at once.
+- **Timeouts and retries:** every outside call has a timeout. An error that retrying can fix, like a timeout or a 503, gets one retry, after a short random wait, so retries from many requests don't all land at once. Any other error, like a wrong key, fails at once.
 - **25 seconds per question,** under CloudFront's 30-second timeout, so a slow question gets the backend's own error ([ADR-0003](decisions/0003-cloudfront-front-door.md) explains the three timeouts).
 - **A run always finishes within its limits,** even if the visitor leaves, so a reconnect finds it intact. Its cost is already capped: at most 6 model calls and 25 seconds, and the question was reserved when it started.
 - The numbers here (6 calls, 25 seconds per question, a 2-second timeout, one retry) are starting values for the evals to tune.
@@ -479,9 +479,9 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 | `clarify` | `message`, and 2–4 `choices`, each a complete question | ends the run with the choices |
 | `decline` | `reason` | ends the run with a short refusal and fixed example questions |
 
-- **Every answer is a tool call.** Gemini runs in its `ANY` function-calling mode, which rules out prose, so the backend never parses free text. A run ends with `create_chart`, `clarify` or `decline`. Gemini can still send a reply without a tool call (a malformed call, a safety block, or no tokens left). The backend drops that reply and sends the same request again, which counts toward the 6 calls. When they run out, the run ends with `agent_failed`.
+- **Every answer is a tool call.** Gemini runs in its `ANY` function-calling mode, which rules out prose, so the backend never parses free text. A run ends with `create_chart`, `clarify` or `decline`. Gemini can still send a reply without a tool call. If its safety filters blocked the question or the answer, the run ends at once as a `decline`, with a fixed message and the example questions: asking again would get the same block. For any other reason, like a malformed call or no tokens left, the backend sends the same request once more, as one of the 6 calls. A second reply without a tool call ends the run with `agent_failed`.
 - **A bad argument,** such as an unknown service, goes back to the model as a tool error and counts toward the 6 calls. Arguments are strict: a misspelled one, like `day` for `days`, is an error too, never silently dropped, which would quietly change the chart.
-- **Several calls in one reply.** To compare 5 services, the model queries them all in one reply, so the question fits in 3 model calls (list, query, chart) instead of 7. The backend runs a reply's calls in order, one at a time, since each takes milliseconds: a later call can use an earlier one's result, so a chart in the same reply as its queries works, which saves a model call.
+- **Several calls in one reply.** To compare 5 services, the model queries them all in one reply, so the question fits in 3 model calls (list, query, chart) instead of 7. The backend runs a reply's calls in order, one at a time, since each takes milliseconds: a later call can use an earlier one's result, so a chart in the same reply as its queries works, which saves a model call. Query IDs follow the order of the calls, failed ones included, so such a chart gets the right results or a refusal, never another service's.
 - **Each run gets its own tools,** which keep its results (`q1`, `q2`…) and query with a clock fixed when the run starts, so results fetched seconds apart still cover the same window. A question can make at most 10 queries, since every result is resent with each later model call.
 - **`aggregation`** (`avg`, `max`, `min`, `total` or `latest`) turns each series into one number per service, for bar and pie charts that compare services. The number is that statistic from the query's [summary](#the-metrics-module). Pie charts show each service's share of a total, so they need 2 or more services and `total`.
 - **A chart shows one metric,** one result per service, all over the same days and bucket, since a 7-day average next to a 30-day one would mislead. `create_chart` refuses anything else with a tool error that says what to change.
@@ -530,7 +530,7 @@ Every error carries our own code and a message that's safe to show visitors. Whe
 | `rate_limited` | `ask` fails, HTTP 429 | the 11th question in a minute from one IP |
 | `daily_cap` | `ask` fails, HTTP 503 | the day's questions are used up |
 | `agent_failed` | `error` event in `run`; HTTP stays 200 | no chart, clarifying question or refusal within the [run's limits](#the-daily-cap) |
-| `unavailable` | `error` event in `run` | the database or Gemini still fails after retries |
+| `unavailable` | `error` event in `run` | the database or Gemini fails, after one retry if retrying can help |
 | `timeout` | `error` event in `run` | the run took over 25 seconds |
 | `run_not_found` | `run` fails, HTTP 404 | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page says the answer was interrupted and offers to ask again |
 

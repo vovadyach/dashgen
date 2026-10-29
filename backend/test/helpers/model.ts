@@ -58,9 +58,12 @@ export function reply(
       name,
       args,
     })),
+    blocked: false,
     text: "",
     finishReason: "STOP",
     usage: { inputTokens: 2_000, outputTokens: 60 },
+    // Stands in for the provider's own reply, which goes back in the conversation.
+    raw: { fake: true },
   };
 }
 
@@ -70,8 +73,14 @@ export function emptyReply(
 ): ModelReply {
   return {
     calls: [],
+    blocked: false,
     text: "",
     finishReason,
     usage: { inputTokens: 2_000, outputTokens: 0 },
   };
+}
+
+/** A question a safety filter blocked: no tool call, and asking again gets the same block. */
+export function blockedReply(finishReason = "PROHIBITED_CONTENT"): ModelReply {
+  return { ...emptyReply(finishReason), blocked: true };
 }

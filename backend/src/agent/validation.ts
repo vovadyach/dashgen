@@ -3,7 +3,12 @@ import { z } from "zod";
 
 import { ToolError } from "./errors.ts";
 import { distinct } from "./helpers.ts";
-import type { CreateChartArgs, Message } from "./types.ts";
+import type {
+  CreateChartArgs,
+  Message,
+  ToolCall,
+  ToolOutput,
+} from "./types.ts";
 
 /** Every result is resent with each later model call, so a question gets this many. */
 export const MAX_QUERIES = 10;
@@ -59,7 +64,7 @@ export function checkChart(
   const metrics = distinct(sources.map((s) => s.metric));
   if (metrics.length > 1) {
     throw new ToolError(
-      `A chart shows one metric, but these results have ${metrics.join(" and ")}. Make one chart per metric.`,
+      `A chart shows one metric, but these results have ${metrics.join(" and ")}. Chart one of them, or use clarify to ask the visitor which.`,
     );
   }
   const services = sources.map((s) => s.service);
@@ -87,14 +92,15 @@ export function checkChart(
         `A pie chart shows shares of a total, but ${averaged.metric} averages, so it has no total. Compare services with a bar chart and aggregation avg, max, min or latest.`,
       );
     }
-    if (args.aggregation !== "total" || sources.length < 2) {
-      throw new ToolError(
-        'A pie chart shows each service\'s share of a total, so it needs 2 or more services and aggregation "total". For one service over time, use a line chart without aggregation.',
-      );
-    }
+    // Before the check below, so following that one's advice isn't refused here.
     if (sources.every((s) => s.summary.total === 0)) {
       throw new ToolError(
         "Every total is 0, so there are no shares to show. Use a bar chart.",
+      );
+    }
+    if (args.aggregation !== "total" || sources.length < 2) {
+      throw new ToolError(
+        'A pie chart shows each service\'s share of a total, so it needs 2 or more services and aggregation "total". For one service over time, use a line chart without aggregation.',
       );
     }
   }
@@ -117,18 +123,47 @@ export function checkChart(
 
 /**
  * The rules every model's conversation follows, real or fake, so a loop that
- * breaks them fails in tests too. Breaking one is the caller's bug, not the
+ * breaks them fails in tests too: Gemini answers a request that breaks them
+ * with a 400, which isn't retried. Breaking one is the caller's bug, not the
  * model's, so it's a plain Error.
  */
 export function checkConversation(messages: Message[]): void {
-  for (const message of messages) {
-    if (message.role === "model" && message.reply.calls.length === 0) {
+  if (messages[0]?.role !== "user") {
+    throw new Error("A conversation starts with the question.");
+  }
+  messages.forEach((message, i) => {
+    if (message.role === "model") {
+      const { calls, finishReason, raw } = message.reply;
+      if (calls.length === 0) {
+        throw new Error(
+          `A reply without tool calls (${finishReason}) can't go back in the conversation.`,
+        );
+      }
+      // Gemini 3 checks the signatures inside it.
+      if (raw === undefined) {
+        throw new Error("A reply goes back with its raw, exactly as it came.");
+      }
+      const next = messages[i + 1];
+      if (next?.role !== "tools" || !answersEach(calls, next.outputs)) {
+        throw new Error(
+          "Each tool call in a reply needs one output, in the same order, in the message right after it.",
+        );
+      }
+    }
+    if (message.role === "tools" && messages[i - 1]?.role !== "model") {
       throw new Error(
-        `A reply without tool calls (${message.reply.finishReason}) can't go back in the conversation: send the request again instead.`,
+        "Tool outputs go right after the reply that asked for them.",
       );
     }
-    if (message.role === "tools" && message.outputs.length === 0) {
-      throw new Error("A tools message needs at least one output.");
-    }
-  }
+  });
+}
+
+function answersEach(calls: ToolCall[], outputs: ToolOutput[]): boolean {
+  return (
+    outputs.length === calls.length &&
+    calls.every((call, i) => {
+      const answered = outputs[i]?.call;
+      return answered?.name === call.name && answered.id === call.id;
+    })
+  );
 }

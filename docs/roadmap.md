@@ -59,7 +59,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 ## 4. Guardrails and cost
 
 - [ ] `clarify` with clickable choices when the question is vague, and `decline` with example questions when it's off-topic
-- [ ] Errors classified as retryable or not; retries use exponential backoff with jitter
+- [ ] Errors classified as retryable or not; a retryable one gets one retry, after a short random wait
 - [ ] [Daily cap](design.md#the-daily-cap) of 150 questions, counted in DynamoDB, with DynamoDB Local in Docker Compose
 - [ ] A friendly message when the daily cap is hit, with a link to the demo video
 - [ ] A $20 monthly spend cap on the Gemini project, noted in the runbook

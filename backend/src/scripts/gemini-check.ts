@@ -3,7 +3,7 @@
 // the question first, then the model's own reply sent back with tool results,
 // which Gemini 3 accepts only with its thought signatures intact.
 // `npm run gemini:check -- --json` also prints each answer as Gemini sent it.
-// It reads GEMINI_API_KEY from backend/.env, so people run it, never agents.
+// Its requests are billed to the key in backend/.env, so people run it, never agents.
 import { createGeminiModel } from "../agent/gemini.ts";
 import { createTools } from "../agent/tools.ts";
 import type { Message, ModelReply, ToolOutput } from "../agent/types.ts";

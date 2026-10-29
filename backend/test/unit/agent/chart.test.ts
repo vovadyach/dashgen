@@ -109,7 +109,8 @@ const refusals: [string, CreateChartArgs, RegExp][] = [
   [
     "two metrics on one chart",
     { type: "line", sources: ["q1", "q4"], title: "t" },
-    /one metric, but these results have errors and latency_ms/,
+    // Not "one chart per metric": create_chart ends the run, so a second one can't follow.
+    /one metric, but these results have errors and latency_ms\. Chart one of them, or use clarify to ask the visitor which\./,
   ],
   [
     "the same service twice",
@@ -153,6 +154,12 @@ const refusals: [string, CreateChartArgs, RegExp][] = [
     /Every total is 0/,
   ],
   [
+    // Said first, so adding "total" isn't refused next for the zeros.
+    "a pie chart of zero totals, without aggregation",
+    { type: "pie", sources: ["q6", "q7"], title: "t" },
+    /Every total is 0, so there are no shares to show\. Use a bar chart\./,
+  ],
+  [
     "a line chart that compares services",
     { type: "line", sources: ["q1", "q2"], title: "t", aggregation: "max" },
     /line chart shows change over time: leave out aggregation, or compare services with a bar chart\./,
@@ -190,9 +197,15 @@ test("following a refusal's advice gives a chart, not another refusal", () => {
     { type: "line", sources: ["q1"], title: "t" },
     results,
   );
+  // A pie of zero totals: a bar chart.
+  const zeros = buildChart(
+    { type: "bar", sources: ["q6", "q7"], title: "t", aggregation: "total" },
+    results,
+  );
 
   assert.equal(bar.type, "bar");
   assert.equal(line.type, "line");
+  assert.equal(zeros.type, "bar");
 });
 
 test("before any query, says there are no results yet", () => {

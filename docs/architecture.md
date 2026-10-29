@@ -21,7 +21,7 @@ How a question will become a chart is drawn in [design.md](design.md#one-questio
 
 `http://localhost:3000`. Interactive docs, generated from the routes' Zod schemas, are at `/docs`, and the OpenAPI document at `/docs/openapi.json`.
 
-Every response carries an `x-request-id` header: a UUIDv7, which also appears in that request's log lines ([ADR-0009](decisions/0009-uuidv7-ids.md)).
+Every response carries an `x-request-id` header: a UUIDv7, which also appears in that request's log lines ([ADR-0009](decisions/0009-uuidv7-ids.md)). The exceptions are the few sent before a request is routed: 400 or 431 for a malformed or oversized header, and 503 while the server shuts down.
 
 **`GET /health`** returns `200 {"status":"ok"}`.
 
@@ -48,7 +48,7 @@ The tables are in [design.md](design.md#the-metrics-tables), and the module's re
 | `npm run db:seed` | Replaces the sample data with 30 days of hourly points ending this hour, in one transaction |
 | `npm run db:generate --workspace backend -- --name <change>` | After a schema change: writes the next SQL migration, to commit with it. Never `npx drizzle-kit`, which reads `backend/.env` |
 
-Database tests run against a separate throwaway Postgres on port 5433 (`compose.test.yaml`), which `make check` starts. Each test file creates its own database there and drops it afterwards. To use another Postgres, set `TEST_DATABASE_URL` in the shell to its admin URL.
+Database tests run against a separate throwaway Postgres on port 5433 (`compose.test.yaml`), which `make check` starts. Each test file creates its own database there and drops it afterwards. To use another Postgres, 18 or later since the migrations use its `uuidv7()`, set `TEST_DATABASE_URL` in the shell to its admin URL.
 
 ## Configuration
 

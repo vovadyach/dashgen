@@ -24,5 +24,5 @@ Node.js 24 + Fastify, in TypeScript. Takes a question and returns a chart; the G
 - No `any`, and ESLint's type-aware rules must pass, including the one against promises nobody awaits.
 - Tests use `node:test`, split by what they need:
   - `test/unit/`: pure logic, with no database or network. `npm run test:unit` runs them without Docker.
-  - `test/integration/`: real parts together. Routes go through `app.inject()` (`startApp` in `test/helpers/app.ts`), and Postgres through `createTestDb()` (`test/helpers/db.ts`), which gives each file its own migrated database on the test Postgres that `make check` starts (or on `TEST_DATABASE_URL`).
+  - `test/integration/`: real parts together. Routes go through `app.inject()` (`startApp` in `test/helpers/app.ts`), and Postgres through `createTestDb()` (`test/helpers/db.ts`), which gives each file its own migrated database on the test Postgres that `make check` starts (or on `TEST_DATABASE_URL`, which must be Postgres 18 or later).
   - Inside each, a subfolder per module once a module has several test files. Tests never call Gemini; from step 3 the agent gets a fake model.

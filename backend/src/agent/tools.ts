@@ -24,22 +24,34 @@ export const EXAMPLE_QUESTIONS = [
 
 /**
  * A tool whose `run` gets arguments already checked against its own schema,
- * so the name, the schema and the check can't drift apart.
+ * so the name, the schema and the check can't drift apart. `run` also gets
+ * the call's number among this tool's calls, counted before the check, so a
+ * call with wrong arguments still takes its number.
  */
 function defineTool<S extends z.ZodType>(tool: {
   name: string;
   description: string;
   args: S;
-  run: (args: z.output<S>) => ToolResult | Promise<ToolResult>;
+  run: (
+    args: z.output<S>,
+    callNumber: number,
+  ) => ToolResult | Promise<ToolResult>;
 }): Tool {
+  let calls = 0;
   return {
     name: tool.name,
     description: tool.description,
     args: tool.args,
     // Async, so even a tool that fails on the spot rejects instead of throwing.
     // Gemini leaves out the arguments of a call that has none.
-    call: async (input) =>
-      await tool.run(parseArgs(tool.name, tool.args, input ?? {})),
+    call: async (input) => {
+      calls += 1;
+      const callNumber = calls;
+      return await tool.run(
+        parseArgs(tool.name, tool.args, input ?? {}),
+        callNumber,
+      );
+    },
   };
 }
 
@@ -50,7 +62,6 @@ function defineTool<S extends z.ZodType>(tool: {
  */
 export function createTools(metrics: Metrics): Tool[] {
   const results = new Map<string, MetricsResult>();
-  let queriesMade = 0;
 
   return [
     defineTool({
@@ -71,12 +82,12 @@ export function createTools(metrics: Metrics): Tool[] {
       name: "query_metrics",
       description: `Fetches one metric for one service over the last 1 to 30 days. Returns a result ID, like q1, and a summary over the hours (a total for metrics that add up, plus avg, min, max and latest), but not the points: pass the ID to create_chart to plot them. To compare services, call it for each service in the same reply, with the same days and bucket. Only names from list_services work, and a question can make ${String(MAX_QUERIES)} queries.`,
       args: QueryMetricsArgs,
-      run: async (args) => {
-        checkQueryCount(queriesMade, results.keys());
-        // Taken before the query runs, so calls made side by side keep the
-        // limit, and IDs follow the order of the calls, not of their answers.
-        queriesMade += 1;
-        const id = `q${String(queriesMade)}`;
+      run: async (args, callNumber) => {
+        // Every call takes the next ID, failed ones too, so IDs follow the
+        // order of the calls: a chart in the same reply that names them gets
+        // the right results, or a refusal, never another service's.
+        checkQueryCount(callNumber - 1, results.keys());
+        const id = `q${String(callNumber)}`;
 
         let result: MetricsResult;
         try {

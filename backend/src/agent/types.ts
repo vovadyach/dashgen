@@ -119,11 +119,14 @@ export type ToolOutput =
 /** The model's answer to one request. */
 export interface ModelReply {
   /**
-   * The tools it asked for, often several at once. Empty when the model failed
-   * to call one (a malformed call, a safety block, or no tokens left): such a
-   * reply mustn't go back in the conversation, so send the request again instead.
+   * The tools it asked for, often several at once. Empty when the model called
+   * none: a safety block, a malformed call, or no tokens left. Such a reply
+   * never goes back in the conversation; docs/design.md (the agent's tools)
+   * says what the loop does instead.
    */
   calls: ToolCall[];
+  /** A safety filter stopped the question or the answer, so asking again gets the same block. */
+  blocked: boolean;
   /** Any text beside the calls; usually empty, since every answer must be a tool call. */
   text: string;
   /** Why the model stopped, as the provider says it, like "STOP" or "MAX_TOKENS". */

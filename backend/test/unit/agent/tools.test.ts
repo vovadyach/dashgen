@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { setTimeout } from "node:timers/promises";
 
 import { type MetricsQuery, Outcome } from "@dashgen/contracts";
 import { z } from "zod";
@@ -18,33 +17,29 @@ const CATALOG = {
   ],
 };
 
-/**
- * The metrics module without a database: a known service gets the sample result.
- * `delays` slows some services down, in milliseconds, to test calls side by side.
- */
-function fakeMetrics(
-  delays: Record<string, number> = {},
-): Metrics & { queries: MetricsQuery[] } {
+/** The metrics module without a database: a known service gets the sample result. */
+function fakeMetrics(): Metrics & { queries: MetricsQuery[] } {
   const queries: MetricsQuery[] = [];
   return {
     queries,
     listServices: () => Promise.resolve(CATALOG),
-    query: async (input) => {
+    query: (input) => {
       queries.push(input);
-      await setTimeout(delays[input.service] ?? 0);
       if (!CATALOG.services.includes(input.service)) {
-        throw new MetricsError(
-          `Unknown service "${input.service}". Known services: ${CATALOG.services.join(", ")}.`,
+        return Promise.reject(
+          new MetricsError(
+            `Unknown service "${input.service}". Known services: ${CATALOG.services.join(", ")}.`,
+          ),
         );
       }
-      return errorsResult(input.service);
+      return Promise.resolve(errorsResult(input.service));
     },
   };
 }
 
 /** One run's tools, and a way to call one by name, as the agent loop will. */
-function startRun(delays: Record<string, number> = {}) {
-  const metrics = fakeMetrics(delays);
+function startRun() {
+  const metrics = fakeMetrics();
   const tools = createTools(metrics);
   const call = (name: string, input: unknown) => {
     const tool = tools.find((t) => t.name === name);
@@ -178,28 +173,32 @@ test(`a question gets at most ${String(MAX_QUERIES)} queries`, async () => {
   assert.equal(metrics.queries.length, MAX_QUERIES);
 });
 
-test("calls made side by side keep the limit, and get IDs in the order they were made", async () => {
-  // checkout-api is asked first but answers last.
-  const { call } = startRun({ "checkout-api": 20 });
-  const payments = { ...QUERY, service: "payments-service" };
+test("IDs follow the order of the calls, failed ones included", async () => {
+  const { call } = startRun();
 
-  const [slow, fast] = await Promise.all([
-    call("query_metrics", QUERY),
-    call("query_metrics", payments),
-  ]);
-  const rest = await Promise.allSettled(
-    Array.from({ length: MAX_QUERIES }, () => call("query_metrics", payments)),
+  // Wrong arguments, then an unknown service: each still takes its ID.
+  await assert.rejects(call("query_metrics", { ...QUERY, days: 31 }), {
+    name: "ToolError",
+  });
+  await assert.rejects(
+    call("query_metrics", { ...QUERY, service: "billing" }),
+    {
+      name: "ToolError",
+    },
   );
+  const third = await call("query_metrics", QUERY);
 
-  assert.ok(!slow.done && !fast.done);
-  assert.deepEqual([slow.result.id, fast.result.id], ["q1", "q2"]);
-  assert.equal(
-    rest.filter((r) => r.status === "fulfilled").length,
-    MAX_QUERIES - 2,
+  assert.ok(!third.done);
+  assert.equal(third.result.id, "q3");
+  // A chart in the same reply that counted on q1 is refused, instead of
+  // drawing another service under its title.
+  await assert.rejects(
+    call("create_chart", { type: "line", sources: ["q1"], title: "t" }),
+    { name: "ToolError", message: /Unknown result "q1"\. Known results: q3\./ },
   );
 });
 
-test("a wrong call rejects instead of throwing, so calls can run side by side", async () => {
+test("a wrong call rejects instead of throwing", async () => {
   const { tools } = startRun();
 
   for (const tool of tools) {
