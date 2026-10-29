@@ -1,35 +1,38 @@
 import path from "node:path";
 
+import { DrizzleQueryError } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 
 import { consoleLogger, type Logger } from "./logger.ts";
 
-export type Db = NodePgDatabase;
+/** Drizzle over a pg pool. `db.$client.end()` closes the pool. */
+export type Db = NodePgDatabase & { $client: Pool };
 
-export interface Database {
-  db: Db;
-  pool: Pool;
+export interface DbOptions {
+  log?: Logger;
+  /** Postgres cancels a statement that runs longer. Short for requests; scripts pass a long one. */
+  statementTimeoutMs?: number;
 }
 
-/**
- * Opens a connection pool wrapped in Drizzle. Call `pool.end()` when done.
- * A failed query throws an error that carries its SQL and Postgres's reason.
- */
-export function createDb(url: string, log: Logger = consoleLogger): Database {
+/** Opens a connection pool wrapped in Drizzle. Close it with `db.$client.end()`. */
+export function createDb(
+  url: string,
+  { log = consoleLogger(), statementTimeoutMs = 2_000 }: DbOptions = {},
+): Db {
   const pool = new Pool({
     connectionString: url,
     max: 10,
     connectionTimeoutMillis: 2_000, // fail fast when no connection is free
     idleTimeoutMillis: 30_000,
-    statement_timeout: 2_000, // Postgres cancels a query that runs longer
+    statement_timeout: statementTimeoutMs,
   });
   // A dropped idle connection emits "error", which would crash Node unhandled.
   pool.on("error", (err) => {
     log.error({ err }, "an idle database connection failed");
   });
-  const db = drizzle({
+  return drizzle({
     client: pool,
     // Every statement at debug level. Only the SQL text: values may hold user input.
     logger: {
@@ -38,19 +41,19 @@ export function createDb(url: string, log: Logger = consoleLogger): Database {
       },
     },
   });
-  return { db, pool };
 }
 
 /** Opens a pool, runs `work`, and always closes the pool, so a script can exit. */
 export async function withDatabase<T>(
   url: string,
   work: (db: Db) => Promise<T>,
+  options?: DbOptions,
 ): Promise<T> {
-  const { db, pool } = createDb(url);
+  const db = createDb(url, options);
   try {
     return await work(db);
   } finally {
-    await pool.end();
+    await db.$client.end();
   }
 }
 
@@ -59,4 +62,19 @@ export async function migrateDb(db: Db): Promise<void> {
   await migrate(db, {
     migrationsFolder: path.join(import.meta.dirname, "..", "drizzle"),
   });
+}
+
+/**
+ * A failed query's error message lists its values (`params: …`), which can hold
+ * user input. Before logging, this keeps the SQL and Postgres's reason, and drops the values.
+ */
+export function withoutQueryValues(error: unknown): unknown {
+  if (!(error instanceof DrizzleQueryError)) return error;
+  const redacted = new Error(`Failed query: ${error.query}`, {
+    cause: error.cause,
+  });
+  redacted.name = "DrizzleQueryError";
+  if (error.stack !== undefined)
+    redacted.stack = error.stack.replace(error.message, redacted.message);
+  return redacted;
 }

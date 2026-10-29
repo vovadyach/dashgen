@@ -13,14 +13,26 @@ export interface Logger {
   error(obj: object, msg: string): void;
 }
 
-/** For scripts and tests: warnings and errors print, the rest stays quiet. */
-export const consoleLogger: Logger = {
-  debug: () => undefined,
-  info: () => undefined,
-  warn: (obj, msg) => {
-    console.warn(msg, obj);
-  },
-  error: (obj, msg) => {
-    console.error(msg, obj);
-  },
-};
+/** From most to least severe. */
+export const LOG_LEVELS = ["error", "warn", "info", "debug"] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
+
+/** Prints lines at `level` and above, for scripts and tests. */
+export function consoleLogger(level: LogLevel = "warn"): Logger {
+  const shown = (line: LogLevel) =>
+    LOG_LEVELS.indexOf(line) <= LOG_LEVELS.indexOf(level);
+  return {
+    error: (obj, msg) => {
+      if (shown("error")) console.error(msg, obj);
+    },
+    warn: (obj, msg) => {
+      if (shown("warn")) console.warn(msg, obj);
+    },
+    info: (obj, msg) => {
+      if (shown("info")) console.info(msg, obj);
+    },
+    debug: (obj, msg) => {
+      if (shown("debug")) console.debug(msg, obj);
+    },
+  };
+}

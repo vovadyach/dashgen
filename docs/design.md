@@ -371,7 +371,7 @@ erDiagram
 - **`points` is the time series:** one row per metric, service and hour, so 7,200 rows for 30 days.
 - **Its primary key is the index the queries need.** In `(metric, service, recorded_at)`, the columns that queries match exactly come first and the range comes last. "payments-service errors this week" reads one slice of the index, and "every service's latency this week" still uses its first column. An `id` column would only add a second index that nothing reads. At 7,200 rows Postgres reads the whole table in under a millisecond anyway; the key starts to matter at millions of rows.
 - **`services` and `metrics` list what exists.** The metrics module checks names against them, the foreign keys stop a typo from inventing a service, and `list_services` reads them.
-- **Each metric says how it rolls up.** Hourly errors add up to daily errors, while latency averages. The metrics module applies the rollup in SQL, joining `points` to `metrics` for the rule, so the model can't add up latencies.
+- **Each metric says how it rolls up.** Hourly errors add up to daily errors, while latency averages. The metrics module reads the rule from `metrics` and applies it in SQL, so the model can't add up latencies.
 - **The seed gives questions something to find:** daily and weekly cycles, some noise, and a few incidents, such as an error spike on `payments-service` two days ago. Each hour's value comes from a hash of its service, metric and hour, so it's the same whichever day the seed runs, and evals can know the right answers. Only the incidents move, counted back from today. It writes everything in one transaction, so a failed seed leaves the old data intact.
 - **All times are UTC.** The frontend shows them in the visitor's time zone.
 
@@ -454,11 +454,11 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
   "unit": "count",
   "bucket": "day",
   "points": [
-    {"t": "2026-10-25T00:00:00Z", "value": 41},
-    {"t": "2026-10-26T00:00:00Z", "value": 38},
-    {"t": "2026-10-27T00:00:00Z", "value": 12, "partial": true}
+    {"t": "2026-10-25T00:00:00Z", "value": 38},
+    {"t": "2026-10-26T00:00:00Z", "value": 55},
+    {"t": "2026-10-27T00:00:00Z", "value": 16, "partial": true}
   ],
-  "summary": {"total": 91, "avg": 1.6, "min": 0, "max": 7, "latest": 1}
+  "summary": {"total": 109, "avg": 1.85, "min": 1, "max": 4, "latest": 2}
 }
 ```
 
@@ -513,7 +513,7 @@ The React app calls the backend through [tRPC](decisions/0007-trpc.md) under `/a
 
 - `outcome` is `chart`, `clarify` (with `message` and `choices`) or `decline` (with `message` and `examples`).
 - `x` is `time` for a chart over time, or `category` when each point is a service.
-- A point marked `"partial": true` is today's, in a daily chart. The frontend draws it lighter, since the day isn't over.
+- A point marked `"partial": true` is a day with fewer than 24 hours of data, in a daily chart: usually today so far, or a gap in the data. The frontend draws it lighter, so it doesn't read as a drop.
 - A chart carries its own numbers, so charts pinned in the browser still draw while the backend is offline.
 
 Every error carries our own code and a message that's safe to show visitors. Where it arrives depends on when it happens:

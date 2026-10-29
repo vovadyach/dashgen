@@ -5,7 +5,7 @@
 
 ## Context
 
-The backend needs typed access to Postgres for the metrics tables and the `runs` table, plus migrations. Its main queries are time-series aggregations: bucket hourly points into hours or days with `date_trunc`, apply each metric's rollup (sum or average, joined from the `metrics` table), and compute a summary.
+The backend needs typed access to Postgres for the metrics tables and the `runs` table, plus migrations. Its main queries are time-series aggregations: bucket hourly points into hours or days with `date_trunc`, apply each metric's rollup (sum or average, as the `metrics` table says), and compute a summary.
 
 The options considered:
 

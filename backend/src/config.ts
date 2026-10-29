@@ -2,6 +2,8 @@ import { inspect } from "node:util";
 
 import { z } from "zod";
 
+import { LOG_LEVELS, type LogLevel } from "./logger.ts";
+
 /** A string that stays hidden when it's logged, printed or turned into JSON. */
 export class Secret {
   readonly #value: string;
@@ -39,15 +41,15 @@ const Env = z.object({
         .filter((origin) => origin !== ""),
     )
     .pipe(z.array(z.string()).min(1)),
-  // debug adds every SQL statement; info suits AWS.
-  LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).default("info"),
+  LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
 });
 
 /** Backend settings, read from environment variables. */
 export interface Config {
   geminiApiKey: Secret;
   allowedOrigins: string[];
-  logLevel: "error" | "warn" | "info" | "debug";
+  // debug adds every SQL statement; info suits AWS.
+  logLevel: LogLevel;
 }
 
 /** Parses `env` with `schema`, and throws an error naming every missing or invalid variable. */
@@ -75,10 +77,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 }
 
 const DatabaseEnv = z.object({
-  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  // A host is required too: `postgres:/oops` is a valid URL, but connects nowhere useful.
+  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/, hostname: /.+/ }),
 });
 
 /** Reads `DATABASE_URL`, which holds a password, so it comes back as a `Secret`. */
 export function loadDatabaseUrl(env: NodeJS.ProcessEnv = process.env): Secret {
   return new Secret(parseEnv(DatabaseEnv, env).DATABASE_URL);
+}
+
+const LogLevelEnv = z.object({ LOG_LEVEL: z.enum(LOG_LEVELS).default("info") });
+
+/** Reads `LOG_LEVEL` alone, for scripts that don't need the backend's other settings. */
+export function loadLogLevel(env: NodeJS.ProcessEnv = process.env): LogLevel {
+  return parseEnv(LogLevelEnv, env).LOG_LEVEL;
 }

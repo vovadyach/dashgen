@@ -4,6 +4,7 @@ import {
   type ServiceCatalog,
 } from "@dashgen/contracts";
 import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
+import { z } from "zod";
 
 import type { Db } from "../db.ts";
 import { consoleLogger, type Logger } from "../logger.ts";
@@ -34,7 +35,7 @@ export interface MetricsOptions {
 
 export function createMetrics(
   db: Db,
-  { now = () => new Date(), log = consoleLogger }: MetricsOptions = {},
+  { now = () => new Date(), log = consoleLogger() }: MetricsOptions = {},
 ): Metrics {
   async function listServices(): Promise<ServiceCatalog> {
     const [serviceRows, metricRows] = await Promise.all([
@@ -45,9 +46,15 @@ export function createMetrics(
   }
 
   async function query(input: MetricsQuery): Promise<MetricsResult> {
-    const parsed = MetricsQuery.parse(input);
-    const { service, metric, days } = parsed;
-    const bucket = parsed.bucket ?? (days <= 2 ? "hour" : "day");
+    // Arguments come from the model, so a bad one is a MetricsError it can correct, not a crash.
+    const result = MetricsQuery.safeParse(input);
+    if (!result.success) {
+      throw new MetricsError(
+        `Invalid query arguments:\n${z.prettifyError(result.error)}`,
+      );
+    }
+    const { service, metric, days } = result.data;
+    const bucket = result.data.bucket ?? (days <= 2 ? "hour" : "day");
 
     const catalog = await listServices();
     const info = catalog.metrics.find((m) => m.name === metric);
@@ -150,8 +157,9 @@ export function createMetrics(
       points: buckets.map((row) => ({
         t: row.t.toISOString(),
         value: round(row.value),
-        // Today's daily bucket is still growing, so the chart draws it lighter.
-        ...(bucket === "day" && row.t.getTime() === today
+        // A day with fewer than 24 hours is incomplete: today so far, or a gap in
+        // the data. Marked partial, the chart draws it lighter instead of as a drop.
+        ...(bucket === "day" && row.hours < 24
           ? { partial: true as const }
           : {}),
       })),

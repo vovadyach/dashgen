@@ -46,7 +46,7 @@ The tables are in [design.md](design.md#the-metrics-tables), and the module's re
 | `npm run db:seed` | Replaces the sample data with 30 days of hourly points ending this hour, in one transaction |
 | `npm run db:generate --workspace backend` | After a schema change: writes the next SQL migration, to commit with it |
 
-Database tests run against a separate throwaway Postgres on port 5433 (`compose.test.yaml`), which `make check` starts. Each test file creates its own database there and drops it afterwards.
+Database tests run against a separate throwaway Postgres on port 5433 (`compose.test.yaml`), which `make check` starts. Each test file creates its own database there and drops it afterwards. To use another Postgres, set `TEST_DATABASE_URL` in the shell to its admin URL.
 
 ## Configuration
 
