@@ -1,6 +1,6 @@
 # Gateway
 
-Node.js 24 + Fastify, in TypeScript. Takes a question and returns a chart; the Gemini agent arrives in step 4.
+Node.js 24 + Fastify, in TypeScript. Takes a question and returns a chart; the Gemini agent arrives in step 3.
 
 - Code in `src/`, tests in `test/`. Node runs the `.ts` files directly, so there's no build step: `tsc` only checks types.
 - Run it with `make gateway` from the repo root: port 3000, restarts on changes, reads `gateway/.env`. API docs at http://localhost:3000/docs.
@@ -15,4 +15,4 @@ Node.js 24 + Fastify, in TypeScript. Takes a question and returns a chart; the G
 - Per-route behavior, like the rate limit, goes in the route's options: `config: { rateLimit: ... }`.
 - Only TypeScript that Node can strip: no `enum`, no parameter properties, and relative imports end in `.ts`. The `erasableSyntaxOnly` setting enforces it.
 - No `any`, and ESLint's type-aware rules must pass, including the one against promises nobody awaits.
-- Tests use `node:test` and `startApp` from `test/helpers.ts`, which calls routes through `app.inject()` without opening a port. They never touch the network or Gemini. From step 4 the agent is tested with a fake model.
+- Tests use `node:test` and `startApp` from `test/helpers.ts`, which calls routes through `app.inject()` without opening a port. They never touch the network or Gemini. From step 3 the agent is tested with a fake model.
