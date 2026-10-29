@@ -1,0 +1,30 @@
+# Local development. `make db` starts Postgres. The passwords come from .env,
+# which `cp .env.example .env` creates.
+name: dashgen
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env}
+      # Read only by the init script, which creates each service's user.
+      METRICS_DB_PASSWORD: ${METRICS_DB_PASSWORD:?copy .env.example to .env}
+      GATEWAY_DB_PASSWORD: ${GATEWAY_DB_PASSWORD:?copy .env.example to .env}
+    # Reachable from this machine only, not from the rest of the network.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Postgres 18 keeps its data in /var/lib/postgresql/18/docker.
+      - postgres-data:/var/lib/postgresql
+      # Runs once, the first time Postgres starts with an empty volume.
+      - ./postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    healthcheck:
+      # Over TCP, because while the init script runs Postgres listens only on
+      # its socket. So this can't pass before the databases exist.
+      test: ["CMD", "pg_isready", "--host=127.0.0.1", "--username=postgres", "--dbname=postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  postgres-data:

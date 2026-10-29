@@ -64,7 +64,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 |---|---|---|
 | Metrics (`metrics/`) | Go 1.27+, standard library | Serves 7 days of hardcoded sample data ([API](docs/architecture.md#metrics-api)) |
 | Gateway (`gateway/`) | Python 3.14, FastAPI, uv | Takes questions with a per-IP rate limit, and answers 501 until the agent exists ([API](docs/architecture.md#gateway-api)) |
-| Database | Postgres | Planned (step 2) |
+| Database | Postgres 18, Docker Compose | Runs locally, with an empty database and user per service. Step 2 fills it |
 | Hosting | AWS, Terraform | Planned (step 3) |
 | Agent | Gemini (`google-genai`) | Planned (step 4) |
 | Frontend | React, TypeScript, Vite, Tailwind, Recharts | Planned (step 5) |
@@ -82,20 +82,31 @@ make gateway                           # terminal 2: gateway on :3000
 
 Open http://localhost:3000/docs to try the gateway's endpoints in the browser.
 
+Postgres runs in Docker (Docker Desktop or [OrbStack](https://orbstack.dev)). Nothing reads from it yet: step 2 is moving the metrics there.
+
+```bash
+cp .env.example .env   # then replace each placeholder with a password
+make db                # Postgres on localhost:5432
+```
+
+`docker compose down` stops it, and `docker compose down --volumes` also deletes its data. Postgres sets the passwords only the first time it starts, while its volume is empty, so changing them in `.env` later doesn't change the existing users. To switch to new ones, run `docker compose down --volumes` and then `make db`.
+
 Run every formatter, linter, type checker and test with `make check`, and fix formatting with `make fmt`. GitHub Actions runs the same checks on every pull request and every push to `main`.
 
 ## Repo layout
 
 ```
 dashgen/
-├── .claude/    # Claude Code settings, hooks and skills
-├── .github/    # CI workflow: runs scripts/check.sh
-├── docs/       # architecture, design, roadmap and decision records
-├── frontend/   # React + Vite app (planned)
-├── gateway/    # Python + FastAPI gateway
-├── metrics/    # Go metrics service
-├── scripts/    # check.sh: every check in one command
-├── CLAUDE.md   # project rules for Claude Code
+├── .claude/       # Claude Code settings, hooks and skills
+├── .github/       # CI workflow: runs scripts/check.sh
+├── docs/          # architecture, design, roadmap and decision records
+├── frontend/      # React + Vite app (planned)
+├── gateway/       # Python + FastAPI gateway
+├── metrics/       # Go metrics service
+├── postgres/      # init script: a database and a user per service
+├── scripts/       # check.sh: every check in one command
+├── CLAUDE.md      # project rules for Claude Code
+├── compose.yaml   # Postgres for local development
 └── Makefile
 ```
 

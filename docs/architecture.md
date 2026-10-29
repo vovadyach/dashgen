@@ -9,7 +9,7 @@ Browser ──▶ Gateway ──▶ Metrics ──▶ Postgres
            (the agent)   (the data)
 ```
 
-Today the metrics service and the gateway run. The frontend, Postgres and the agent are still planned, and the README's [status table](../README.md#status) says in which step.
+Today the metrics service and the gateway run, and Postgres runs in Docker Compose with an empty database per service. The frontend and the agent are still planned, and the README's [status table](../README.md#status) says in which step.
 
 - **Metrics** owns the time series. Nothing else reads that data directly.
 - **Gateway** owns the agent and, from step 2, the log of agent runs. It gets metrics only by calling the metrics service over HTTP.
