@@ -443,7 +443,7 @@ The agent's tools are its only callers. It replaces the first version, a Go serv
 | Function | Result |
 |---|---|
 | `listServices()` | the services, plus each metric's unit and rollup |
-| `query({ service, metric, days, bucket })` | one series and its summary. `days` runs from 1 to 30, 7 by default. `bucket` is `hour` or `day`: hourly up to 2 days and daily beyond, unless the agent asks for the other |
+| `query({ service, metric, days, bucket })` | one series and its summary. `days` runs from 1 to 30, 7 by default. `bucket` is `hour` or `day`: hourly up to 2 days and daily beyond, unless the agent asks for the other. Daily buckets cover that many UTC days, today included; hourly ones the last `days` × 24 hours |
 
 For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 
@@ -479,7 +479,9 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 | `decline` | `reason` | ends the run with a short refusal and fixed example questions |
 
 - **Every way to finish is a tool call** with a schema, so the backend never parses free text. If the model answers in prose, it gets one reminder, and then the run fails.
-- **A bad argument,** such as an unknown service, goes back to the model as a tool error and counts toward the 6 calls.
+- **A bad argument,** such as an unknown service, goes back to the model as a tool error and counts toward the 6 calls. Arguments are strict: a misspelled one, like `day` for `days`, is an error too, never silently dropped, which would quietly change the chart.
+- **Several calls in one reply.** To compare 5 services, the model queries them all in one reply, so the question fits in 3 model calls (list, query, chart) instead of 7. The tools are safe to run side by side: query IDs follow the order of the calls, and the 10-query limit holds.
+- **Each run gets its own tools,** which keep its results (`q1`, `q2`…) and query with a clock fixed when the run starts, so results fetched seconds apart still cover the same window. A question can make at most 10 queries, since every result is resent with each later model call.
 - **`aggregation`** (`avg`, `max`, `min`, `total` or `latest`) turns each series into one number per service, for bar and pie charts that compare services. The number is that statistic from the query's [summary](#the-metrics-module). Pie charts show each service's share of a total, so they need 2 or more services and `total`.
 - **A chart shows one metric,** one result per service, all over the same days and bucket, since a 7-day average next to a 30-day one would mislead. `create_chart` refuses anything else with a tool error that says what to change.
 - **The title says what's plotted, not a conclusion,** because the model writes it: "Average latency by service, last 7 days", not "checkout-api is the slowest".

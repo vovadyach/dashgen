@@ -109,3 +109,20 @@ export const Chart = z.object({
     .min(1),
 });
 export type Chart = z.infer<typeof Chart>;
+
+/** How a run ends, when it doesn't fail: a chart, a question back to the visitor, or a refusal. */
+export const Outcome = z.discriminatedUnion("outcome", [
+  z.object({ outcome: z.literal("chart"), chart: Chart }),
+  z.object({
+    outcome: z.literal("clarify"),
+    message: z.string(),
+    /** Complete questions; picking one asks it. */
+    choices: z.array(z.string()).min(2).max(4),
+  }),
+  z.object({
+    outcome: z.literal("decline"),
+    message: z.string(),
+    examples: z.array(z.string()),
+  }),
+]);
+export type Outcome = z.infer<typeof Outcome>;

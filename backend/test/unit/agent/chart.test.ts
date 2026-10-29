@@ -1,56 +1,31 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { MetricsResult } from "@dashgen/contracts";
-
 import { buildChart } from "../../../src/agent/chart.ts";
-
-const errors = (
-  service: string,
-  overrides: Partial<MetricsResult> = {},
-): MetricsResult => ({
-  service,
-  metric: "errors",
-  unit: "count",
-  days: 3,
-  bucket: "day",
-  points: [
-    { t: "2026-10-25T00:00:00.000Z", value: 38 },
-    { t: "2026-10-26T00:00:00.000Z", value: 55 },
-    { t: "2026-10-27T00:00:00.000Z", value: 16, partial: true },
-  ],
-  summary: { total: 109, avg: 1.85, min: 1, max: 4, latest: 2 },
-  ...overrides,
-});
-
-const latency = (service: string, avg: number): MetricsResult => ({
-  ...errors(service),
-  metric: "latency_ms",
-  unit: "ms",
-  summary: { avg, min: avg / 2, max: avg * 2, latest: avg },
-});
+import type { CreateChartArgs } from "../../../src/agent/types.ts";
+import { errorsResult, latencyResult } from "../../helpers/results.ts";
 
 // What query_metrics would have kept so far, by result ID.
 const results = new Map([
-  ["q1", errors("checkout-api")],
+  ["q1", errorsResult("checkout-api")],
   [
     "q2",
-    errors("payments-service", {
+    errorsResult("payments-service", {
       summary: { total: 300, avg: 5.08, min: 0, max: 40, latest: 3 },
     }),
   ],
-  ["q3", latency("checkout-api", 417)],
-  ["q4", latency("payments-service", 120)],
-  ["q5", errors("auth-service", { days: 7 })],
+  ["q3", latencyResult("checkout-api", 417)],
+  ["q4", latencyResult("payments-service", 120)],
+  ["q5", errorsResult("auth-service", { days: 7 })],
   [
     "q6",
-    errors("search-service", {
+    errorsResult("search-service", {
       summary: { total: 0, avg: 0, min: 0, max: 0, latest: 0 },
     }),
   ],
   [
     "q7",
-    errors("notifications-worker", {
+    errorsResult("notifications-worker", {
       summary: { total: 0, avg: 0, min: 0, max: 0, latest: 0 },
     }),
   ],
@@ -124,17 +99,8 @@ test("a pie chart shows each service's share of the total", () => {
   );
 });
 
-const refusals: [string, unknown, RegExp][] = [
-  [
-    "a chart type it doesn't know",
-    { type: "scatter", sources: ["q1"], title: "t" },
-    /Invalid create_chart arguments:[\s\S]*at type/,
-  ],
-  [
-    "a blank title",
-    { type: "line", sources: ["q1"], title: "   " },
-    /Invalid create_chart arguments:[\s\S]*at title/,
-  ],
+// Arguments of the wrong shape never get here: the create_chart tool checks them (tools.test.ts).
+const refusals: [string, CreateChartArgs, RegExp][] = [
   [
     "an unknown result, listing the known ones",
     { type: "line", sources: ["q9"], title: "t" },
@@ -168,12 +134,12 @@ const refusals: [string, unknown, RegExp][] = [
   [
     "a pie chart with one slice",
     { type: "pie", sources: ["q1"], title: "t", aggregation: "total" },
-    /needs 2 or more services.*For one service over time, use a line chart/,
+    /needs 2 or more services.*For one service over time, use a line chart without aggregation\./,
   ],
   [
     "a pie chart of latency, which has no total",
     { type: "pie", sources: ["q3", "q4"], title: "t", aggregation: "total" },
-    /latency_ms averages, so it has no total\. Compare services with a bar chart/,
+    /latency_ms averages, so it has no total\. Compare services with a bar chart and aggregation avg, max, min or latest\./,
   ],
   [
     // The same advice as with "total", so the model can't bounce between two refusals.
@@ -206,6 +172,22 @@ for (const [what, args, message] of refusals) {
     });
   });
 }
+
+test("following a refusal's advice gives a chart, not another refusal", () => {
+  // A pie of latency: a bar chart with aggregation avg, max, min or latest.
+  const bar = buildChart(
+    { type: "bar", sources: ["q3", "q4"], title: "t", aggregation: "avg" },
+    results,
+  );
+  // A pie with one slice: a line chart without aggregation.
+  const line = buildChart(
+    { type: "line", sources: ["q1"], title: "t" },
+    results,
+  );
+
+  assert.equal(bar.type, "bar");
+  assert.equal(line.type, "line");
+});
 
 test("before any query, says there are no results yet", () => {
   assert.throws(

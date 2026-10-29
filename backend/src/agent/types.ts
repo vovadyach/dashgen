@@ -1,15 +1,101 @@
-import { Chart, ChartType } from "@dashgen/contracts";
+import {
+  AskRequest,
+  Chart,
+  ChartType,
+  MetricsQuery,
+  type Outcome,
+} from "@dashgen/contracts";
 import { z } from "zod";
+
+// Each tool's arguments. The descriptions are written for the model, which reads
+// them with the tool's own description to decide what to send. The objects are
+// strict: a misspelled argument is an error the model can fix, never silently
+// dropped, which would quietly change the chart.
+
+export const ListServicesArgs = z.strictObject({});
+
+export const QueryMetricsArgs = z.strictObject({
+  service: MetricsQuery.shape.service.describe(
+    "A service name from list_services.",
+  ),
+  metric: MetricsQuery.shape.metric.describe(
+    "A metric name from list_services.",
+  ),
+  days: MetricsQuery.shape.days.describe(
+    "How far back, 1 to 30. Daily buckets cover that many UTC days, today included; hourly buckets cover the last days × 24 hours. For today or the last day, use 1 with hourly buckets, and say 'last 24 hours' in the title. Use 7 when the question gives no range.",
+  ),
+  bucket: MetricsQuery.shape.bucket.describe(
+    "hour or day. Leave it out for hourly buckets up to 2 days and daily beyond.",
+  ),
+});
 
 /** The summary statistic that turns each service's series into one number, to compare services. */
 export const Aggregation = z.enum(["avg", "max", "min", "total", "latest"]);
 export type Aggregation = z.infer<typeof Aggregation>;
 
 /** create_chart's arguments. The model names query results; it never sends numbers. */
-export const CreateChartArgs = z.object({
-  type: ChartType,
-  sources: z.array(z.string()).min(1).max(10),
-  title: Chart.shape.title,
-  aggregation: Aggregation.optional(),
+export const CreateChartArgs = z.strictObject({
+  type: ChartType.describe(
+    "line or bar over time; bar or pie to compare services.",
+  ),
+  sources: z
+    .array(z.string())
+    .min(1)
+    .max(10)
+    .describe("Result IDs from query_metrics, like q1, one per service."),
+  title: Chart.shape.title.describe(
+    'What is plotted, like "Errors per day, payments-service, last 7 days". Never a conclusion.',
+  ),
+  aggregation: Aggregation.optional().describe(
+    "Only to compare services, as one number each: total (for metrics that add up), avg, max, min or latest, over the hours of each result. Leave it out for a chart over time.",
+  ),
 });
 export type CreateChartArgs = z.infer<typeof CreateChartArgs>;
+
+export const ClarifyArgs = z.strictObject({
+  message: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .describe("One short sentence saying what is unclear."),
+  choices: z
+    .array(AskRequest.shape.question)
+    .min(2)
+    .max(4)
+    .describe(
+      "2 to 4 complete questions the visitor can pick from, each one you could answer.",
+    ),
+});
+
+export const DeclineArgs = z.strictObject({
+  reason: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .describe(
+      "One short, friendly sentence saying what DashGen can't do here.",
+    ),
+});
+
+/**
+ * What a tool call gives back: a result for the model, or the run's outcome,
+ * which ends it. `step` is a short line for the visitor's steps panel.
+ */
+export type ToolResult =
+  | { done: false; result: Record<string, unknown>; step: string }
+  | { done: true; outcome: Outcome; step: string };
+
+export interface Tool {
+  name: string;
+  /** What the tool does and doesn't handle. The model reads it to choose. */
+  description: string;
+  args: z.ZodType;
+  /**
+   * Checks the model's arguments against `args`, then runs. Always a promise:
+   * a wrong call rejects with a ToolError, for the model to correct, and never
+   * throws on the spot, so calls can safely run side by side.
+   */
+  call: (input: unknown) => Promise<ToolResult>;
+}

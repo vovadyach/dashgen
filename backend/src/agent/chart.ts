@@ -1,8 +1,8 @@
 import { Chart, type MetricsResult } from "@dashgen/contracts";
 
 import { ToolError } from "./errors.ts";
-import { type Aggregation, CreateChartArgs } from "./types.ts";
-import { checkChart, parseArgs } from "./validation.ts";
+import type { Aggregation, CreateChartArgs } from "./types.ts";
+import { checkChart, findResults } from "./validation.ts";
 
 // The summary comes from the hourly rows, so all but the total describe hours,
 // whatever the bucket. The series name says so, or "average" could read as per day.
@@ -16,22 +16,14 @@ const AGGREGATION_LABELS: Record<Aggregation, string> = {
 
 /**
  * Builds the chart that create_chart asks for, from the query results it names.
- * Bad arguments, or a chart that can't be drawn honestly, throw a ToolError
- * telling the model what to change.
+ * The tool has already checked the arguments' shape. A chart that can't be
+ * drawn honestly throws a ToolError telling the model what to change.
  */
 export function buildChart(
-  input: unknown,
+  args: CreateChartArgs,
   results: ReadonlyMap<string, MetricsResult>,
 ): Chart {
-  const args = parseArgs("create_chart", CreateChartArgs, input);
-  const sources = args.sources.map((id) => {
-    const result = results.get(id);
-    if (!result) {
-      const known = [...results.keys()].join(", ") || "none yet";
-      throw new ToolError(`Unknown result "${id}". Known results: ${known}.`);
-    }
-    return result;
-  });
+  const sources = findResults(args.sources, results);
   checkChart(args, sources);
 
   const [first] = sources;
