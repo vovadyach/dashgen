@@ -14,6 +14,8 @@ fi
 npm run --silent format:check
 npm run --silent lint
 npm run --silent typecheck
+# Database tests need the throwaway Postgres from compose.test.yaml.
+docker compose --file compose.test.yaml up --detach --wait --quiet-pull
 npm test --silent
 
 echo "All checks passed."

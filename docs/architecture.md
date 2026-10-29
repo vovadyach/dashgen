@@ -5,12 +5,14 @@ What runs today, and its API. [design.md](design.md) has the target design, the 
 ## The pieces
 
 ```
-Browser ──▶ Backend ──▶ Postgres
-           (Fastify)    (one empty database, for now)
+Browser ──▶ Backend ──────────────▶ Postgres
+           (Fastify)                (dashgen database: services, metrics, points, runs)
+             └── metrics module ──▶ read-only queries
 ```
 
-- **Backend** (`backend/`): one TypeScript service. Today it takes questions and answers 501, because the agent arrives in step 3.
-- **Postgres** runs in Docker Compose (`make db`), with one `dashgen` database and user. Step 2 adds the tables and the sample data.
+- **Backend** (`backend/`): one TypeScript service. Its HTTP API takes questions and answers 501, because the agent arrives in step 3.
+- **The `metrics` module** (`backend/src/metrics/`): `listServices()` and `query()` over the seeded data. Nothing calls it yet; the agent's tools will.
+- **Postgres** runs in Docker Compose (`make db`), with one `dashgen` database and user. The tables come from Drizzle migrations, and the data from the seed.
 - **Frontend:** planned for step 3.
 
 How a question will become a chart is drawn in [design.md](design.md#one-question-step-by-step).
@@ -34,15 +36,27 @@ How a question will become a chart is drawn in [design.md](design.md#one-questio
 
 Every error is `{"error": {"code": "...", "message": "..."}}`, and the message is safe to show visitors. The [target design](design.md#the-frontends-api) keeps these codes, sent through tRPC. CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
 
+## Data
+
+The tables are in [design.md](design.md#the-metrics-tables), and the module's results in [design.md](design.md#the-metrics-module).
+
+| Command | Does |
+|---|---|
+| `npm run db:migrate` | Applies the SQL migrations in `backend/drizzle/` that haven't run yet |
+| `npm run db:seed` | Replaces the sample data with 30 days of hourly points ending this hour, in one transaction |
+| `npm run db:generate --workspace backend` | After a schema change: writes the next SQL migration, to commit with it |
+
+Database tests run against a separate throwaway Postgres on port 5433 (`compose.test.yaml`), which `make check` starts. Each test file creates its own database there and drops it afterwards. To use another Postgres, set `TEST_DATABASE_URL` in the shell to its admin URL.
+
 ## Configuration
 
 | Where | Settings |
 |---|---|
-| `backend/.env` (from `backend/.env.example`), read by `npm run dev` | `GEMINI_API_KEY`, `ALLOWED_ORIGINS`. A missing or invalid one stops the backend at startup |
+| `backend/.env` (from `backend/.env.example`), read by `npm run dev` and the `db:` scripts | `GEMINI_API_KEY`, `ALLOWED_ORIGINS`, `DATABASE_URL`, `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
 | `.env` at the root (from `.env.example`), read by Docker Compose | `POSTGRES_PASSWORD`, `DASHGEN_DB_PASSWORD` |
 
 ## Known limits
 
 - **The rate limit is per process,** in memory, so a restart resets it. Step 4's [daily cap](design.md#the-daily-cap) is shared.
 - **Behind a load balancer,** every request would come from its IP. Step 5 takes the visitor's IP from CloudFront instead ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
-- **There's no sample data yet.** The Go service that served 7 hardcoded days is gone, and step 2's Drizzle work brings 30 days of hourly data in Postgres.
+- **Incidents in the seed move with the day it runs,** so "this week" always has one to find. The rest of an hour's value is the same whichever day the seed runs.

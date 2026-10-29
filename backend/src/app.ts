@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
@@ -14,17 +16,20 @@ import {
 import { AskRequest, ErrorBody, Health } from "@dashgen/contracts";
 
 import type { Config } from "./config.ts";
+import { withoutQueryValues } from "./db.ts";
 import { ApiError, errorBody } from "./errors.ts";
 
 export interface AppOptions {
-  /** JSON logs with an ID for each request. Off unless asked for, so tests stay quiet. */
+  /** JSON logs at `config.logLevel`, with an ID for each request. Off unless asked for, so tests stay quiet. */
   logger?: boolean;
 }
 
 /** Builds the backend from `config`, so each test can pass its own. Nothing else reads the environment. */
 export async function buildApp(config: Config, options: AppOptions = {}) {
   const app = Fastify({
-    logger: options.logger ?? false,
+    logger: options.logger === true ? { level: config.logLevel } : false,
+    // A UUID per request, so it can double as a run's ID and be found in the logs.
+    genReqId: () => randomUUID(),
     // Errors Fastify raises before routing, like a malformed URL, never reach
     // the error handler below, so they get the same shape here.
     frameworkErrors: (error, _request, reply) => {
@@ -65,10 +70,16 @@ export async function buildApp(config: Config, options: AppOptions = {}) {
         .code(error.statusCode)
         .send(errorBody("bad_request", error.message));
     }
-    request.log.error(error);
+    request.log.error({ err: withoutQueryValues(error) }, "unexpected error");
     return reply
       .code(500)
       .send(errorBody("internal_error", "Something went wrong."));
+  });
+
+  // The request ID goes back to the client too, so a report can point to its log lines.
+  app.addHook("onRequest", (request, reply, done) => {
+    void reply.header("x-request-id", request.id);
+    done();
   });
 
   app.setNotFoundHandler((_request, reply) =>

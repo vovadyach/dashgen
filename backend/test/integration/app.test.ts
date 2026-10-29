@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { ErrorBody } from "@dashgen/contracts";
 
-import { startApp, VALID_ENV } from "./helpers.ts";
+import { startApp, VALID_ENV } from "../helpers/app.ts";
 
 const QUESTION = { question: "Show errors for payments-service this week" };
 
@@ -14,6 +14,22 @@ test("health answers ok", async (t) => {
 
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json(), { status: "ok" });
+});
+
+test("each response carries its own request ID, a UUID", async (t) => {
+  const app = await startApp(t);
+
+  const ids = await Promise.all(
+    [1, 2].map(async () => {
+      const response = await app.inject({ method: "GET", url: "/health" });
+      return response.headers["x-request-id"];
+    }),
+  );
+
+  const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  for (const id of ids) assert.match(String(id), uuid);
+  assert.notEqual(ids[0], ids[1]);
 });
 
 test("ask answers 501 until the agent exists", async (t) => {

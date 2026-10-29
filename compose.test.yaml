@@ -1,0 +1,20 @@
+# Tests only: a throwaway Postgres on port 5433, with its data in memory.
+# scripts/check.sh starts it, and each test file creates its own database in it.
+# The password isn't a secret: it guards nothing but test data, reachable only
+# from this machine.
+name: dashgen-test
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_PASSWORD: test
+    ports:
+      - "127.0.0.1:5433:5432"
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "--host=127.0.0.1", "--username=postgres"]
+      interval: 1s
+      timeout: 5s
+      retries: 30

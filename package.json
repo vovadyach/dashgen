@@ -12,11 +12,15 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace backend",
-    "format": "prettier --write \"*.{js,json}\" \"{backend,packages/*}/{src,test}/**\" \"{backend,packages/*}/*.{js,json}\" \".claude/hooks/*.{ts,json}\"",
-    "format:check": "prettier --check \"*.{js,json}\" \"{backend,packages/*}/{src,test}/**\" \"{backend,packages/*}/*.{js,json}\" \".claude/hooks/*.{ts,json}\"",
+    "db:migrate": "npm run db:migrate --workspace backend",
+    "db:seed": "npm run db:seed --workspace backend",
+    "format": "prettier --write \"*.{js,json}\" \"{backend,packages/*}/{src,test}/**\" \"{backend,packages/*}/*.{js,json,ts}\" \".claude/hooks/*.{ts,json}\"",
+    "format:check": "prettier --check \"*.{js,json}\" \"{backend,packages/*}/{src,test}/**\" \"{backend,packages/*}/*.{js,json,ts}\" \".claude/hooks/*.{ts,json}\"",
     "lint": "eslint .",
     "typecheck": "tsc --project .claude/hooks && npm run --workspaces --if-present typecheck",
-    "test": "npm run --workspaces --if-present test"
+    "test": "npm run --workspaces --if-present test",
+    "test:unit": "npm run --workspaces --if-present test:unit",
+    "test:integration": "npm run --workspaces --if-present test:integration"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

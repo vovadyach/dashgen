@@ -24,3 +24,51 @@ export const AskRequest = z.object({
   question: z.string().min(1),
 });
 export type AskRequest = z.infer<typeof AskRequest>;
+
+/** What the metrics module offers: every service, and each metric's unit and rollup. */
+export const ServiceCatalog = z.object({
+  services: z.array(z.string()),
+  metrics: z.array(
+    z.object({
+      name: z.string(),
+      unit: z.string(),
+      rollup: z.enum(["sum", "avg"]),
+    }),
+  ),
+});
+export type ServiceCatalog = z.infer<typeof ServiceCatalog>;
+
+export const Bucket = z.enum(["hour", "day"]);
+export type Bucket = z.infer<typeof Bucket>;
+
+/** A metrics query. `bucket` defaults to hourly up to 2 days, daily beyond. */
+export const MetricsQuery = z.object({
+  service: z.string().min(1),
+  metric: z.string().min(1),
+  days: z.number().int().min(1).max(30).default(7),
+  bucket: Bucket.optional(),
+});
+export type MetricsQuery = z.input<typeof MetricsQuery>;
+
+/** One series and its summary. The summary comes from the hourly rows, whatever the bucket. */
+export const MetricsResult = z.object({
+  service: z.string(),
+  metric: z.string(),
+  unit: z.string(),
+  bucket: Bucket,
+  points: z.array(
+    z.object({
+      t: z.iso.datetime(),
+      value: z.number(),
+      partial: z.literal(true).optional(),
+    }),
+  ),
+  summary: z.object({
+    total: z.number().optional(),
+    avg: z.number(),
+    min: z.number(),
+    max: z.number(),
+    latest: z.number(),
+  }),
+});
+export type MetricsResult = z.infer<typeof MetricsResult>;
