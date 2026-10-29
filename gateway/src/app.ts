@@ -10,18 +10,11 @@ import {
   validatorCompiler,
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
-import { z } from "zod";
+
+import { AskRequest, ErrorBody, Health } from "@dashgen/contracts";
 
 import type { Config } from "./config.ts";
-import { ApiError, ErrorBody, errorBody } from "./errors.ts";
-
-const AskRequest = z.object({
-  question: z.string().min(1),
-});
-
-const Health = z.object({
-  status: z.literal("ok"),
-});
+import { ApiError, errorBody } from "./errors.ts";
 
 export interface AppOptions {
   /** JSON logs with an ID for each request. Off unless asked for, so tests stay quiet. */

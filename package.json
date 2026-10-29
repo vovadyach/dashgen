@@ -1,0 +1,28 @@
+{
+  "name": "dashgen",
+  "description": "DashGen: type a question in plain English, get a chart",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "gateway",
+    "packages/*"
+  ],
+  "scripts": {
+    "format": "prettier --write \"*.{js,json}\" \"{gateway,packages/*}/{src,test}/**\" \"{gateway,packages/*}/*.{js,json}\" \".claude/hooks/*.{ts,json}\"",
+    "format:check": "prettier --check \"*.{js,json}\" \"{gateway,packages/*}/{src,test}/**\" \"{gateway,packages/*}/*.{js,json}\" \".claude/hooks/*.{ts,json}\"",
+    "lint": "eslint .",
+    "typecheck": "tsc --project .claude/hooks && npm run --workspaces --if-present typecheck",
+    "test": "npm run --workspaces --if-present test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1"
+  }
+}

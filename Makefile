@@ -2,7 +2,7 @@
 
 help:
 	@echo "DashGen — available commands:"
-	@echo "  make install    Install the gateway's packages"
+	@echo "  make install    Install the packages for every TypeScript workspace"
 	@echo "  make metrics    Run the Go metrics service (:8080)"
 	@echo "  make gateway    Run the Node.js gateway (:3000), restarting on changes"
 	@echo "  make db         Start Postgres in Docker (localhost:5432)"
@@ -11,7 +11,7 @@ help:
 	@echo "  make clean      Remove installed packages and build artifacts"
 
 install:
-	cd gateway && npm ci
+	npm ci
 
 metrics:
 	cd metrics && go run .
@@ -23,13 +23,12 @@ db:
 	docker compose up --detach --wait postgres
 
 fmt:
-	cd gateway && npm run --silent format
-	cd .claude/hooks && ../../gateway/node_modules/.bin/prettier --write --log-level warn .
+	npm run --silent format -- --log-level warn
 	cd metrics && gofmt -w .
 
 check:
 	scripts/check.sh
 
 clean:
-	rm -rf gateway/node_modules
+	rm -rf node_modules gateway/node_modules packages/*/node_modules
 	rm -f metrics/metrics

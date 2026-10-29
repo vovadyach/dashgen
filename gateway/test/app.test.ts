@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { ErrorBody } from "../src/errors.ts";
+import type { ErrorBody } from "@dashgen/contracts";
+
 import { startApp, VALID_ENV } from "./helpers.ts";
 
 const QUESTION = { question: "Show errors for payments-service this week" };
