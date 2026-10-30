@@ -15,14 +15,14 @@ export default defineConfig(
       },
     },
     rules: {
-      // node:test's test() returns a promise that the runner itself awaits.
+      // node:test's describe(), it() and test() return promises that the runner itself awaits.
       "@typescript-eslint/no-floating-promises": [
         "error",
         {
           allowForKnownSafeCalls: [
             {
               from: "package",
-              name: ["test", "describe"],
+              name: ["describe", "it", "test"],
               package: "node:test",
             },
           ],

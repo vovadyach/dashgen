@@ -116,6 +116,12 @@ export type ToolOutput =
   | { call: ToolCall; result: Record<string, unknown> }
   | { call: ToolCall; error: string };
 
+/** The tokens of one request, or of a whole run. Gemini bills thinking as output. */
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 /** The model's answer to one request. */
 export interface ModelReply {
   /**
@@ -131,7 +137,7 @@ export interface ModelReply {
   text: string;
   /** Why the model stopped, as the provider says it, like "STOP" or "MAX_TOKENS". */
   finishReason: string;
-  usage: { inputTokens: number; outputTokens: number };
+  usage: Usage;
   /**
    * The reply exactly as the provider sent it, whenever it has calls. Put the
    * whole ModelReply back in the conversation: Gemini 3 checks the signatures
@@ -166,6 +172,43 @@ export interface Model {
    *   checkConversation's rules.
    */
   next: (request: ModelRequest) => Promise<ModelReply>;
+}
+
+// A run: one question, answered by the agent loop in run.ts.
+
+/** One tool call, as the page's steps panel shows it: a short line for its result, or why it failed. */
+export type ToolStep = { tool: string; args: unknown; ms: number } & (
+  { result: string } | { error: string }
+);
+
+/** One request to the model: the tools it called, or why it failed. */
+export type ModelStep = { ms: number } & (
+  ({ calls: string[]; finishReason: string } & Usage) | { error: string }
+);
+
+/** Every model and tool call, in order, as a run keeps them for the runs table. */
+export type RunStep =
+  ({ type: "model" } & ModelStep) | ({ type: "tool" } & ToolStep);
+
+export type RunErrorCode = "agent_failed" | "unavailable" | "timeout";
+
+/** How a run ends: its outcome, or an error whose message is safe to show visitors. */
+export type RunEnd =
+  | ({ type: "outcome" } & Outcome)
+  | { type: "error"; code: RunErrorCode; message: string };
+
+/** What the page gets as a run goes: a step per tool call, then how it ended. */
+export type RunEvent = ({ type: "step" } & ToolStep) | RunEnd;
+
+/** A finished run, with what the runs table keeps. */
+export interface RunResult {
+  end: RunEnd;
+  steps: RunStep[];
+  /** The model's name, like "gemini-3.1-flash-lite". */
+  model: string;
+  /** Across every model call, for the run's cost. */
+  usage: Usage;
+  ms: number;
 }
 
 /** The body of an error from the Gemini API, for its own reason in our messages. */

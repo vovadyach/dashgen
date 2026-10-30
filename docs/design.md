@@ -265,7 +265,7 @@ sequenceDiagram
 ```
 
 - **Two kinds of error.** Before a run starts, `ask` fails like a normal request, with an HTTP status. Once `run` is streaming, the HTTP status is already 200, so a failure arrives as the stream's last event instead. Both carry one of [our error codes](#the-frontends-api), so the page shows the right message either way.
-- **Timeouts and retries:** every outside call has a timeout. An error that retrying can fix, like a timeout or a 503, gets one retry, after a short random wait, so retries from many requests don't all land at once. Any other error, like a wrong key, fails at once.
+- **Timeouts and retries:** every outside call has a timeout. For a database query, Postgres cancels a statement after 2 seconds, and if Postgres stops answering, the backend gives up a second later and closes that connection. An error that retrying can fix, like a timeout or a 503, gets one retry, after a random wait of 0.5 to 1.5 seconds, so retries from many requests don't all land at once. Any other error, like a wrong key, fails at once. A request to Gemini gets one more try in all, whatever went wrong, so a retry that gets a reply without a tool call ends the run.
 - **25 seconds per question,** under CloudFront's 30-second timeout, so a slow question gets the backend's own error ([ADR-0003](decisions/0003-cloudfront-front-door.md) explains the three timeouts).
 - **A run always finishes within its limits,** even if the visitor leaves, so a reconnect finds it intact. Its cost is already capped: at most 6 model calls and 25 seconds, and the question was reserved when it started.
 - The numbers here (6 calls, 25 seconds per question, a 2-second timeout, one retry) are starting values for the evals to tune.
@@ -408,10 +408,10 @@ The cap keeps a runaway day from becoming a runaway bill. That takes two things:
 
 - **6 model calls.** Every request to Gemini counts, including a retry after an error or after a reply with no tool call, and the second try after a chart is refused. The Gemini SDK's own retries stay off, so none go uncounted.
 - **512 output tokens a call,** with thinking at its lowest level (`MINIMAL`). The limit includes thinking tokens, which Gemini bills as output, so a question writes at most 3,072.
-- **24,000 input tokens a question,** across all its calls, since each call resends the conversation so far. Gemini reports every call's tokens, and before the next call the backend checks that it can't take the question past this budget. If it could, the run ends with `agent_failed`.
+- **24,000 input tokens a question,** across all its calls, since each call resends the conversation so far. Gemini reports every call's tokens. Before each call, the backend estimates its input: the last call's input, plus that call's reply and the tool outputs added since, at about 4 characters a token. If that would take the question past this budget, the run ends with `agent_failed`.
 - **Short tool results.** The model sees a summary of each query, never its points, so a typical question needs about 8,000 input tokens, whatever the time range.
 
-At the prices of `gemini-3.1-flash-lite` ($0.25 per million input tokens and $1.50 per million output, in October 2026), that's at most $0.006 of input and $0.005 of output, about $0.011 a question. The model is the `GEMINI_MODEL` setting, and a different one means redoing this sum: `gemini-3.5-flash-lite`, at $0.30 and $2.50, would make it $0.015.
+At the prices of `gemini-3.1-flash-lite` ($0.25 per million input tokens and $1.50 per million output, in October 2026), that's about $0.006 of input and $0.005 of output, about $0.011 a question. The model is the `GEMINI_MODEL` setting, and a different one means redoing this sum: `gemini-3.5-flash-lite`, at $0.30 and $2.50, would make it $0.015.
 
 **The cap is 150 questions a day,** so Gemini costs at most about $1.60 a day. A month with ten session days comes to about $16, which leaves room for AWS's ~$5 within the $25 budget. A busier day gets the cap's message instead of charts.
 
