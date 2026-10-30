@@ -2,6 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import type { Outcome } from "@dashgen/contracts";
 
+import { withoutQueryValues } from "../db.ts";
 import { consoleLogger, type Logger } from "../logger.ts";
 import type { Metrics } from "../metrics/index.ts";
 import { ModelError, ToolError } from "./errors.ts";
@@ -80,10 +81,10 @@ const msSince = (start: number) => Math.round(performance.now() - start);
  * run or a limit does. Resolves with how it ended, failures included, since
  * the page gets those as events too. Rejects only on a bug in DashGen.
  *
- * Each request gets one more try, whatever went wrong: after a short random
- * wait when Gemini fails in a way retrying can fix, at once after a reply
- * without a tool call. A blocked question ends as a decline right away, since
- * asking again gets the same block.
+ * Each request gets one more try, whatever went wrong, if the run has a request
+ * left: after a short random wait when Gemini fails in a way retrying can fix,
+ * at once after a reply without a tool call. A blocked question ends as a
+ * decline right away, since asking again gets the same block.
  */
 export async function runAgent(
   question: string,
@@ -103,6 +104,15 @@ export async function runAgent(
   const signal = AbortSignal.timeout(timeoutMs);
   // A function, so TypeScript doesn't assume it stays as it was last checked.
   const timeUp = () => signal.aborted;
+  // Rejects at the deadline, so a tool call that never returns, like a query to
+  // a database that stopped answering, can't keep the run going.
+  const deadline = new Promise<never>((_resolve, reject) => {
+    signal.addEventListener("abort", () => {
+      reject(new Error("The run's deadline passed."));
+    });
+  });
+  // Nothing may be waiting on it when the deadline passes.
+  deadline.catch(() => undefined);
   const system = instructions(startedAt);
   const messages: Message[] = [{ role: "user", text: question }];
   const steps: RunStep[] = [];
@@ -111,7 +121,8 @@ export async function runAgent(
   let retried = false;
   // Each request resends the conversation, so it's estimated from the last one.
   let nextInput = 0;
-  let refusedCharts = 0;
+  // Replies with a refused chart: after the first, the model gets one more try.
+  let chartRefusals = 0;
 
   /** Ends the run: its last event, one log line, and the result to save. */
   const end = (last: RunEnd, details: object = {}): RunResult => {
@@ -163,7 +174,8 @@ export async function runAgent(
       // Anything else is a bug in DashGen, like a conversation Gemini would refuse.
       if (!(error instanceof ModelError)) throw error;
       steps.push({ type: "model", ms: msSince(asked), error: error.message });
-      if (!error.retryable || retried) {
+      // No retry when it can't help, the request had its one, or none is left.
+      if (!error.retryable || retried || modelCalls === RUN_LIMITS.modelCalls) {
         return fail("unavailable", MESSAGES.modelDown, { err: error });
       }
       retried = true;
@@ -215,22 +227,25 @@ export async function runAgent(
 
     messages.push({ role: "model", reply });
     const outputs: ToolOutput[] = [];
+    let chartRefused = false;
     // In order, one at a time, so a later call can use an earlier one's result.
     for (const call of reply.calls) {
       const calledAt = performance.now();
       let called: Called;
       try {
-        called = await callTool(tools, call);
+        called = await Promise.race([callTool(tools, call), deadline]);
       } catch (error) {
-        // Not the model's mistake, so most likely the database.
+        const late = timeUp();
         record({
           tool: call.name,
           args: call.args,
-          error: "failed",
+          error: late ? "timed out" : "failed",
           ms: msSince(calledAt),
         });
+        if (late) return timedOut();
+        // Not the model's mistake, so most likely the database.
         return fail("unavailable", MESSAGES.metricsDown, {
-          err: error,
+          err: withoutQueryValues(error),
           tool: call.name,
         });
       }
@@ -240,15 +255,18 @@ export async function runAgent(
       }
       outputs.push(called.output);
       if ("error" in called.output && call.name === "create_chart") {
-        refusedCharts += 1;
-        // The model had one more try, with the reason it was refused.
-        if (refusedCharts === 2) {
-          return fail("agent_failed", MESSAGES.agentFailed, {
-            reason: "chart refused twice",
-          });
-        }
+        chartRefused = true;
       }
       if (timeUp()) return timedOut();
+    }
+    if (chartRefused) {
+      chartRefusals += 1;
+      // The model had one more try, with the reasons its charts were refused.
+      if (chartRefusals === 2) {
+        return fail("agent_failed", MESSAGES.agentFailed, {
+          reason: "chart refused twice",
+        });
+      }
     }
     messages.push({ role: "tools", outputs });
     nextInput =

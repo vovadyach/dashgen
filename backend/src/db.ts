@@ -27,6 +27,9 @@ export function createDb(
     connectionTimeoutMillis: 2_000, // fail fast when no connection is free
     idleTimeoutMillis: 30_000,
     statement_timeout: statementTimeoutMs,
+    // If Postgres stops answering, its own timeout never fires, so give up a
+    // second later. The pool then closes that connection instead of reusing it.
+    query_timeout: statementTimeoutMs + 1_000,
   });
   // A dropped idle connection emits "error", which would crash Node unhandled.
   pool.on("error", (err) => {

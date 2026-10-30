@@ -1,4 +1,5 @@
 import type { MetricsQuery } from "@dashgen/contracts";
+import { DrizzleQueryError } from "drizzle-orm";
 
 import { type Metrics, MetricsError } from "../../src/metrics/index.ts";
 import { CATALOG } from "../fixtures/metrics.ts";
@@ -24,10 +25,24 @@ export function fakeMetrics(): Metrics & { queries: MetricsQuery[] } {
   };
 }
 
-/** The metrics module with its database down: every call fails. */
+/**
+ * The metrics module with its database down: every call fails as Drizzle
+ * reports it, with the query's values in its message.
+ */
 export function downMetrics(): Metrics {
-  return {
-    listServices: () => Promise.reject(new Error("connection refused")),
-    query: () => Promise.reject(new Error("connection refused")),
-  };
+  const fail = () =>
+    Promise.reject(
+      new DrizzleQueryError(
+        'select * from "points" where "service" = $1',
+        ["payments-service"],
+        new Error("connection refused"),
+      ),
+    );
+  return { listServices: fail, query: fail };
+}
+
+/** The metrics module with a database that never answers. */
+export function stalledMetrics(): Metrics {
+  const never = () => new Promise<never>(() => undefined);
+  return { listServices: never, query: never };
 }

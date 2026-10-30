@@ -2,11 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { ModelError } from "../../../src/agent/errors.ts";
-import {
-  RUN_LIMITS,
-  type RunOptions,
-  runAgent,
-} from "../../../src/agent/run.ts";
+import { type RunOptions, runAgent } from "../../../src/agent/run.ts";
 import { EXAMPLE_QUESTIONS } from "../../../src/agent/tools.ts";
 import type {
   ModelReply,
@@ -15,7 +11,11 @@ import type {
 } from "../../../src/agent/types.ts";
 import { CHART, QUERY, QUESTION, REASON } from "../../fixtures/agent.ts";
 import { recordingLogger } from "../../helpers/logger.ts";
-import { downMetrics, fakeMetrics } from "../../helpers/metrics.ts";
+import {
+  downMetrics,
+  fakeMetrics,
+  stalledMetrics,
+} from "../../helpers/metrics.ts";
 import {
   blockedReply,
   busyError,
@@ -227,6 +227,20 @@ describe("runAgent", () => {
       assert.equal(errorOf(result).code, "agent_failed");
       assert.equal(requests.length, 2);
     });
+
+    it("counts refused charts by reply, so two refused in one reply still get one more try", async () => {
+      const { result, requests } = await ask([
+        reply(
+          ["create_chart", { ...CHART, sources: ["q8"] }],
+          ["create_chart", { ...CHART, sources: ["q9"] }],
+        ),
+        reply(["query_metrics", QUERY]),
+        reply(["create_chart", CHART]),
+      ]);
+
+      assert.equal(outcomeOf(result).outcome, "chart");
+      assert.equal(requests.length, 3);
+    });
   });
 
   describe("Gemini errors", () => {
@@ -253,6 +267,22 @@ describe("runAgent", () => {
           (l) => l.level === "warn" && l.msg === "model call failed, retrying",
         ),
       );
+      // Failed requests are kept for the runs table too.
+      assert.deepEqual(
+        down.result.steps.map((s) => ("error" in s ? s.error : "no error")),
+        ["Gemini answered 503: overloaded", "Gemini answered 503: overloaded"],
+      );
+    });
+
+    it("ends as unavailable, without waiting, when the 6th and last call fails", async () => {
+      const { result, requests, waits } = await ask([
+        ...Array.from({ length: 5 }, () => reply(["list_services"])),
+        busyError(),
+      ]);
+
+      assert.equal(errorOf(result).code, "unavailable");
+      assert.equal(requests.length, 6);
+      assert.equal(waits, 0);
     });
 
     it("ends at once when Gemini refuses the request, like a wrong key", async () => {
@@ -279,6 +309,10 @@ describe("runAgent", () => {
         examples: EXAMPLE_QUESTIONS,
       });
       assert.equal(requests.length, 1);
+
+      // Also after a retry: the block decides, not the one-more-try rule.
+      const afterRetry = await ask([busyError(), blockedReply()]);
+      assert.equal(outcomeOf(afterRetry.result).outcome, "decline");
     });
 
     it("gives a request one more try in all, whatever went wrong", async () => {
@@ -291,12 +325,13 @@ describe("runAgent", () => {
 
   describe("limits", () => {
     it("makes at most 6 model calls", async () => {
+      // One reply more than the limit, so the limit stops the run, not the script.
       const { result, requests } = await ask(
-        Array.from({ length: 6 }, () => reply(["list_services"])),
+        Array.from({ length: 7 }, () => reply(["list_services"])),
       );
 
       assert.equal(errorOf(result).code, "agent_failed");
-      assert.equal(requests.length, RUN_LIMITS.modelCalls);
+      assert.equal(requests.length, 6);
     });
 
     it("stops before a request that could take it past 24,000 input tokens", async () => {
@@ -320,6 +355,18 @@ describe("runAgent", () => {
         retryDelayMs: () => 60_000,
       });
       assert.equal(errorOf(waiting.result).code, "timeout");
+      // The wait ends at the deadline, not after its 60 seconds.
+      assert.ok(waiting.result.ms < 1_000);
+    });
+
+    it("ends as a timeout at its deadline, even while a tool call never returns", async () => {
+      const { result, events } = await ask([reply(["list_services"])], {
+        timeoutMs: 20,
+        metrics: stalledMetrics,
+      });
+
+      assert.equal(errorOf(result).code, "timeout");
+      assert.deepEqual(stepLines(events), ["list_services: timed out"]);
     });
   });
 
@@ -336,11 +383,19 @@ describe("runAgent", () => {
         "The metrics are unavailable right now. Try again in a moment.",
       );
       assert.deepEqual(stepLines(events), ["list_services: failed"]);
-      // The real reason is logged once, and visitors never see it.
+      // The real reason is logged once, without the query's values, and
+      // visitors never see it.
+      const failures = lines.filter((l) => l.level === "error");
       assert.deepEqual(
-        lines.filter((l) => l.level === "error").map((l) => l.msg),
+        failures.map((l) => l.msg),
         ["run failed"],
       );
+      const { err } = failures[0]?.obj as { err: Error };
+      assert.equal(
+        err.message,
+        'Failed query: select * from "points" where "service" = $1',
+      );
+      assert.doesNotMatch(String(err.stack), /payments-service/);
     });
 
     it("rejects when DashGen has a bug, instead of hiding it in an error event", async () => {

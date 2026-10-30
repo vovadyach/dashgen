@@ -64,4 +64,21 @@ describe("database", () => {
       },
     );
   });
+
+  it("gives up on a statement Postgres doesn't answer, a second after Postgres's own timeout", async () => {
+    const client = await db().$client.connect();
+    // As if Postgres stopped answering: its own timeout won't end this sleep.
+    await client.query("set statement_timeout = 0");
+    const started = performance.now();
+    try {
+      await assert.rejects(client.query("select pg_sleep(5)"), {
+        message: "Query read timeout",
+      });
+    } finally {
+      // Not back to the pool: the sleep still runs on this connection.
+      client.release(true);
+    }
+    // The 2-second statement timeout, plus a second.
+    assert.ok(performance.now() - started < 4_000);
+  });
 });
