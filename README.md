@@ -35,9 +35,9 @@ Where it's headed (the [status](#status) table says what exists today):
 ```
 ┌─────────────────┐
 │   Frontend      │  React + TypeScript + Recharts
-│   (CloudFront)  │  tRPC + TanStack Query
+│   (CloudFront)  │  TanStack Query, EventSource
 └────────┬────────┘
-         │ HTTPS: tRPC calls, steps streamed over SSE
+         │ HTTPS: REST calls, steps streamed over SSE
          ▼
 ┌─────────────────┐
 │   Backend       │  Node.js + Fastify + TypeScript
@@ -65,7 +65,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 | Database | Postgres 18, Docker Compose | Runs locally: one `dashgen` database, with tables from Drizzle migrations |
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
 | Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools), the Gemini adapter and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md)). The API that starts it comes next (step 3) |
-| Frontend | React, TypeScript, Vite, Tailwind, Recharts, tRPC, TanStack Query | Planned (step 3) |
+| Frontend | React, TypeScript, Vite, Tailwind, Recharts, TanStack Query | Planned (step 3) |
 | Hosting | AWS, Terraform | Planned (step 5) |
 
 ## Running locally
@@ -135,10 +135,11 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [4. npm workspaces for the TypeScript code](docs/decisions/0004-npm-workspaces.md)
 - [5. One TypeScript backend, with modules inside](docs/decisions/0005-one-backend.md)
 - [6. Drizzle for data access](docs/decisions/0006-drizzle.md)
-- [7. tRPC between the React app and the backend](docs/decisions/0007-trpc.md)
+- [7. tRPC between the React app and the backend](docs/decisions/0007-trpc.md), replaced by 11
 - [8. Postgres for the metrics and the runs](docs/decisions/0008-postgres.md)
 - [9. UUIDv7 for IDs](docs/decisions/0009-uuidv7-ids.md)
 - [10. A hand-written agent loop](docs/decisions/0010-agent-loop.md)
+- [11. REST and SSE between the React app and the backend](docs/decisions/0011-rest-and-sse.md)
 
 ## License
 

@@ -12,7 +12,7 @@ Browser ──▶ Backend ──────────────▶ Postgres
 
 - **Backend** (`backend/`): one TypeScript service. Its HTTP API takes questions and answers 501, because the agent arrives in step 3.
 - **The `metrics` module** (`backend/src/metrics/`): `listServices()` and `query()` over the seeded data. The agent's tools call it.
-- **The `agent` module** (`backend/src/agent/`): the [five tools](design.md#the-agents-tools), the Gemini adapter, and `runAgent`, the loop that answers a question with them within [its limits](design.md#the-daily-cap) ([ADR-0010](decisions/0010-agent-loop.md)). The API doesn't use it yet; the tRPC router, next in step 3, will. `npm run gemini:check` tries the adapter with two real requests.
+- **The `agent` module** (`backend/src/agent/`): the [five tools](design.md#the-agents-tools), the Gemini adapter, and `runAgent`, the loop that answers a question with them within [its limits](design.md#the-daily-cap) ([ADR-0010](decisions/0010-agent-loop.md)). The API doesn't use it yet; `POST /ask` and the run's event stream, next in step 3, will. `npm run gemini:check` tries the adapter with two real requests.
 - **Postgres** runs in Docker Compose (`make db`), with one `dashgen` database and user. The tables come from Drizzle migrations, and the data from the seed.
 - **Frontend:** planned for step 3.
 
@@ -37,7 +37,7 @@ Every response carries an `x-request-id` header: a UUIDv7, which also appears in
 | 404 | `not_found` | an unknown route |
 | 500 | `internal_error` | an unexpected failure |
 
-Every error is `{"error": {"code": "...", "message": "..."}}`, and the message is safe to show visitors. The [target design](design.md#the-frontends-api) keeps these codes, sent through tRPC. CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
+Every error is `{"error": {"code": "...", "message": "..."}}`, and the message is safe to show visitors. The [target design](design.md#the-frontends-api) keeps these codes. CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
 
 ## Data
 

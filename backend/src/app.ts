@@ -29,7 +29,7 @@ export async function buildApp(config: Config, options: AppOptions = {}) {
   const app = Fastify({
     logger: options.logger === true ? { level: config.logLevel } : false,
     // A UUIDv7 per request, to find its log lines. A run gets its own ID, since
-    // tRPC can batch several questions into one request (ADR-0009).
+    // it outlives the request that starts it (ADR-0009).
     genReqId: () => randomUUIDv7(),
     // Errors Fastify raises before routing, like a malformed URL, never reach
     // the error handler below, so they get the same shape here.

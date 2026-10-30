@@ -121,7 +121,8 @@ export async function runAgent(
   let retried = false;
   // Each request resends the conversation, so it's estimated from the last one.
   let nextInput = 0;
-  // Replies with a refused chart: after the first, the model gets one more try.
+  // Replies with a refused chart. After the first, the model gets one more
+  // try, with the reasons.
   let chartRefusals = 0;
 
   /** Ends the run: its last event, one log line, and the result to save. */
@@ -261,7 +262,6 @@ export async function runAgent(
     }
     if (chartRefused) {
       chartRefusals += 1;
-      // The model had one more try, with the reasons its charts were refused.
       if (chartRefusals === 2) {
         return fail("agent_failed", MESSAGES.agentFailed, {
           reason: "chart refused twice",

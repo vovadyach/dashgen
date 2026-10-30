@@ -127,11 +127,11 @@ flowchart LR
     end
 
     subgraph private ["Private network"]
-        backend["Backend<br/>Node.js, Fastify, tRPC<br/>agent, metrics queries,<br/>rate limit, daily cap"]
+        backend["Backend<br/>Node.js, Fastify<br/>agent, metrics queries,<br/>rate limit, daily cap"]
         db[("Postgres<br/>metrics and runs")]
     end
 
-    browser -->|"loads the app; tRPC calls<br/>and SSE under /api/trpc"| cdn
+    browser -->|"loads the app; REST calls<br/>and SSE under /api"| cdn
     cdn -->|"/api/*, with the secret header"| alb
     browser <-->|"pin and unpin"| pins
     alb --> backend
@@ -159,14 +159,14 @@ flowchart LR
     page(["React app"])
 
     subgraph backend ["Backend: one Fastify process"]
-        api["api<br/>tRPC router, /api/health,<br/>rate limit"]
+        api["api<br/>REST routes, SSE,<br/>rate limit"]
         agent["agent<br/>Gemini loop, tools,<br/>question limits"]
         metrics["metrics<br/>read-only queries"]
         runs["runs<br/>log of each question"]
         cap["cap<br/>daily count"]
     end
 
-    page -->|"tRPC: typed calls, SSE"| api
+    page -->|"REST and SSE"| api
     api --> agent
     agent -->|"listServices(), query()"| metrics
     agent --> runs
@@ -174,7 +174,7 @@ flowchart LR
 ```
 
 - **The modules are function calls, not services.** The agent's tools call `metrics.query(...)` directly, with no HTTP hop, no service discovery and no second deploy. The model only ever reaches the data through those fixed, read-only functions with checked arguments, never through SQL.
-- **tRPC sits only at the edge,** between the React app and the backend ([ADR-0007](decisions/0007-trpc.md)). Inside, modules call each other as ordinary TypeScript.
+- **HTTP sits only at the edge,** between the React app and the backend ([ADR-0011](decisions/0011-rest-and-sse.md)). Inside, modules call each other as ordinary TypeScript.
 - **A module could become a service later,** if the metrics ever needed their own consumers, scaling or isolation. Its `index.ts` is already the API that service would offer.
 
 ### One question, step by step
@@ -191,12 +191,12 @@ sequenceDiagram
     participant DB as Postgres
 
     V->>F: types "Show errors for payments-service this week"
-    F->>B: tRPC mutation ask(question)
+    F->>B: POST /api/ask, with the question
     B->>B: per-IP rate limit, question length
     B->>C: reserve one of today's questions
     C-->>B: reserved
     B-->>F: runId, and the run starts in the background
-    F->>B: tRPC subscription run(runId), over SSE
+    F->>B: GET /api/runs/:runId/events, over SSE
     rect rgba(127, 127, 127, 0.12)
         Note over B,DB: Agent loop, at most 6 model calls. Each tool call is sent to F as a step event
         B->>LLM: question + tool descriptions
@@ -223,7 +223,7 @@ sequenceDiagram
 - **A day's cost has a ceiling.** The backend reserves one of the day's questions before any work starts, and the loop stops at fixed limits on model calls and tokens ([the daily cap](#the-daily-cap)).
 - **The model chooses, the code computes.** `create_chart` names a query result (`q1`), a chart type and a title, and never carries numbers. The backend builds the chart from the metrics module's real result, so the model can't copy a value wrong or invent one.
 - **The visitor watches it work.** A question takes about 10 seconds, so each step appears as it happens instead of after a blank wait.
-- **Starting a run and watching it are separate calls.** `ask` is the only call that reserves a question and starts Gemini. `run` only streams a run that already exists. When the connection drops, the browser reconnects `run` with the ID of the last event it got, and the backend replays the rest. A reconnect never starts, or pays for, a second run.
+- **Starting a run and watching it are separate calls.** `POST /api/ask` is the only call that reserves a question and starts Gemini. `GET /api/runs/:runId/events` only streams a run that already exists. When the connection drops, the browser reconnects with the ID of the last event it got, and the backend replays the rest. A reconnect never starts, or pays for, a second run.
 - Tool arguments are checked against the known services and metrics before any tool runs. With read-only tools, that limits what an injected prompt can do: it can't write anything or reach other data, though it can still steer the agent to a misleading chart or spend part of the budget.
 
 ### When things go wrong
@@ -238,7 +238,7 @@ sequenceDiagram
     participant LLM as Gemini
     participant DB as Postgres
 
-    F->>B: tRPC mutation ask(question)
+    F->>B: POST /api/ask, with the question
     break more than 10 questions a minute from this IP
         B-->>F: HTTP 429, rate_limited
     end
@@ -247,7 +247,7 @@ sequenceDiagram
         B-->>F: HTTP 503, daily_cap, and Gemini is never called
     end
     B-->>F: runId
-    F->>B: tRPC subscription run(runId): from here the stream is open, with HTTP 200
+    F->>B: GET /api/runs/:runId/events: from here the stream is open, with HTTP 200
     B->>LLM: question + tools
     break Gemini fails, after one retry if retrying can help
         B-->>F: error event: unavailable, "Try again in a moment"
@@ -264,7 +264,7 @@ sequenceDiagram
     end
 ```
 
-- **Two kinds of error.** Before a run starts, `ask` fails like a normal request, with an HTTP status. Once `run` is streaming, the HTTP status is already 200, so a failure arrives as the stream's last event instead. Both carry one of [our error codes](#the-frontends-api), so the page shows the right message either way.
+- **Two kinds of error.** Before a run starts, `POST /api/ask` fails like a normal request, with an HTTP status. Once the run's stream is open, the HTTP status is already 200, so a failure arrives as the stream's last event instead. Both carry one of [our error codes](#the-frontends-api), so the page shows the right message either way.
 - **Timeouts and retries:** every outside call has a timeout. For a database query, Postgres cancels a statement after 2 seconds, and if Postgres stops answering, the backend gives up a second later and closes that connection. An error that retrying can fix, like a timeout or a 503, gets one retry, after a random wait of 0.5 to 1.5 seconds, so retries from many requests don't all land at once. Any other error, like a wrong key, fails at once. A request to Gemini gets one more try in all, whatever went wrong, so a retry that gets a reply without a tool call ends the run.
 - **25 seconds per question,** under CloudFront's 30-second timeout, so a slow question gets the backend's own error ([ADR-0003](decisions/0003-cloudfront-front-door.md) explains the three timeouts).
 - **A run always finishes within its limits,** even if the visitor leaves, so a reconnect finds it intact. Its cost is already capped: at most 6 model calls and 25 seconds, and the question was reserved when it started.
@@ -331,7 +331,7 @@ flowchart TB
 - **Exactly one backend task, even during deploys.** The per-IP rate limit and the events of runs in progress live in the task's memory, so a second task would split the limit and could get a reconnect for a run it never saw. A deploy therefore stops the old task before starting the new one (minimum healthy 0%, maximum 100%). That costs about a minute of downtime per deploy, during which the page shows its offline banner. Runs in progress are lost, and their `run` calls get `run_not_found`. ECS also replaces a task that fails its health check, with the same effect.
 - **Scaling out later** means moving both to shared storage first: the rate limit counters to DynamoDB, which already holds the daily cap, and the run events to Postgres or Redis. Only then does auto scaling make sense. Full high availability would also need Multi-AZ RDS, which doubles the database's cost. None of it is worth it without an uptime promise.
 - **Migrations run first.** A one-off ECS task runs Drizzle's migrations and the seed before the backend starts.
-- **tRPC needs two CloudFront details:** reads put their input in the query string, so `/api/*` forwards query strings and caches nothing, and the agent's steps arrive as SSE, which ADR-0003 already passes through.
+- **`/api/*` in CloudFront** caches nothing and forwards the `Last-Event-ID` header, so a reconnecting stream resumes where it stopped. ADR-0003's settings already let SSE through.
 - **One NAT gateway, in one AZ,** because there's no uptime requirement, and it's already the biggest line on the hourly bill.
 - **Two stacks:** the always-on one in the diagram costs a few cents a month, and the session stack holds everything else. `make down` drains the API before destroying it, and neither `make up` nor `make down` changes CloudFront's settings.
 - **No keys anywhere:** secrets come from Secrets Manager when a task starts, and GitHub Actions signs in with OIDC.
@@ -397,7 +397,7 @@ erDiagram
 
 - **One `runs` row per question that reached the agent,** whatever the outcome. Questions turned away before that (invalid, rate-limited or over the cap) cost nothing, so they aren't runs.
 - **Steps are a `jsonb` column, not a table of their own:** they're always read with their run and never searched by themselves. Tokens, cost and latency are real columns, because step 4 adds them up per day.
-- **IDs are UUIDv7** ([ADR-0009](decisions/0009-uuidv7-ids.md)): each starts with the time it was made, so new rows go to the end of the index and IDs sort by time. The backend makes the ID when the question arrives, since `ask` returns it before the run is saved. It's the run's own ID, not the request's, because tRPC can batch several questions into one request; a run's log lines carry both.
+- **IDs are UUIDv7** ([ADR-0009](decisions/0009-uuidv7-ids.md)): each starts with the time it was made, so new rows go to the end of the index and IDs sort by time. The backend makes the ID when the question arrives, since `POST /api/ask` returns it before the run is saved. It's the run's own ID, not the request's, because a run outlives the request that starts it; a run's log lines carry both.
 - **No IP addresses.** The question is kept, for evals and debugging, and the page says so. On AWS, runs last only as long as the session's database.
 
 ### The daily cap
@@ -489,12 +489,12 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 
 ### The frontend's API
 
-The React app calls the backend through [tRPC](decisions/0007-trpc.md) under `/api/trpc`, with TanStack Query for loading, errors and caching. Types come from the backend's router, and input schemas from `@dashgen/contracts`.
+The React app calls the backend with REST and SSE under `/api` ([ADR-0011](decisions/0011-rest-and-sse.md)), with TanStack Query for loading, errors and caching. The schemas and their types come from `@dashgen/contracts`, which the page and the backend share.
 
-| Call | Kind | Does |
-|---|---|---|
-| `ask({ question })` | mutation | Checks the question (1 to 300 characters after trimming), the rate limit and the daily cap, starts a run, and returns `{ runId }` |
-| `run({ runId })` | subscription (SSE) | Streams that run's events: a `step` per tool call, then `outcome` or `error`. Each event has an ID, so a reconnect replays only what it missed. Never starts work |
+| Call | Does |
+|---|---|
+| `POST /api/ask` with `{"question": "..."}` | Checks the question (1 to 300 characters after trimming), the rate limit and the daily cap, starts a run, and answers `202 {"runId": "..."}` |
+| `GET /api/runs/:runId/events` | Streams that run's events as SSE: a `step` per tool call, then `outcome` or `error`. Each event has an ID, and a reconnect gets only the events after its `Last-Event-ID`. Never starts work |
 
 ```json
 {"type": "step", "tool": "query_metrics", "args": {"service": "payments-service", "metric": "errors", "days": 7}, "result": "q1: 7 daily points", "ms": 30}
@@ -526,21 +526,21 @@ Every error carries our own code and a message that's safe to show visitors. Whe
 
 | Our code | Arrives as | When |
 |---|---|---|
-| `invalid_question` | `ask` fails, HTTP 422 | missing, empty or over 300 characters |
-| `rate_limited` | `ask` fails, HTTP 429 | the 11th question in a minute from one IP |
-| `daily_cap` | `ask` fails, HTTP 503 | the day's questions are used up |
-| `agent_failed` | `error` event in `run`; HTTP stays 200 | no chart, clarifying question or refusal within the [run's limits](#the-daily-cap) |
-| `unavailable` | `error` event in `run` | the database or Gemini fails, after one retry if retrying can help |
-| `timeout` | `error` event in `run` | the run took over 25 seconds |
-| `run_not_found` | `run` fails, HTTP 404 | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page says the answer was interrupted and offers to ask again |
+| `invalid_question` | `POST /api/ask` fails, HTTP 422 | missing, empty or over 300 characters |
+| `rate_limited` | `POST /api/ask` fails, HTTP 429 | the 11th question in a minute from one IP |
+| `daily_cap` | `POST /api/ask` fails, HTTP 503 | the day's questions are used up |
+| `agent_failed` | `error` event in the stream; HTTP stays 200 | no chart, clarifying question or refusal within the [run's limits](#the-daily-cap) |
+| `unavailable` | `error` event in the stream | the database or Gemini fails, after one retry if retrying can help |
+| `timeout` | `error` event in the stream | the run took over 25 seconds |
+| `run_not_found` | the stream fails, HTTP 404 | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page says the answer was interrupted and offers to ask again |
 
 - **Tests and Postman must read the stream:** a failed run is a 200 response whose last event is `error`.
 - **Run events live in the backend's memory** until 5 minutes after the run ends. The outcome is also saved in `runs`.
-- **The limit counts questions, not requests.** tRPC can batch calls into one HTTP request, so the per-IP limit runs as middleware on each `ask`.
+- **The limit counts questions:** each `POST /api/ask` is one. Reading a stream isn't limited, since it never starts work.
 - **The evals call the agent loop directly** in code, without HTTP.
 - **Between sessions,** CloudFront answers `503 {"status": "offline"}` itself.
 
-**`GET /api/health`** is the one plain HTTP route: `200 {"status": "ok"}`, `Cache-Control: no-store`. It doesn't touch the database, so a database blip doesn't make ECS replace a healthy task.
+**`GET /api/health`** answers `200 {"status": "ok"}`, with `Cache-Control: no-store`. It doesn't touch the database, so a database blip doesn't make ECS replace a healthy task.
 
 ### Why Postgres
 
