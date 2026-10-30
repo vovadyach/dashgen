@@ -1,15 +1,8 @@
 import type { MetricsQuery } from "@dashgen/contracts";
 
 import { type Metrics, MetricsError } from "../../src/metrics/index.ts";
+import { CATALOG } from "../fixtures/metrics.ts";
 import { errorsResult } from "./results.ts";
-
-export const CATALOG = {
-  services: ["checkout-api", "payments-service"],
-  metrics: [
-    { name: "errors", unit: "count", rollup: "sum" as const },
-    { name: "latency_ms", unit: "ms", rollup: "avg" as const },
-  ],
-};
 
 /** The metrics module without a database: a known service gets the sample result. */
 export function fakeMetrics(): Metrics & { queries: MetricsQuery[] } {
@@ -28,5 +21,13 @@ export function fakeMetrics(): Metrics & { queries: MetricsQuery[] } {
       }
       return Promise.resolve(errorsResult(input.service));
     },
+  };
+}
+
+/** The metrics module with its database down: every call fails. */
+export function downMetrics(): Metrics {
+  return {
+    listServices: () => Promise.reject(new Error("connection refused")),
+    query: () => Promise.reject(new Error("connection refused")),
   };
 }

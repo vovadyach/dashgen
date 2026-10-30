@@ -47,10 +47,7 @@ function defineTool<S extends z.ZodType>(tool: {
     call: async (input) => {
       calls += 1;
       const callNumber = calls;
-      return tool.run(
-          parseArgs(tool.name, tool.args, input ?? {}),
-          callNumber,
-      );
+      return tool.run(parseArgs(tool.name, tool.args, input ?? {}), callNumber);
     },
   };
 }

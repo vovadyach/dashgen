@@ -1,103 +1,9 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { describe, it } from "node:test";
 
 import { buildChart } from "../../../src/agent/chart.ts";
 import type { CreateChartArgs } from "../../../src/agent/types.ts";
-import { errorsResult, latencyResult } from "../../helpers/results.ts";
-
-// What query_metrics would have kept so far, by result ID.
-const results = new Map([
-  ["q1", errorsResult("checkout-api")],
-  [
-    "q2",
-    errorsResult("payments-service", {
-      summary: { total: 300, avg: 5.08, min: 0, max: 40, latest: 3 },
-    }),
-  ],
-  ["q3", latencyResult("checkout-api", 417)],
-  ["q4", latencyResult("payments-service", 120)],
-  ["q5", errorsResult("auth-service", { days: 7 })],
-  [
-    "q6",
-    errorsResult("search-service", {
-      summary: { total: 0, avg: 0, min: 0, max: 0, latest: 0 },
-    }),
-  ],
-  [
-    "q7",
-    errorsResult("notifications-worker", {
-      summary: { total: 0, avg: 0, min: 0, max: 0, latest: 0 },
-    }),
-  ],
-]);
-
-test("a line chart has one series per service, with the real points", () => {
-  const chart = buildChart(
-    { type: "line", sources: ["q1"], title: "checkout-api errors per day" },
-    results,
-  );
-
-  assert.deepEqual(chart, {
-    type: "line",
-    title: "checkout-api errors per day",
-    unit: "count",
-    x: "day",
-    series: [
-      {
-        name: "checkout-api",
-        points: [
-          { x: "2026-10-25T00:00:00.000Z", y: 38 },
-          { x: "2026-10-26T00:00:00.000Z", y: 55 },
-          { x: "2026-10-27T00:00:00.000Z", y: 16, partial: true },
-        ],
-      },
-    ],
-  });
-});
-
-test("a bar chart compares services, with one number from each summary, named for what it is", () => {
-  const chart = buildChart(
-    {
-      type: "bar",
-      sources: ["q3", "q4"],
-      title: "Average latency by service, last 3 days",
-      aggregation: "avg",
-    },
-    results,
-  );
-
-  assert.equal(chart.x, "category");
-  assert.equal(chart.unit, "ms");
-  assert.deepEqual(chart.series, [
-    {
-      name: "latency_ms, hourly average",
-      points: [
-        { x: "checkout-api", y: 417 },
-        { x: "payments-service", y: 120 },
-      ],
-    },
-  ]);
-});
-
-test("a pie chart shows each service's share of the total", () => {
-  const chart = buildChart(
-    {
-      type: "pie",
-      sources: ["q1", "q2"],
-      title: "Errors by service, last 3 days",
-      aggregation: "total",
-    },
-    results,
-  );
-
-  assert.deepEqual(
-    chart.series[0]?.points.map((p) => [p.x, p.y]),
-    [
-      ["checkout-api", 109],
-      ["payments-service", 300],
-    ],
-  );
-});
+import { RESULTS } from "../../fixtures/results.ts";
 
 // Arguments of the wrong shape never get here: the create_chart tool checks them (tools.test.ts).
 const refusals: [string, CreateChartArgs, RegExp][] = [
@@ -177,40 +83,113 @@ const refusals: [string, CreateChartArgs, RegExp][] = [
   ],
 ];
 
-for (const [what, args, message] of refusals) {
-  test(`refuses ${what}`, () => {
-    assert.throws(() => buildChart(args, results), {
-      name: "ToolError",
-      message,
+describe("buildChart", () => {
+  it("draws a line chart with one series per service, with the real points", () => {
+    const chart = buildChart(
+      { type: "line", sources: ["q1"], title: "checkout-api errors per day" },
+      RESULTS,
+    );
+
+    assert.deepEqual(chart, {
+      type: "line",
+      title: "checkout-api errors per day",
+      unit: "count",
+      x: "day",
+      series: [
+        {
+          name: "checkout-api",
+          points: [
+            { x: "2026-10-25T00:00:00.000Z", y: 38 },
+            { x: "2026-10-26T00:00:00.000Z", y: 55 },
+            { x: "2026-10-27T00:00:00.000Z", y: 16, partial: true },
+          ],
+        },
+      ],
     });
   });
-}
 
-test("following a refusal's advice gives a chart, not another refusal", () => {
-  // A pie of latency: a bar chart with aggregation avg, max, min or latest.
-  const bar = buildChart(
-    { type: "bar", sources: ["q3", "q4"], title: "t", aggregation: "avg" },
-    results,
-  );
-  // A pie with one slice: a line chart without aggregation.
-  const line = buildChart(
-    { type: "line", sources: ["q1"], title: "t" },
-    results,
-  );
-  // A pie of zero totals: a bar chart.
-  const zeros = buildChart(
-    { type: "bar", sources: ["q6", "q7"], title: "t", aggregation: "total" },
-    results,
-  );
+  it("draws a bar chart that compares services, with one number from each summary, named for what it is", () => {
+    const chart = buildChart(
+      {
+        type: "bar",
+        sources: ["q3", "q4"],
+        title: "Average latency by service, last 3 days",
+        aggregation: "avg",
+      },
+      RESULTS,
+    );
 
-  assert.equal(bar.type, "bar");
-  assert.equal(line.type, "line");
-  assert.equal(zeros.type, "bar");
-});
+    assert.equal(chart.x, "category");
+    assert.equal(chart.unit, "ms");
+    assert.deepEqual(chart.series, [
+      {
+        name: "latency_ms, hourly average",
+        points: [
+          { x: "checkout-api", y: 417 },
+          { x: "payments-service", y: 120 },
+        ],
+      },
+    ]);
+  });
 
-test("before any query, says there are no results yet", () => {
-  assert.throws(
-    () => buildChart({ type: "line", sources: ["q1"], title: "t" }, new Map()),
-    { name: "ToolError", message: /Known results: none yet\./ },
-  );
+  it("draws a pie chart of each service's share of the total", () => {
+    const chart = buildChart(
+      {
+        type: "pie",
+        sources: ["q1", "q2"],
+        title: "Errors by service, last 3 days",
+        aggregation: "total",
+      },
+      RESULTS,
+    );
+
+    assert.deepEqual(
+      chart.series[0]?.points.map((p) => [p.x, p.y]),
+      [
+        ["checkout-api", 109],
+        ["payments-service", 300],
+      ],
+    );
+  });
+
+  it("says there are no results yet, before any query", () => {
+    assert.throws(
+      () =>
+        buildChart({ type: "line", sources: ["q1"], title: "t" }, new Map()),
+      { name: "ToolError", message: /Known results: none yet\./ },
+    );
+  });
+
+  describe("refuses", () => {
+    for (const [what, args, message] of refusals) {
+      it(what, () => {
+        assert.throws(() => buildChart(args, RESULTS), {
+          name: "ToolError",
+          message,
+        });
+      });
+    }
+  });
+
+  it("gives a chart, not another refusal, once a refusal's advice is followed", () => {
+    // A pie of latency: a bar chart with aggregation avg, max, min or latest.
+    const bar = buildChart(
+      { type: "bar", sources: ["q3", "q4"], title: "t", aggregation: "avg" },
+      RESULTS,
+    );
+    // A pie with one slice: a line chart without aggregation.
+    const line = buildChart(
+      { type: "line", sources: ["q1"], title: "t" },
+      RESULTS,
+    );
+    // A pie of zero totals: a bar chart.
+    const zeros = buildChart(
+      { type: "bar", sources: ["q6", "q7"], title: "t", aggregation: "total" },
+      RESULTS,
+    );
+
+    assert.equal(bar.type, "bar");
+    assert.equal(line.type, "line");
+    assert.equal(zeros.type, "bar");
+  });
 });

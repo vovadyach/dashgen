@@ -1,5 +1,7 @@
+import { ModelError } from "../../src/agent/errors.ts";
 import type { Model, ModelReply, ModelRequest } from "../../src/agent/types.ts";
 import { checkConversation } from "../../src/agent/validation.ts";
+import { REASON } from "../fixtures/agent.ts";
 
 /** A script step: a reply, an Error to throw, or "hang" until the run's deadline aborts. */
 export type Step = ModelReply | Error | "hang";
@@ -83,4 +85,17 @@ export function emptyReply(
 /** A question a safety filter blocked: no tool call, and asking again gets the same block. */
 export function blockedReply(finishReason = "PROHIBITED_CONTENT"): ModelReply {
   return { ...emptyReply(finishReason), blocked: true };
+}
+
+/** A reply that declines the question, giving REASON. */
+export function declineReply(): ModelReply {
+  return reply(["decline", { reason: REASON }]);
+}
+
+/** Gemini overloaded: a 503, which is worth one more try. */
+export function busyError(): ModelError {
+  return new ModelError("Gemini answered 503: overloaded", {
+    retryable: true,
+    status: 503,
+  });
 }
