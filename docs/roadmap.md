@@ -47,9 +47,9 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] Read-only tools that accept only known service and metric names
 - [x] Tool arguments and the final chart validated against their schemas
 - [x] The question schema in `contracts`: 1 to 300 characters after trimming
-- [ ] `POST /ask` starts a run and answers 202 with its ID; `GET /runs/:id/events` streams its events over SSE and resumes after a reconnect ([ADR-0011](decisions/0011-rest-and-sse.md))
-- [ ] Errors keep [our codes](design.md#the-frontends-api): in `POST /ask`'s error body, and as the stream's last event
-- [ ] Each run saved to `runs`, under its UUIDv7 ID ([ADR-0009](decisions/0009-uuidv7-ids.md))
+- [x] `POST /ask` starts a run and answers 202 with its ID; `GET /runs/:id/events` streams its events over SSE and resumes after a reconnect ([ADR-0011](decisions/0011-rest-and-sse.md))
+- [x] Errors keep [our codes](design.md#the-frontends-api): in `POST /ask`'s error body, and as the stream's last event
+- [x] Each run saved to `runs`, under its UUIDv7 ID ([ADR-0009](decisions/0009-uuidv7-ids.md))
 - [ ] React + Vite + Tailwind + Recharts, with TanStack Query and `EventSource`: question box, steps panel, chart
 - [ ] Vite's dev server forwards `/api` to the backend, so the app calls the same paths locally and on AWS
 - [ ] Component tests with Vitest, frontend checks in `scripts/check.sh`, and a `frontend/AGENTS.md` with a `CLAUDE.md` that imports it
@@ -65,7 +65,8 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] A friendly message when the daily cap is hit, with a link to the demo video
 - [ ] A $20 monthly spend cap on the Gemini project, noted in the runbook
 - [x] Model name in config
-- [ ] Tokens, cost and latency recorded for every run, and cost per day and per question read from `runs`
+- [x] Tokens, cost and latency recorded for every run, with `GEMINI_MODEL` limited to models whose prices the backend knows
+- [ ] Cost per day and per question read from `runs`
 
 **Done when:** a vague question gets a clarifying question back, at the daily cap the backend stops calling Gemini, and every run's cost is recorded.
 

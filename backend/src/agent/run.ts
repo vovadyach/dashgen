@@ -51,10 +51,11 @@ const MESSAGES = {
 export interface RunOptions {
   model: Model;
   /**
-   * Makes this run's metrics module with the clock it's given: the run's
-   * start, fixed, so every query covers the same window, even seconds apart.
+   * Makes this run's metrics module with the clock it's given (the run's
+   * start, fixed, so every query covers the same window, even seconds apart)
+   * and the run's logger.
    */
-  metrics: (now: () => Date) => Metrics;
+  metrics: (now: () => Date, log: Logger) => Metrics;
   log?: Logger;
   /** Gets each event as it happens: a step per tool call, then how the run ended. */
   onEvent?: (event: RunEvent) => void;
@@ -100,7 +101,7 @@ export async function runAgent(
 ): Promise<RunResult> {
   const started = performance.now();
   const startedAt = now();
-  const tools = createTools(metrics(() => startedAt));
+  const tools = createTools(metrics(() => startedAt, log));
   const signal = AbortSignal.timeout(timeoutMs);
   // A function, so TypeScript doesn't assume it stays as it was last checked.
   const timeUp = () => signal.aborted;

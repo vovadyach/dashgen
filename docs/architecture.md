@@ -7,12 +7,15 @@ What runs today, and its API. [design.md](design.md) has the target design, the 
 ```
 Browser ──▶ Backend ──────────────▶ Postgres
            (Fastify)                (dashgen database: services, metrics, points, runs)
-             └── metrics module ──▶ read-only queries
+             ├── agent ───────────▶ Gemini
+             ├── metrics module ──▶ read-only queries
+             └── runs module ─────▶ one row per finished run
 ```
 
-- **Backend** (`backend/`): one TypeScript service. Its HTTP API takes questions and answers 501, because the agent arrives in step 3.
+- **Backend** (`backend/`): one TypeScript service. Its HTTP API takes a question, runs the agent in the background, and streams the run's events.
 - **The `metrics` module** (`backend/src/metrics/`): `listServices()` and `query()` over the seeded data. The agent's tools call it.
-- **The `agent` module** (`backend/src/agent/`): the [five tools](design.md#the-agents-tools), the Gemini adapter, and `runAgent`, the loop that answers a question with them within [its limits](design.md#the-daily-cap) ([ADR-0010](decisions/0010-agent-loop.md)). The API doesn't use it yet; `POST /ask` and the run's event stream, next in step 3, will. `npm run gemini:check` tries the adapter with two real requests.
+- **The `agent` module** (`backend/src/agent/`): the [five tools](design.md#the-agents-tools), the Gemini adapter, and `runAgent`, the loop that answers a question with them within [its limits](design.md#the-daily-cap) ([ADR-0010](decisions/0010-agent-loop.md)). `POST /ask` runs it for each question. `npm run gemini:check` tries the adapter with two real requests.
+- **The `runs` module** (`backend/src/runs/`): each run's events in memory, for its stream, and `saveRun()`, which keeps each finished run in the `runs` table, with its cost.
 - **Postgres** runs in Docker Compose (`make db`), with one `dashgen` database and user. The tables come from Drizzle migrations, and the data from the seed.
 - **Frontend:** planned for step 3.
 
@@ -26,16 +29,23 @@ Every response carries an `x-request-id` header: a UUIDv7, which also appears in
 
 **`GET /health`** returns `200 {"status":"ok"}`.
 
-**`POST /ask`** takes `{"question": "..."}`, 1 to 300 characters after trimming.
+**`POST /ask`** takes `{"question": "..."}`, 1 to 300 characters after trimming. It starts a run in the background and answers `202 {"runId": "..."}`, a UUIDv7.
 
 | Status | Code | When |
 |---|---|---|
-| 501 | `not_implemented` | the question is valid, until the agent arrives |
 | 422 | `invalid_question` | `question` is missing, blank or over 300 characters |
 | 429 | `rate_limited` | an IP's 11th request in a minute, counted from its first, with `Retry-After` |
 | 400 | `bad_request` | the body isn't valid JSON, or Fastify rejects the request |
 | 404 | `not_found` | an unknown route |
 | 500 | `internal_error` | an unexpected failure |
+
+**`GET /runs/:id/events`** streams a run's events as SSE: a `step` per tool call, then an `outcome` or an `error`, each with an `id` counting from 1. The stream ends after the last event, and a reconnect that sends `Last-Event-ID` gets only the events after it. [design.md](design.md#the-frontends-api) has the events' shapes and error codes.
+
+| Status | Code | When |
+|---|---|---|
+| 200 | | the stream |
+| 204 | | every event was sent already, which tells `EventSource` to stop reconnecting |
+| 404 | `run_not_found` | the run is unknown, or ended more than 5 minutes ago |
 
 Every error is `{"error": {"code": "...", "message": "..."}}`, and the message is safe to show visitors. The [target design](design.md#the-frontends-api) keeps these codes. CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
 
@@ -55,11 +65,12 @@ Database tests run against a separate throwaway Postgres on port 5433 (`compose.
 
 | Where | Settings |
 |---|---|
-| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed` and `gemini:check` | `GEMINI_API_KEY`, `GEMINI_MODEL` (`gemini-3.1-flash-lite` by default), `ALLOWED_ORIGINS`, `DATABASE_URL`, `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
+| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed` and `gemini:check` | `GEMINI_API_KEY`, `GEMINI_MODEL` (`gemini-3.1-flash-lite`, the default, or `gemini-3.5-flash-lite`: the models DashGen has prices for), `ALLOWED_ORIGINS`, `DATABASE_URL`, `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
 | `.env` at the root (from `.env.example`), read by Docker Compose | `POSTGRES_PASSWORD`, `DASHGEN_DB_PASSWORD` |
 
 ## Known limits
 
+- **Run events live in memory,** so a restart loses them, and their streams answer 404 `run_not_found`. Finished runs are also in the `runs` table.
 - **The rate limit is per process,** in memory, so a restart resets it. Step 4's [daily cap](design.md#the-daily-cap) is shared.
 - **Behind a load balancer,** every request would come from its IP. Step 5 takes the visitor's IP from CloudFront instead ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
 - **Incidents in the seed move with the day it runs,** so "this week" always has one to find. The rest of an hour's value is the same whichever day the seed runs.

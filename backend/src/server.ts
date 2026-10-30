@@ -1,7 +1,29 @@
+import { createGeminiModel } from "./agent/gemini.ts";
 import { buildApp } from "./app.ts";
-import { loadConfig } from "./config.ts";
+import { loadConfig, loadDatabaseUrl } from "./config.ts";
+import { createDb } from "./db.ts";
+import { createMetrics } from "./metrics/index.ts";
+import { saveRun } from "./runs/index.ts";
 
-const app = await buildApp(loadConfig(), { logger: true });
+const config = loadConfig();
+const databaseUrl = loadDatabaseUrl();
+
+const app = await buildApp(config, {
+  logger: true,
+  // Made here so the database's log lines go through the app's logger.
+  runs: (log) => {
+    const db = createDb(databaseUrl.reveal(), { log });
+    return {
+      model: createGeminiModel({
+        apiKey: config.geminiApiKey.reveal(),
+        model: config.geminiModel,
+      }),
+      metrics: (now, runLog) => createMetrics(db, { now, log: runLog }),
+      save: (run) => saveRun(db, run),
+      close: () => db.$client.end(),
+    };
+  },
+});
 await app.listen({ port: 3000 });
 
 // ECS sends SIGTERM before it stops a task, and Ctrl+C sends SIGINT. Closing

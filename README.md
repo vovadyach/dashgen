@@ -61,10 +61,10 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 
 | Part | Tech | Today |
 |---|---|---|
-| Backend (`backend/`) | Node.js 24, Fastify, TypeScript, Zod | Takes questions with a per-IP rate limit, and answers 501 until the agent exists ([API](docs/architecture.md#backend-api)) |
+| Backend (`backend/`) | Node.js 24, Fastify, TypeScript, Zod | Takes a question, runs the agent, streams its steps over SSE and saves the run, with a per-IP rate limit ([API](docs/architecture.md#backend-api)) |
 | Database | Postgres 18, Docker Compose | Runs locally: one `dashgen` database, with tables from Drizzle migrations |
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
-| Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools), the Gemini adapter and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md)). The API that starts it comes next (step 3) |
+| Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools), the Gemini adapter and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md)) |
 | Frontend | React, TypeScript, Vite, Tailwind, Recharts, TanStack Query | Planned (step 3) |
 | Hosting | AWS, Terraform | Planned (step 5) |
 
@@ -74,7 +74,7 @@ You'll need Node.js 24.16+, and Docker for Postgres.
 
 ```bash
 make install                           # install every TypeScript package
-cp backend/.env.example backend/.env   # any placeholder works for GEMINI_API_KEY for now
+cp backend/.env.example backend/.env   # asking a question needs a real GEMINI_API_KEY, and Postgres (below)
 npm run dev                            # the backend on :3000
 ```
 

@@ -411,7 +411,7 @@ The cap keeps a runaway day from becoming a runaway bill. That takes two things:
 - **24,000 input tokens a question,** across all its calls, since each call resends the conversation so far. Gemini reports every call's tokens. Before each call, the backend estimates its input: the last call's input, plus that call's reply and the tool outputs added since, at about 4 characters a token. If that would take the question past this budget, the run ends with `agent_failed`.
 - **Short tool results.** The model sees a summary of each query, never its points, so a typical question needs about 8,000 input tokens, whatever the time range.
 
-At the prices of `gemini-3.1-flash-lite` ($0.25 per million input tokens and $1.50 per million output, in October 2026), that's about $0.006 of input and $0.005 of output, about $0.011 a question. The model is the `GEMINI_MODEL` setting, and a different one means redoing this sum: `gemini-3.5-flash-lite`, at $0.30 and $2.50, would make it $0.015.
+At the prices of `gemini-3.1-flash-lite` ($0.25 per million input tokens and $1.50 per million output, in October 2026), that's about $0.006 of input and $0.005 of output, about $0.011 a question. The model is the `GEMINI_MODEL` setting, limited to models whose prices the backend knows, since it saves each run's cost: `gemini-3.5-flash-lite`, at $0.30 and $2.50, would make it $0.015.
 
 **The cap is 150 questions a day,** so Gemini costs at most about $1.60 a day. A month with ten session days comes to about $16, which leaves room for AWS's ~$5 within the $25 budget. A busier day gets the cap's message instead of charts.
 
@@ -532,6 +532,7 @@ Every error carries our own code and a message that's safe to show visitors. Whe
 | `agent_failed` | `error` event in the stream; HTTP stays 200 | no chart, clarifying question or refusal within the [run's limits](#the-daily-cap) |
 | `unavailable` | `error` event in the stream | the database or Gemini fails, after one retry if retrying can help |
 | `timeout` | `error` event in the stream | the run took over 25 seconds |
+| `internal_error` | HTTP 500, or the stream's `error` event | a bug in DashGen; a run it stops isn't saved |
 | `run_not_found` | the stream fails, HTTP 404 | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page says the answer was interrupted and offers to ask again |
 
 - **Tests and Postman must read the stream:** a failed run is a 200 response whose last event is `error`.

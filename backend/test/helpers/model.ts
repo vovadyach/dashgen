@@ -92,6 +92,11 @@ export function declineReply(): ModelReply {
   return reply(["decline", { reason: REASON }]);
 }
 
+/** A model that declines every question, for tests that don't follow a run's steps. */
+export function decliningModel(): Model {
+  return { name: "fake-model", next: () => Promise.resolve(declineReply()) };
+}
+
 /** Gemini overloaded: a 503, which is worth one more try. */
 export function busyError(): ModelError {
   return new ModelError("Gemini answered 503: overloaded", {

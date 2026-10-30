@@ -13,19 +13,28 @@ import {
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
 
-import { AskRequest, ErrorBody, Health } from "@dashgen/contracts";
+import { Health } from "@dashgen/contracts";
 
+import type { RunEvent } from "./agent/types.ts";
+import { type RunDeps, runRoutes } from "./api/runs.ts";
 import type { Config } from "./config.ts";
 import { withoutQueryValues } from "./db.ts";
 import { ApiError, errorBody } from "./errors.ts";
+import type { Logger } from "./logger.ts";
+import { createRunStore } from "./runs/live.ts";
 
 export interface AppOptions {
   /** JSON logs at `config.logLevel`, with an ID for each request. Off unless asked for, so tests stay quiet. */
   logger?: boolean;
+  /**
+   * Makes what runs need, with the app's logger: Gemini and the database on
+   * the server, fakes in tests. `close` runs when the app closes.
+   */
+  runs: (log: Logger) => RunDeps & { close?: () => Promise<void> };
 }
 
 /** Builds the backend from `config`, so each test can pass its own. Nothing else reads the environment. */
-export async function buildApp(config: Config, options: AppOptions = {}) {
+export async function buildApp(config: Config, options: AppOptions) {
   const app = Fastify({
     logger: options.logger === true ? { level: config.logLevel } : false,
     // A UUIDv7 per request, to find its log lines. A run gets its own ID, since
@@ -96,7 +105,8 @@ export async function buildApp(config: Config, options: AppOptions = {}) {
   await app.register(cors, {
     origin: config.allowedOrigins,
     methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type"],
+    // EventSource sends Last-Event-ID when it reconnects to a run's stream.
+    allowedHeaders: ["Content-Type", "Last-Event-ID"],
   });
 
   // Routes opt in with `config.rateLimit`. Counts are kept in memory, per
@@ -125,19 +135,13 @@ export async function buildApp(config: Config, options: AppOptions = {}) {
     status: "ok" as const,
   }));
 
-  app.post(
-    "/ask",
-    {
-      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
-      schema: {
-        body: AskRequest,
-        response: { 422: ErrorBody, 429: ErrorBody, 501: ErrorBody },
-      },
-    },
-    () => {
-      throw new ApiError(501, "not_implemented", "Not implemented yet.");
-    },
-  );
+  const { close, ...runs } = options.runs(app.log);
+  if (close) app.addHook("onClose", close);
+  await app.register(runRoutes, {
+    ...runs,
+    store: createRunStore<RunEvent>({ log: app.log }),
+    price: config.geminiPrice,
+  });
 
   return app;
 }

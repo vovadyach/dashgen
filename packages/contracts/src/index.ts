@@ -25,6 +25,12 @@ export const AskRequest = z.object({
 });
 export type AskRequest = z.infer<typeof AskRequest>;
 
+/** The backend's answer to `POST /ask`: the run it started, whose events stream from `GET /runs/:id/events`. */
+export const AskResponse = z.object({
+  runId: z.uuid(),
+});
+export type AskResponse = z.infer<typeof AskResponse>;
+
 /** What the metrics module offers: every service, and each metric's unit and rollup. */
 export const ServiceCatalog = z.object({
   services: z.array(z.string()),

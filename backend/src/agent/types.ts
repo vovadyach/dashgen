@@ -190,7 +190,9 @@ export type ModelStep = { ms: number } & (
 export type RunStep =
   ({ type: "model" } & ModelStep) | ({ type: "tool" } & ToolStep);
 
-export type RunErrorCode = "agent_failed" | "unavailable" | "timeout";
+/** `internal_error` comes only from the API, when a run crashes on a bug. */
+export type RunErrorCode =
+  "agent_failed" | "unavailable" | "timeout" | "internal_error";
 
 /** How a run ends: its outcome, or an error whose message is safe to show visitors. */
 export type RunEnd =

@@ -29,18 +29,30 @@ export class Secret {
   }
 }
 
+/** Dollars per million tokens. */
+export interface Price {
+  input: number;
+  output: number;
+}
+
+// Gemini 3 only: the adapter sets a thinking level and sends thought signatures back.
+const GeminiModel = z.enum(["gemini-3.1-flash-lite", "gemini-3.5-flash-lite"], {
+  error:
+    "Use gemini-3.1-flash-lite or gemini-3.5-flash-lite: DashGen needs a Gemini 3 model, and its prices for each run's cost.",
+});
+type GeminiModel = z.infer<typeof GeminiModel>;
+
+/** Google's prices in October 2026 (docs/design.md, the daily cap). */
+const GEMINI_PRICES: Record<GeminiModel, Price> = {
+  "gemini-3.1-flash-lite": { input: 0.25, output: 1.5 },
+  "gemini-3.5-flash-lite": { input: 0.3, output: 2.5 },
+};
+
 // Empty values fail like missing ones, so `GEMINI_API_KEY=` stops the backend at startup.
 const Env = z.object({
   GEMINI_API_KEY: z.string().min(1),
-  // The cost estimates in docs/design.md are for this model's prices. Gemini 3
-  // only: the adapter sets a thinking level and sends thought signatures back.
-  GEMINI_MODEL: z
-    .string()
-    .regex(
-      /^gemini-3[.-]/,
-      "Use a Gemini 3 model, like gemini-3.1-flash-lite: DashGen sets its thinking level and sends its thought signatures back.",
-    )
-    .default("gemini-3.1-flash-lite"),
+  // The cost estimates in docs/design.md are for this model.
+  GEMINI_MODEL: GeminiModel.default("gemini-3.1-flash-lite"),
   ALLOWED_ORIGINS: z
     .string()
     .transform((value) =>
@@ -57,6 +69,8 @@ const Env = z.object({
 export interface Config {
   geminiApiKey: Secret;
   geminiModel: string;
+  /** The model's price, for each run's cost. */
+  geminiPrice: Price;
   allowedOrigins: string[];
   // debug adds every SQL statement; info suits AWS.
   logLevel: LogLevel;
@@ -85,6 +99,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     geminiApiKey: new Secret(GEMINI_API_KEY),
     geminiModel: GEMINI_MODEL,
+    geminiPrice: GEMINI_PRICES[GEMINI_MODEL],
     allowedOrigins: ALLOWED_ORIGINS,
     logLevel: LOG_LEVEL,
   };
