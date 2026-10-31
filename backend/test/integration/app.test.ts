@@ -3,9 +3,9 @@ import { randomUUIDv7 } from "node:crypto";
 import { describe, it } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import type { AskResponse, ErrorBody } from "@dashgen/contracts";
+import type { AskResponse, ErrorBody, RunEvent } from "@dashgen/contracts";
 
-import type { RunEvent } from "../../src/agent/types.ts";
+import type { Model } from "../../src/agent/types.ts";
 import type { NewRun } from "../../src/runs/index.ts";
 import { CHART, QUERY, QUESTION } from "../fixtures/agent.ts";
 import { VALID_ENV } from "../fixtures/config.ts";
@@ -36,7 +36,8 @@ async function readEvents(app: App, runId: string, lastEventId?: number) {
   });
   const events = response.body
     .split("\n\n")
-    .filter((block) => block !== "")
+    // A block that starts with a colon is a comment, not an event.
+    .filter((block) => block !== "" && !block.startsWith(":"))
     .map((block) => {
       const field = (name: string) =>
         block
@@ -58,6 +59,32 @@ const exampleModel = () =>
     reply(["query_metrics", QUERY]),
     reply(["create_chart", CHART]),
   ]);
+
+/** A model that declines once `answer()` is called, so a test can act while the run is still going. */
+function thinkingModel() {
+  let answer: () => void = () => undefined;
+  const answered = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  const model: Model = {
+    name: "fake-model",
+    next: async () => {
+      await answered;
+      return declineReply();
+    },
+  };
+  return { model, answer };
+}
+
+/** Saves into a list, so a test can check what was saved. */
+function savedRuns() {
+  const saved: NewRun[] = [];
+  const save = (run: NewRun) => {
+    saved.push(run);
+    return Promise.resolve();
+  };
+  return { saved, save };
+}
 
 describe("HTTP API", () => {
   it("gives each response its own request ID, a UUIDv7 with the time in it", async (t) => {
@@ -101,7 +128,7 @@ describe("HTTP API", () => {
       assertRecentUuidV7(await ask(app));
     });
 
-    it("requires a question of 1 to 300 characters, after trimming", async (t) => {
+    it("requires a question of 1 to 300 characters after trimming, with no NUL character", async (t) => {
       const app = await startApp(t);
 
       for (const payload of [
@@ -109,6 +136,8 @@ describe("HTTP API", () => {
         { question: "" },
         { question: "   " },
         { question: "x".repeat(301) },
+        // Postgres can't store it, so the run couldn't be saved.
+        { question: "Show errors\u0000" },
       ]) {
         const response = await app.inject({
           method: "POST",
@@ -151,14 +180,8 @@ describe("HTTP API", () => {
     });
 
     it("saves each finished run, with its cost", async (t) => {
-      const saved: NewRun[] = [];
-      const app = await startApp(t, {
-        model: exampleModel(),
-        save: (run) => {
-          saved.push(run);
-          return Promise.resolve();
-        },
-      });
+      const { saved, save } = savedRuns();
+      const app = await startApp(t, { model: exampleModel(), save });
 
       const runId = await ask(app);
       // The run is saved as soon as it ends, which also ends its stream.
@@ -191,19 +214,8 @@ describe("HTTP API", () => {
     });
 
     it("sends events as they come to a stream opened before the run ends", async (t) => {
-      let answer: () => void = () => undefined;
-      const answered = new Promise<void>((resolve) => {
-        answer = resolve;
-      });
-      const app = await startApp(t, {
-        model: {
-          name: "fake-model",
-          next: async () => {
-            await answered;
-            return declineReply();
-          },
-        },
-      });
+      const { model, answer } = thinkingModel();
+      const app = await startApp(t, { model });
       const runId = await ask(app);
 
       const reading = readEvents(app, runId);
@@ -254,8 +266,42 @@ describe("HTTP API", () => {
       assert.equal(response.json<ErrorBody>().error.code, "run_not_found");
     });
 
-    it("ends the stream with internal_error when a run crashes on a bug", async (t) => {
-      const app = await startApp(t, { model: fakeModel([new Error("a bug")]) });
+    it("sends its headers at once, before the first event", async (t) => {
+      const { model, answer } = thinkingModel();
+      const app = await startApp(t, { model });
+      // A real connection: inject() can't show when the headers arrive.
+      const url = await app.listen({ host: "127.0.0.1", port: 0 });
+      const runId = await ask(app);
+
+      // fetch resolves when the headers arrive, while the model is still
+      // thinking, or fails after 2 seconds. The model answers either way, so
+      // the run ends and the app can close.
+      const response = await fetch(`${url}/runs/${runId}/events`, {
+        signal: AbortSignal.timeout(2_000),
+      }).finally(() => {
+        answer();
+      });
+
+      assert.equal(response.status, 200);
+      assert.match(await response.text(), /"type":"outcome"/);
+    });
+
+    it("closes its connection when it ends, so closing the app never waits on it", async (t) => {
+      const app = await startApp(t);
+
+      const { response } = await readEvents(app, await ask(app));
+
+      // Kept open, it would sit idle, and app.close() would wait over a
+      // minute for it to time out.
+      assert.equal(response.headers.connection, "close");
+    });
+
+    it("ends the stream with internal_error when a run hits a bug, and still saves it", async (t) => {
+      const { saved, save } = savedRuns();
+      const app = await startApp(t, {
+        model: fakeModel([new Error("a bug")]),
+        save,
+      });
 
       const { events } = await readEvents(app, await ask(app));
 
@@ -269,6 +315,49 @@ describe("HTTP API", () => {
           },
         ],
       );
+      assert.equal(saved[0]?.errorCode, "internal_error");
+    });
+
+    it("ends the stream with internal_error even when a run fails before its loop starts", async (t) => {
+      const app = await startApp(t, {
+        metrics: () => {
+          throw new Error("a bug");
+        },
+      });
+
+      const { events } = await readEvents(app, await ask(app));
+
+      assert.deepEqual(
+        events.map(({ event }) => event.type === "error" && event.code),
+        ["internal_error"],
+      );
+    });
+  });
+
+  describe("closing", () => {
+    it("waits for runs still going, so each is saved before the database closes", async (t) => {
+      const { model, answer } = thinkingModel();
+      const order: string[] = [];
+      const app = await startApp(t, {
+        model,
+        save: () => {
+          order.push("run saved");
+          return Promise.resolve();
+        },
+        close: () => {
+          order.push("database closed");
+          return Promise.resolve();
+        },
+      });
+      await ask(app);
+
+      const closed = app.close();
+      // Time enough for the database to close first, if closing didn't wait.
+      await sleep(20);
+      answer();
+      await closed;
+
+      assert.deepEqual(order, ["run saved", "database closed"]);
     });
   });
 

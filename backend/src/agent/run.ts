@@ -1,8 +1,14 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
-import type { Outcome } from "@dashgen/contracts";
+import type {
+  Outcome,
+  RunErrorCode,
+  RunEvent,
+  ToolStep,
+} from "@dashgen/contracts";
 
 import { withoutQueryValues } from "../db.ts";
+import { INTERNAL_ERROR } from "../errors.ts";
 import { consoleLogger, type Logger } from "../logger.ts";
 import type { Metrics } from "../metrics/index.ts";
 import { ModelError, ToolError } from "./errors.ts";
@@ -13,15 +19,12 @@ import type {
   Model,
   ModelReply,
   RunEnd,
-  RunErrorCode,
-  RunEvent,
   RunResult,
   RunStep,
   Tool,
   ToolCall,
   ToolOutput,
   ToolResult,
-  ToolStep,
   Usage,
 } from "./types.ts";
 
@@ -80,7 +83,8 @@ const msSince = (start: number) => Math.round(performance.now() - start);
  * Answers one question: sends it to the model with the tools, runs the calls
  * the model makes, sends their outputs back, and repeats until a tool ends the
  * run or a limit does. Resolves with how it ended, failures included, since
- * the page gets those as events too. Rejects only on a bug in DashGen.
+ * the page gets those as events too. A bug in DashGen ends it with
+ * internal_error, so even that run keeps its steps and tokens for the runs table.
  *
  * Each request gets one more try, whatever went wrong, if the run has a request
  * left: after a short random wait when Gemini fails in a way retrying can fix,
@@ -133,7 +137,7 @@ export async function runAgent(
     const context = { ...details, modelCalls, ...usage, ms };
     if (last.type === "outcome") {
       log.info({ outcome: last.outcome, ...context }, "run finished");
-    } else if (last.code === "unavailable") {
+    } else if (last.code === "unavailable" || last.code === "internal_error") {
       log.error({ code: last.code, ...context }, "run failed");
     } else {
       log.warn({ code: last.code, ...context }, "run failed");
@@ -149,131 +153,143 @@ export async function runAgent(
     log.debug(step, "tool call");
   };
 
-  for (;;) {
-    if (timeUp()) return timedOut();
-    if (modelCalls === RUN_LIMITS.modelCalls) {
-      return fail("agent_failed", MESSAGES.agentFailed, {
-        reason: "no model calls left",
-      });
-    }
-    if (usage.inputTokens + nextInput > RUN_LIMITS.inputTokens) {
-      return fail("agent_failed", MESSAGES.agentFailed, {
-        reason: "no input tokens left",
-        nextInput,
-      });
-    }
-
-    modelCalls += 1;
-    const asked = performance.now();
-    let reply: ModelReply;
-    try {
-      reply = await model.next({ system, messages, tools, signal });
-    } catch (error) {
-      if (timeUp()) {
-        steps.push({ type: "model", ms: msSince(asked), error: "timed out" });
-        return timedOut();
-      }
-      // Anything else is a bug in DashGen, like a conversation Gemini would refuse.
-      if (!(error instanceof ModelError)) throw error;
-      steps.push({ type: "model", ms: msSince(asked), error: error.message });
-      // No retry when it can't help, the request had its one, or none is left.
-      if (!error.retryable || retried || modelCalls === RUN_LIMITS.modelCalls) {
-        return fail("unavailable", MESSAGES.modelDown, { err: error });
-      }
-      retried = true;
-      log.warn({ err: error }, "model call failed, retrying");
-      try {
-        await sleep(retryDelayMs(), undefined, { signal });
-      } catch (waitError) {
-        if (timeUp()) return timedOut();
-        throw waitError;
-      }
-      continue;
-    }
-
-    usage.inputTokens += reply.usage.inputTokens;
-    usage.outputTokens += reply.usage.outputTokens;
-    const step = {
-      calls: reply.calls.map((call) => call.name),
-      finishReason: reply.finishReason,
-      ...reply.usage,
-      ms: msSince(asked),
-    };
-    steps.push({ type: "model", ...step });
-    log.debug({ ...step, retry: retried }, "model call");
-
-    if (reply.calls.length === 0) {
-      if (reply.blocked) {
-        return end(
-          {
-            type: "outcome",
-            outcome: "decline",
-            message: MESSAGES.blocked,
-            examples: [...EXAMPLE_QUESTIONS],
-          },
-          { reason: "blocked", finishReason: reply.finishReason },
-        );
-      }
-      if (retried) {
-        return fail("agent_failed", MESSAGES.agentFailed, {
-          reason: "no tool call",
-          finishReason: reply.finishReason,
-        });
-      }
-      // The same request once more.
-      retried = true;
-      nextInput = reply.usage.inputTokens;
-      continue;
-    }
-    retried = false;
-
-    messages.push({ role: "model", reply });
-    const outputs: ToolOutput[] = [];
-    let chartRefused = false;
-    // In order, one at a time, so a later call can use an earlier one's result.
-    for (const call of reply.calls) {
-      const calledAt = performance.now();
-      let called: Called;
-      try {
-        called = await Promise.race([callTool(tools, call), deadline]);
-      } catch (error) {
-        const late = timeUp();
-        record({
-          tool: call.name,
-          args: call.args,
-          error: late ? "timed out" : "failed",
-          ms: msSince(calledAt),
-        });
-        if (late) return timedOut();
-        // Not the model's mistake, so most likely the database.
-        return fail("unavailable", MESSAGES.metricsDown, {
-          err: withoutQueryValues(error),
-          tool: call.name,
-        });
-      }
-      record(called.step);
-      if ("outcome" in called) {
-        return end({ type: "outcome", ...called.outcome });
-      }
-      outputs.push(called.output);
-      if ("error" in called.output && call.name === "create_chart") {
-        chartRefused = true;
-      }
+  try {
+    for (;;) {
       if (timeUp()) return timedOut();
-    }
-    if (chartRefused) {
-      chartRefusals += 1;
-      if (chartRefusals === 2) {
+      if (modelCalls === RUN_LIMITS.modelCalls) {
         return fail("agent_failed", MESSAGES.agentFailed, {
-          reason: "chart refused twice",
+          reason: "no model calls left",
         });
       }
+      if (usage.inputTokens + nextInput > RUN_LIMITS.inputTokens) {
+        return fail("agent_failed", MESSAGES.agentFailed, {
+          reason: "no input tokens left",
+          nextInput,
+        });
+      }
+
+      modelCalls += 1;
+      const asked = performance.now();
+      let reply: ModelReply;
+      try {
+        reply = await model.next({ system, messages, tools, signal });
+      } catch (error) {
+        if (timeUp()) {
+          steps.push({ type: "model", ms: msSince(asked), error: "timed out" });
+          return timedOut();
+        }
+        // Anything else is a bug in DashGen, like a conversation Gemini would refuse.
+        if (!(error instanceof ModelError)) throw error;
+        steps.push({ type: "model", ms: msSince(asked), error: error.message });
+        // No retry when it can't help, the request had its one, or none is left.
+        if (
+          !error.retryable ||
+          retried ||
+          modelCalls === RUN_LIMITS.modelCalls
+        ) {
+          return fail("unavailable", MESSAGES.modelDown, { err: error });
+        }
+        retried = true;
+        log.warn({ err: error }, "model call failed, retrying");
+        try {
+          await sleep(retryDelayMs(), undefined, { signal });
+        } catch (waitError) {
+          if (timeUp()) return timedOut();
+          throw waitError;
+        }
+        continue;
+      }
+
+      usage.inputTokens += reply.usage.inputTokens;
+      usage.outputTokens += reply.usage.outputTokens;
+      const step = {
+        calls: reply.calls.map((call) => call.name),
+        finishReason: reply.finishReason,
+        ...reply.usage,
+        ms: msSince(asked),
+      };
+      steps.push({ type: "model", ...step });
+      log.debug({ ...step, retry: retried }, "model call");
+
+      if (reply.calls.length === 0) {
+        if (reply.blocked) {
+          return end(
+            {
+              type: "outcome",
+              outcome: "decline",
+              message: MESSAGES.blocked,
+              examples: [...EXAMPLE_QUESTIONS],
+            },
+            { reason: "blocked", finishReason: reply.finishReason },
+          );
+        }
+        if (retried) {
+          return fail("agent_failed", MESSAGES.agentFailed, {
+            reason: "no tool call",
+            finishReason: reply.finishReason,
+          });
+        }
+        // The same request once more.
+        retried = true;
+        nextInput = reply.usage.inputTokens;
+        continue;
+      }
+      retried = false;
+
+      messages.push({ role: "model", reply });
+      const outputs: ToolOutput[] = [];
+      let chartRefused = false;
+      // In order, one at a time, so a later call can use an earlier one's result.
+      for (const call of reply.calls) {
+        const calledAt = performance.now();
+        let called: Called;
+        try {
+          called = await Promise.race([callTool(tools, call), deadline]);
+        } catch (error) {
+          const late = timeUp();
+          record({
+            tool: call.name,
+            args: call.args,
+            error: late ? "timed out" : "failed",
+            ms: msSince(calledAt),
+          });
+          if (late) return timedOut();
+          // Not the model's mistake, so most likely the database.
+          return fail("unavailable", MESSAGES.metricsDown, {
+            err: withoutQueryValues(error),
+            tool: call.name,
+          });
+        }
+        record(called.step);
+        if ("outcome" in called) {
+          return end({ type: "outcome", ...called.outcome });
+        }
+        outputs.push(called.output);
+        if ("error" in called.output && call.name === "create_chart") {
+          chartRefused = true;
+        }
+        if (timeUp()) return timedOut();
+      }
+      if (chartRefused) {
+        chartRefusals += 1;
+        if (chartRefusals === 2) {
+          return fail("agent_failed", MESSAGES.agentFailed, {
+            reason: "chart refused twice",
+          });
+        }
+      }
+      messages.push({ role: "tools", outputs });
+      nextInput =
+        reply.usage.inputTokens +
+        reply.usage.outputTokens +
+        estimateTokens(outputs);
     }
-    messages.push({ role: "tools", outputs });
-    nextInput =
-      reply.usage.inputTokens +
-      reply.usage.outputTokens +
-      estimateTokens(outputs);
+  } catch (error) {
+    // A bug in DashGen, thrown anywhere above. It ends the run like any
+    // failure, so the page gets an error event and the run is saved.
+    return fail(INTERNAL_ERROR.code, INTERNAL_ERROR.message, {
+      err: withoutQueryValues(error),
+    });
   }
 }
 

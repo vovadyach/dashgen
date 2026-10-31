@@ -7,7 +7,7 @@
 
 Natural-language dashboard generator. Type a question in plain English, an LLM agent decides which tools to call, fetches the data, and renders a chart.
 
-> **Work in progress.** The backend's skeleton runs today. The agent, the frontend and the AWS deploy come next; see the [roadmap](docs/roadmap.md).
+> **Work in progress.** The backend works today: it takes a question, runs the Gemini agent and streams its steps. The frontend and the AWS deploy come next; see the [roadmap](docs/roadmap.md).
 
 ## What it will do
 

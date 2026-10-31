@@ -13,15 +13,14 @@ import {
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
 
-import { Health } from "@dashgen/contracts";
+import { Health, type RunEvent } from "@dashgen/contracts";
 
-import type { RunEvent } from "./agent/types.ts";
-import { type RunDeps, runRoutes } from "./api/runs.ts";
+import { type RunDeps, runRoutes } from "./api/index.ts";
 import type { Config } from "./config.ts";
 import { withoutQueryValues } from "./db.ts";
-import { ApiError, errorBody } from "./errors.ts";
+import { ApiError, errorBody, INTERNAL_ERROR } from "./errors.ts";
 import type { Logger } from "./logger.ts";
-import { createRunStore } from "./runs/live.ts";
+import { createRunStore } from "./runs/index.ts";
 
 export interface AppOptions {
   /** JSON logs at `config.logLevel`, with an ID for each request. Off unless asked for, so tests stay quiet. */
@@ -89,7 +88,7 @@ export async function buildApp(config: Config, options: AppOptions) {
     request.log.error({ err: withoutQueryValues(error) }, "unexpected error");
     return reply
       .code(500)
-      .send(errorBody("internal_error", "Something went wrong."));
+      .send(errorBody(INTERNAL_ERROR.code, INTERNAL_ERROR.message));
   });
 
   // The request ID goes back to the client too, so a report can point to its log lines.
@@ -122,7 +121,11 @@ export async function buildApp(config: Config, options: AppOptions) {
   });
 
   await app.register(swagger, {
-    openapi: { info: { title: "DashGen backend", version: "0.1.0" } },
+    openapi: {
+      // 3.1 uses the JSON Schema that Zod writes, so a 204's null shows as no body.
+      openapi: "3.1.0",
+      info: { title: "DashGen backend", version: "0.1.0" },
+    },
     transform: jsonSchemaTransform,
   });
   // Scalar draws the docs page from the OpenAPI document @fastify/swagger builds.

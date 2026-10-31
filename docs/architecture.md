@@ -29,17 +29,17 @@ Every response carries an `x-request-id` header: a UUIDv7, which also appears in
 
 **`GET /health`** returns `200 {"status":"ok"}`.
 
-**`POST /ask`** takes `{"question": "..."}`, 1 to 300 characters after trimming. It starts a run in the background and answers `202 {"runId": "..."}`, a UUIDv7.
+**`POST /ask`** takes `{"question": "..."}`, 1 to 300 characters after trimming, with no NUL character. It starts a run in the background and answers `202 {"runId": "..."}`, a UUIDv7.
 
 | Status | Code | When |
 |---|---|---|
-| 422 | `invalid_question` | `question` is missing, blank or over 300 characters |
+| 422 | `invalid_question` | `question` is missing, blank, over 300 characters, or has a NUL character |
 | 429 | `rate_limited` | an IP's 11th request in a minute, counted from its first, with `Retry-After` |
 | 400 | `bad_request` | the body isn't valid JSON, or Fastify rejects the request |
 | 404 | `not_found` | an unknown route |
 | 500 | `internal_error` | an unexpected failure |
 
-**`GET /runs/:id/events`** streams a run's events as SSE: a `step` per tool call, then an `outcome` or an `error`, each with an `id` counting from 1. The stream ends after the last event, and a reconnect that sends `Last-Event-ID` gets only the events after it. [design.md](design.md#the-frontends-api) has the events' shapes and error codes.
+**`GET /runs/:id/events`** streams a run's events as SSE: a `step` per tool call, then an `outcome` or an `error`, each with an `id` counting from 1. It starts with a comment line, `: open`, so the headers go out at once. The stream ends after the last event and closes its connection. A reconnect that sends `Last-Event-ID` gets only the events after it. The events' schema is `RunEvent` in `@dashgen/contracts`, and [design.md](design.md#the-frontends-api) has examples and the error codes.
 
 | Status | Code | When |
 |---|---|---|
@@ -70,7 +70,7 @@ Database tests run against a separate throwaway Postgres on port 5433 (`compose.
 
 ## Known limits
 
-- **Run events live in memory,** so a restart loses them, and their streams answer 404 `run_not_found`. Finished runs are also in the `runs` table.
+- **Run events live in memory,** so a restart loses them, and their streams answer 404 `run_not_found`. The runs themselves are saved in the `runs` table: closing the backend waits for the ones in progress.
 - **The rate limit is per process,** in memory, so a restart resets it. Step 4's [daily cap](design.md#the-daily-cap) is shared.
 - **Behind a load balancer,** every request would come from its IP. Step 5 takes the visitor's IP from CloudFront instead ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
 - **Incidents in the seed move with the day it runs,** so "this week" always has one to find. The rest of an hour's value is the same whichever day the seed runs.

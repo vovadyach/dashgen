@@ -1,4 +1,4 @@
-import { createGeminiModel } from "./agent/gemini.ts";
+import { createGeminiModel } from "./agent/index.ts";
 import { buildApp } from "./app.ts";
 import { loadConfig, loadDatabaseUrl } from "./config.ts";
 import { createDb } from "./db.ts";

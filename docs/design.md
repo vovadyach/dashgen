@@ -168,8 +168,8 @@ flowchart LR
 
     page -->|"REST and SSE"| api
     api --> agent
+    api -->|"run events, saveRun()"| runs
     agent -->|"listServices(), query()"| metrics
-    agent --> runs
     api --> cap
 ```
 
@@ -328,7 +328,7 @@ flowchart TB
 
 - **CloudFront is the only way in** ([ADR-0003](decisions/0003-cloudfront-front-door.md) has the details and the reasons). It serves the React app from S3 and runs a CloudFront Function on every `/api/*` request. During a session, the function forwards the request to the load balancer with a secret header, and the load balancer refuses anything without it. Between sessions, the function answers 503 "offline" itself, and the page shows its banner. The hop to the load balancer is plain HTTP, an accepted risk the ADR explains.
 - **Public vs. private:** only CloudFront and the load balancer face the internet. The backend and the database sit in private subnets, and the backend reaches outside services (Gemini, ECR, Secrets Manager, CloudWatch) through the NAT gateway. DynamoDB is the exception: a gateway endpoint, which is free, takes the cap's requests there without the NAT.
-- **Exactly one backend task, even during deploys.** The per-IP rate limit and the events of runs in progress live in the task's memory, so a second task would split the limit and could get a reconnect for a run it never saw. A deploy therefore stops the old task before starting the new one (minimum healthy 0%, maximum 100%). That costs about a minute of downtime per deploy, during which the page shows its offline banner. Runs in progress are lost, and their `run` calls get `run_not_found`. ECS also replaces a task that fails its health check, with the same effect.
+- **Exactly one backend task, even during deploys.** The per-IP rate limit and the events of runs in progress live in the task's memory, so a second task would split the limit and could get a reconnect for a run it never saw. A deploy therefore stops the old task before starting the new one (minimum healthy 0%, maximum 100%). That costs about a minute of downtime per deploy, during which the page shows its offline banner. The old task waits for runs in progress before it stops, up to their 25 seconds, so they finish and are saved, but a stream that reconnects to the new task gets `run_not_found`. ECS also replaces a task that fails its health check, with the same effect.
 - **Scaling out later** means moving both to shared storage first: the rate limit counters to DynamoDB, which already holds the daily cap, and the run events to Postgres or Redis. Only then does auto scaling make sense. Full high availability would also need Multi-AZ RDS, which doubles the database's cost. None of it is worth it without an uptime promise.
 - **Migrations run first.** A one-off ECS task runs Drizzle's migrations and the seed before the backend starts.
 - **`/api/*` in CloudFront** caches nothing and forwards the `Last-Event-ID` header, so a reconnecting stream resumes where it stopped. ADR-0003's settings already let SSE through.
@@ -496,6 +496,8 @@ The React app calls the backend with REST and SSE under `/api` ([ADR-0011](decis
 | `POST /api/ask` with `{"question": "..."}` | Checks the question (1 to 300 characters after trimming), the rate limit and the daily cap, starts a run, and answers `202 {"runId": "..."}` |
 | `GET /api/runs/:runId/events` | Streams that run's events as SSE: a `step` per tool call, then `outcome` or `error`. Each event has an ID, and a reconnect gets only the events after its `Last-Event-ID`. Never starts work |
 
+Each event's data is one `RunEvent` from `@dashgen/contracts`, as JSON:
+
 ```json
 {"type": "step", "tool": "query_metrics", "args": {"service": "payments-service", "metric": "errors", "days": 7}, "result": "q1: 7 daily points", "ms": 30}
 ```
@@ -526,13 +528,13 @@ Every error carries our own code and a message that's safe to show visitors. Whe
 
 | Our code | Arrives as | When |
 |---|---|---|
-| `invalid_question` | `POST /api/ask` fails, HTTP 422 | missing, empty or over 300 characters |
+| `invalid_question` | `POST /api/ask` fails, HTTP 422 | missing, empty, over 300 characters, or with a NUL character, which Postgres can't store |
 | `rate_limited` | `POST /api/ask` fails, HTTP 429 | the 11th question in a minute from one IP |
 | `daily_cap` | `POST /api/ask` fails, HTTP 503 | the day's questions are used up |
 | `agent_failed` | `error` event in the stream; HTTP stays 200 | no chart, clarifying question or refusal within the [run's limits](#the-daily-cap) |
 | `unavailable` | `error` event in the stream | the database or Gemini fails, after one retry if retrying can help |
 | `timeout` | `error` event in the stream | the run took over 25 seconds |
-| `internal_error` | HTTP 500, or the stream's `error` event | a bug in DashGen; a run it stops isn't saved |
+| `internal_error` | HTTP 500, or the stream's `error` event | a bug in DashGen. A run it ends is still saved, with its steps and tokens so far |
 | `run_not_found` | the stream fails, HTTP 404 | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page says the answer was interrupted and offers to ask again |
 
 - **Tests and Postman must read the stream:** a failed run is a 200 response whose last event is `error`.

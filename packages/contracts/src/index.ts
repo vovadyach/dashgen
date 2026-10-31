@@ -19,9 +19,19 @@ export const Health = z.object({
 });
 export type Health = z.infer<typeof Health>;
 
-/** The body of the backend's `POST /ask`: a question of 1 to 300 characters, after trimming. */
+/**
+ * The body of the backend's `POST /ask`: a question of 1 to 300 characters,
+ * after trimming, with no NUL character, which Postgres can't store.
+ */
 export const AskRequest = z.object({
-  question: z.string().trim().min(1).max(300),
+  question: z
+    .string()
+    .trim()
+    .min(1)
+    .max(300)
+    .refine((question) => !question.includes("\u0000"), {
+      error: "The question can't contain a NUL character.",
+    }),
 });
 export type AskRequest = z.infer<typeof AskRequest>;
 
@@ -116,19 +126,60 @@ export const Chart = z.object({
 });
 export type Chart = z.infer<typeof Chart>;
 
+const ChartOutcome = z.object({ outcome: z.literal("chart"), chart: Chart });
+const ClarifyOutcome = z.object({
+  outcome: z.literal("clarify"),
+  message: z.string(),
+  /** Complete questions; picking one asks it. */
+  choices: z.array(z.string()).min(2).max(4),
+});
+const DeclineOutcome = z.object({
+  outcome: z.literal("decline"),
+  message: z.string(),
+  examples: z.array(z.string()),
+});
+
 /** How a run ends, when it doesn't fail: a chart, a question back to the visitor, or a refusal. */
 export const Outcome = z.discriminatedUnion("outcome", [
-  z.object({ outcome: z.literal("chart"), chart: Chart }),
-  z.object({
-    outcome: z.literal("clarify"),
-    message: z.string(),
-    /** Complete questions; picking one asks it. */
-    choices: z.array(z.string()).min(2).max(4),
-  }),
-  z.object({
-    outcome: z.literal("decline"),
-    message: z.string(),
-    examples: z.array(z.string()),
-  }),
+  ChartOutcome,
+  ClarifyOutcome,
+  DeclineOutcome,
 ]);
 export type Outcome = z.infer<typeof Outcome>;
+
+const toolCall = { tool: z.string(), args: z.unknown(), ms: z.number() };
+const StepResult = z.object({ ...toolCall, result: z.string() });
+const StepError = z.object({ ...toolCall, error: z.string() });
+
+/** One tool call, as the page's steps panel shows it: a short line for its result, or why it failed. */
+export const ToolStep = z.union([StepResult, StepError]);
+export type ToolStep = z.infer<typeof ToolStep>;
+
+/** Why a run failed. `internal_error` is a bug in DashGen. */
+export const RunErrorCode = z.enum([
+  "agent_failed",
+  "unavailable",
+  "timeout",
+  "internal_error",
+]);
+export type RunErrorCode = z.infer<typeof RunErrorCode>;
+
+/**
+ * What the backend's `GET /runs/:id/events` streams, as each SSE event's data:
+ * a step per tool call, then an outcome or an error, which ends the run. An
+ * error's message is safe to show visitors. Each shape is spelled out, so the
+ * API docs get plain objects.
+ */
+export const RunEvent = z.union([
+  z.object({ type: z.literal("step"), ...StepResult.shape }),
+  z.object({ type: z.literal("step"), ...StepError.shape }),
+  z.object({ type: z.literal("outcome"), ...ChartOutcome.shape }),
+  z.object({ type: z.literal("outcome"), ...ClarifyOutcome.shape }),
+  z.object({ type: z.literal("outcome"), ...DeclineOutcome.shape }),
+  z.object({
+    type: z.literal("error"),
+    code: RunErrorCode,
+    message: z.string(),
+  }),
+]);
+export type RunEvent = z.infer<typeof RunEvent>;

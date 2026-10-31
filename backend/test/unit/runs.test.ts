@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createRunStore } from "../../../src/runs/live.ts";
-import { recordingLogger } from "../../helpers/logger.ts";
+import { createRunStore } from "../../src/runs/live.ts";
+import { recordingLogger } from "../helpers/logger.ts";
 
 describe("createRunStore", () => {
   it("numbers a run's events from 1, and tells its listeners each new one, then the end", () => {
