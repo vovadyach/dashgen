@@ -7,7 +7,7 @@
 
 Natural-language dashboard generator. Type a question in plain English, an LLM agent decides which tools to call, fetches the data, and renders a chart.
 
-> **Work in progress.** The backend's skeleton runs today. The agent, the frontend and the AWS deploy come next; see the [roadmap](docs/roadmap.md).
+> **Work in progress.** The backend works today: it takes a question, runs the Gemini agent and streams its steps. The frontend and the AWS deploy come next; see the [roadmap](docs/roadmap.md).
 
 ## What it will do
 
@@ -35,9 +35,9 @@ Where it's headed (the [status](#status) table says what exists today):
 ```
 ┌─────────────────┐
 │   Frontend      │  React + TypeScript + Recharts
-│   (CloudFront)  │  tRPC + TanStack Query
+│   (CloudFront)  │  TanStack Query, EventSource
 └────────┬────────┘
-         │ HTTPS: tRPC calls, steps streamed over SSE
+         │ HTTPS: REST calls, steps streamed over SSE
          ▼
 ┌─────────────────┐
 │   Backend       │  Node.js + Fastify + TypeScript
@@ -61,11 +61,11 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 
 | Part | Tech | Today |
 |---|---|---|
-| Backend (`backend/`) | Node.js 24, Fastify, TypeScript, Zod | Takes questions with a per-IP rate limit, and answers 501 until the agent exists ([API](docs/architecture.md#backend-api)) |
+| Backend (`backend/`) | Node.js 24, Fastify, TypeScript, Zod | Takes a question, runs the agent, streams its steps over SSE and saves the run, with a per-IP rate limit ([API](docs/architecture.md#backend-api)) |
 | Database | Postgres 18, Docker Compose | Runs locally: one `dashgen` database, with tables from Drizzle migrations |
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
-| Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools), the Gemini adapter and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md)). The API that starts it comes next (step 3) |
-| Frontend | React, TypeScript, Vite, Tailwind, Recharts, tRPC, TanStack Query | Planned (step 3) |
+| Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools), the Gemini adapter and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md)) |
+| Frontend | React, TypeScript, Vite, Tailwind, Recharts, TanStack Query | Planned (step 3) |
 | Hosting | AWS, Terraform | Planned (step 5) |
 
 ## Running locally
@@ -74,7 +74,7 @@ You'll need Node.js 24.16+, and Docker for Postgres.
 
 ```bash
 make install                           # install every TypeScript package
-cp backend/.env.example backend/.env   # any placeholder works for GEMINI_API_KEY for now
+cp backend/.env.example backend/.env   # asking a question needs a real GEMINI_API_KEY, and Postgres (below)
 npm run dev                            # the backend on :3000
 ```
 
@@ -135,10 +135,11 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [4. npm workspaces for the TypeScript code](docs/decisions/0004-npm-workspaces.md)
 - [5. One TypeScript backend, with modules inside](docs/decisions/0005-one-backend.md)
 - [6. Drizzle for data access](docs/decisions/0006-drizzle.md)
-- [7. tRPC between the React app and the backend](docs/decisions/0007-trpc.md)
+- [7. tRPC between the React app and the backend](docs/decisions/0007-trpc.md), replaced by 11
 - [8. Postgres for the metrics and the runs](docs/decisions/0008-postgres.md)
 - [9. UUIDv7 for IDs](docs/decisions/0009-uuidv7-ids.md)
 - [10. A hand-written agent loop](docs/decisions/0010-agent-loop.md)
+- [11. REST and SSE between the React app and the backend](docs/decisions/0011-rest-and-sse.md)
 
 ## License
 

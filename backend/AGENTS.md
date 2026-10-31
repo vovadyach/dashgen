@@ -1,6 +1,6 @@
 # Backend
 
-Node.js 24 + Fastify, in TypeScript. Takes a question and returns a chart; the Gemini agent arrives in step 3.
+Node.js 24 + Fastify, in TypeScript. Takes a question, and the Gemini agent answers it with a chart.
 
 - Code in `src/`, tests in `test/`. Node runs the `.ts` files directly, so there's no build step: `tsc` only checks types.
 - Run it with `npm run dev` from the repo root: port 3000, restarts on changes, reads `backend/.env`. API docs at http://localhost:3000/docs.
@@ -13,9 +13,9 @@ Node.js 24 + Fastify, in TypeScript. Takes a question and returns a chart; the G
 - IDs are UUIDv7 ([ADR-0009](../docs/decisions/0009-uuidv7-ids.md)): `randomUUIDv7()` from `node:crypto` in code, and `uuidv7()` as a Postgres column default. Never v4 (`randomUUID()`, `gen_random_uuid()`, Drizzle's `defaultRandom()`).
 - Inside a transaction, use `tx`, never `db`, and `await` each query in turn (`seedMetrics`). A transaction is one connection, so `Promise.all` there runs nothing in parallel, and after a failure the rest of its queries fail too. Outside transactions, `Promise.all` does run independent reads in parallel, on separate pool connections (`listServices`).
 - A module's own Zod schemas and their types go in `types.ts`, checks beyond a schema's shape in `validation.ts`, and small general helpers, like `distinct`, in `helpers.ts`, so the other files only do the work (`agent/`). Schemas that another package also needs go in `packages/contracts` instead.
-- A helper that a second module needs moves to `src/shared/`, so modules never import each other's internals. The app's foundations (`config.ts`, `db.ts`, `logger.ts`, `errors.ts`) stay at the top of `src/`.
+- Modules, `app.ts` and `server.ts` import a module only through its `index.ts` ([ADR-0005](../docs/decisions/0005-one-backend.md)); tests and scripts may reach inside. A helper that a second module needs moves to `src/shared/`. The app's foundations (`config.ts`, `db.ts`, `logger.ts`, `errors.ts`) stay at the top of `src/`.
 - Modules take what they need as parameters, like `createMetrics(db, { now, log })`, so tests can pass a test database, a fixed clock and their own logger. Logging levels and the "log once, where it's handled" rule are in `src/logger.ts`.
-- `buildApp(config)` builds the app, so each test can pass its own config. Nothing else reads the environment.
+- `buildApp(config, { runs })` builds the app, so each test can pass its own config, and fakes for Gemini and the database through `runs` (`startApp` does). Nothing else reads the environment.
 - Each route declares Zod schemas for its body and responses. They validate requests, type the handler, check replies and generate the docs at `/docs`. A schema that a client also needs lives in `packages/contracts` and is imported from `@dashgen/contracts`.
 - Errors are thrown as `ApiError(status, code, message)`, so clients get `{"error": {"code": "...", "message": "..."}}`. The message must be safe to show visitors.
 - Logging is Pino, through Fastify: a short, stable message naming the event, with context as fields (`{ tool, args, ms }`), never secrets or the values in SQL. `LOG_LEVEL=debug` adds every SQL statement, and `npm run dev` shows readable lines through `pino-pretty`. Expected errors throw with a reason; only the central handler logs unexpected ones, once.

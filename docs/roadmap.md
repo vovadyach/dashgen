@@ -19,7 +19,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] Claude Code setup: a `CLAUDE.md` per service, permissions, format and stop hooks, `fix-issue` and `adr` skills
 - [x] `docs/architecture.md`: how the services fit together
 - [x] README and Makefile brought up to date
-- [x] Design for one TypeScript backend, with Drizzle and tRPC ([ADR-0005](decisions/0005-one-backend.md), [ADR-0006](decisions/0006-drizzle.md), [ADR-0007](decisions/0007-trpc.md))
+- [x] Design for one TypeScript backend, with Drizzle and tRPC ([ADR-0005](decisions/0005-one-backend.md), [ADR-0006](decisions/0006-drizzle.md), [ADR-0007](decisions/0007-trpc.md)). tRPC was later replaced by REST and SSE ([ADR-0011](decisions/0011-rest-and-sse.md))
 
 **Done when:** `scripts/check.sh` passes locally and in CI, and failing checks send Claude back to fix them before it finishes.
 
@@ -47,10 +47,10 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] Read-only tools that accept only known service and metric names
 - [x] Tool arguments and the final chart validated against their schemas
 - [x] The question schema in `contracts`: 1 to 300 characters after trimming
-- [ ] tRPC router: the `ask` mutation starts a run and returns its ID, and the `run` subscription streams its events over SSE, replaying missed ones on reconnect ([ADR-0007](decisions/0007-trpc.md))
-- [ ] Errors carry our codes through tRPC's error formatter; the per-IP limit counts each `ask`, not each HTTP request
-- [ ] Each run saved to `runs`, under its UUIDv7 ID ([ADR-0009](decisions/0009-uuidv7-ids.md))
-- [ ] React + Vite + Tailwind + Recharts, with tRPC and TanStack Query: question box, steps panel, chart
+- [x] `POST /ask` starts a run and answers 202 with its ID; `GET /runs/:id/events` streams its events over SSE and resumes after a reconnect ([ADR-0011](decisions/0011-rest-and-sse.md))
+- [x] Errors keep [our codes](design.md#the-frontends-api): in `POST /ask`'s error body, and as the stream's last event
+- [x] Each run saved to `runs`, under its UUIDv7 ID ([ADR-0009](decisions/0009-uuidv7-ids.md))
+- [ ] React + Vite + Tailwind + Recharts, with TanStack Query and `EventSource`: question box, steps panel, chart
 - [ ] Vite's dev server forwards `/api` to the backend, so the app calls the same paths locally and on AWS
 - [ ] Component tests with Vitest, frontend checks in `scripts/check.sh`, and a `frontend/AGENTS.md` with a `CLAUDE.md` that imports it
 
@@ -65,7 +65,8 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] A friendly message when the daily cap is hit, with a link to the demo video
 - [ ] A $20 monthly spend cap on the Gemini project, noted in the runbook
 - [x] Model name in config
-- [ ] Tokens, cost and latency recorded for every run, and cost per day and per question read from `runs`
+- [x] Tokens, cost and latency recorded for every run, with `GEMINI_MODEL` limited to models whose prices the backend knows
+- [ ] Cost per day and per question read from `runs`
 
 **Done when:** a vague question gets a clarifying question back, at the daily cap the backend stops calling Gemini, and every run's cost is recorded.
 
@@ -79,8 +80,8 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] No database backups: every deploy reseeds the data, and the `runs` history starts over
 - [ ] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
 - [ ] VPC with public and private subnets, a NAT gateway, and a gateway endpoint for DynamoDB
-- [ ] The backend's routes under `/api` (`/api/trpc`, `/api/health`)
-- [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding query strings for tRPC
+- [ ] The backend's routes under `/api` (`/api/ask`, `/api/runs/:id/events`, `/api/health`)
+- [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding the `Last-Event-ID` header
 - [ ] A CloudFront Function and key-value store that send `/api/*` to the running session, or answer 503 `{"status": "offline"}` between sessions, and a `make down` that drains the API before `terraform destroy`
 - [ ] The backend on ECS Fargate behind a load balancer that accepts only our CloudFront: exactly one task, since the rate limit and run events live in its memory, and deploys that stop the old task first
 - [ ] Postgres on RDS (db.t4g.micro) in private subnets, with migrations and the seed run as a one-off ECS task

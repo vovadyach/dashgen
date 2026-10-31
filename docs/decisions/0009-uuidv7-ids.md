@@ -5,7 +5,7 @@
 
 ## Context
 
-Each request gets an ID, to find its log lines, and each question gets a run ID: the primary key of `runs`, and the `runId` the page uses to watch the run. The two are separate because tRPC can batch several questions into one request. The first version used random UUIDs (version 4): `randomUUID()` for requests, and `gen_random_uuid()` as the default for `runs.id`.
+Each request gets an ID, to find its log lines, and each question gets a run ID: the primary key of `runs`, and the `runId` the page uses to watch the run. The two are separate because a run outlives the request that starts it: its events reach the page through other requests. The first version used random UUIDs (version 4): `randomUUID()` for requests, and `gen_random_uuid()` as the default for `runs.id`.
 
 A random primary key puts each new row at a random place in the index, so inserts touch pages all over it, and the IDs say nothing about order or time.
 

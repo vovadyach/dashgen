@@ -1,14 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import type { RunEvent } from "@dashgen/contracts";
+
 import { ModelError } from "../../../src/agent/errors.ts";
 import { type RunOptions, runAgent } from "../../../src/agent/run.ts";
 import { EXAMPLE_QUESTIONS } from "../../../src/agent/tools.ts";
-import type {
-  ModelReply,
-  RunEvent,
-  RunResult,
-} from "../../../src/agent/types.ts";
+import type { ModelReply, RunResult } from "../../../src/agent/types.ts";
 import { CHART, QUERY, QUESTION, REASON } from "../../fixtures/agent.ts";
 import { recordingLogger } from "../../helpers/logger.ts";
 import {
@@ -398,8 +396,33 @@ describe("runAgent", () => {
       assert.doesNotMatch(String(err.stack), /payments-service/);
     });
 
-    it("rejects when DashGen has a bug, instead of hiding it in an error event", async () => {
-      await assert.rejects(ask([new Error("a bug")]), /a bug/);
+    it("ends with internal_error on a bug in DashGen, keeping the steps and tokens so far", async () => {
+      const { result, events, lines } = await ask([
+        reply(["list_services"]),
+        new Error("a bug"),
+      ]);
+
+      assert.deepEqual(errorOf(result), {
+        type: "error",
+        code: "internal_error",
+        message: "Something went wrong.",
+      });
+      assert.deepEqual(stepLines(events), [
+        "list_services: 2 services, 2 metrics",
+      ]);
+      assert.deepEqual(
+        result.steps.map((s) => s.type),
+        ["model", "tool"],
+      );
+      assert.deepEqual(result.usage, { inputTokens: 2_000, outputTokens: 60 });
+      // Logged once, with the bug's own error, which visitors never see.
+      const failures = lines.filter((l) => l.level === "error");
+      assert.deepEqual(
+        failures.map((l) => l.msg),
+        ["run failed"],
+      );
+      const { err } = failures[0]?.obj as { err: Error };
+      assert.equal(err.message, "a bug");
     });
   });
 });

@@ -61,11 +61,27 @@ describe("loadConfig", () => {
     );
   });
 
-  it("accepts only Gemini 3 models, whose thinking level and signatures DashGen uses", () => {
-    assert.throws(
-      () => loadConfig({ ...VALID_ENV, GEMINI_MODEL: "gemini-2.5-flash-lite" }),
-      /Use a Gemini 3 model[\s\S]*at GEMINI_MODEL/,
+  it("gives the model's prices, for each run's cost", () => {
+    assert.deepEqual(loadConfig(VALID_ENV).geminiPrice, {
+      input: 0.25,
+      output: 1.5,
+    });
+    assert.deepEqual(
+      loadConfig({ ...VALID_ENV, GEMINI_MODEL: "gemini-3.5-flash-lite" })
+        .geminiPrice,
+      { input: 0.3, output: 2.5 },
     );
+  });
+
+  it("accepts only the Gemini 3 models it has prices for", () => {
+    // Gemini 2 lacks the thinking level and signatures DashGen uses, and a
+    // Gemini 3 model with no price here would leave runs without a cost.
+    for (const model of ["gemini-2.5-flash-lite", "gemini-3-pro"]) {
+      assert.throws(
+        () => loadConfig({ ...VALID_ENV, GEMINI_MODEL: model }),
+        /Use gemini-3\.1-flash-lite or gemini-3\.5-flash-lite[\s\S]*at GEMINI_MODEL/,
+      );
+    }
   });
 });
 

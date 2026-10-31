@@ -4,6 +4,8 @@ import {
   ChartType,
   MetricsQuery,
   type Outcome,
+  type RunEvent,
+  type ToolStep,
 } from "@dashgen/contracts";
 import { z } from "zod";
 
@@ -174,12 +176,8 @@ export interface Model {
   next: (request: ModelRequest) => Promise<ModelReply>;
 }
 
-// A run: one question, answered by the agent loop in run.ts.
-
-/** One tool call, as the page's steps panel shows it: a short line for its result, or why it failed. */
-export type ToolStep = { tool: string; args: unknown; ms: number } & (
-  { result: string } | { error: string }
-);
+// A run: one question, answered by the agent loop in run.ts. Its events, and
+// the tool steps inside them, are in @dashgen/contracts, since the page reads them.
 
 /** One request to the model: the tools it called, or why it failed. */
 export type ModelStep = { ms: number } & (
@@ -190,15 +188,8 @@ export type ModelStep = { ms: number } & (
 export type RunStep =
   ({ type: "model" } & ModelStep) | ({ type: "tool" } & ToolStep);
 
-export type RunErrorCode = "agent_failed" | "unavailable" | "timeout";
-
-/** How a run ends: its outcome, or an error whose message is safe to show visitors. */
-export type RunEnd =
-  | ({ type: "outcome" } & Outcome)
-  | { type: "error"; code: RunErrorCode; message: string };
-
-/** What the page gets as a run goes: a step per tool call, then how it ended. */
-export type RunEvent = ({ type: "step" } & ToolStep) | RunEnd;
+/** How a run ends: its last event, an outcome or an error. */
+export type RunEnd = Exclude<RunEvent, { type: "step" }>;
 
 /** A finished run, with what the runs table keeps. */
 export interface RunResult {
