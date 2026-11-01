@@ -1,5 +1,6 @@
 import type { Chart } from "@dashgen/contracts";
 import type {
+  AgAreaSeriesOptions,
   AgBarSeriesOptions,
   AgCartesianAxisOptions,
   AgChartOptions,
@@ -19,6 +20,7 @@ import {
   formatX,
 } from "./format.ts";
 import { type Colors, type Mode, PALETTE, seriesColor } from "./palette.ts";
+import { peak } from "./summary.ts";
 
 /** A point as AG Charts reads it. */
 export interface Datum {
@@ -40,6 +42,8 @@ const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 // and out of it dashed, so it reads as incomplete, not as a drop.
 const PARTIAL_OPACITY = 0.4;
 const DASH = [4, 4];
+// The wash under a line alone: the line's color, faint.
+const WASH_OPACITY = 0.1;
 // Roughly what the y-axis and its labels take from the chart's width.
 const Y_AXIS_WIDTH = 48;
 const BAR_PADDING = 0.4;
@@ -93,7 +97,10 @@ export function chartOptions(
       const color = seriesColor(colors, index);
       if (chart.type === "line") {
         const dots = plotWidth / categories.length >= MIN_DOT_ROOM;
-        return line(chart, series, color, colors, dots);
+        // Only a line alone gets its peak labeled and a wash under it:
+        // several lines' labels and washes would cover each other.
+        const alone = chart.series.length === 1;
+        return line(chart, series, color, colors, dots, alone);
       }
       // AG Charts splits each band between the series. Without a fixed
       // width, which would make it cut off bars that don't fit, a share of
@@ -184,9 +191,14 @@ function line(
   color: string,
   colors: Colors,
   dots: boolean,
-): AgLineSeriesOptions<Datum> {
+  alone: boolean,
+): AgLineSeriesOptions<Datum> | AgAreaSeriesOptions<Datum> {
   const data = toData(series, chart);
-  return {
+  // The one point with a label: the peak, the same one the summary over the
+  // chart names.
+  const top = peak(series, chart.unit);
+  const topDatum = data[series.points.indexOf(top)];
+  const options: AgLineSeriesOptions<Datum> = {
     type: "line",
     data,
     xKey: "x",
@@ -206,8 +218,18 @@ function line(
         datum.partial ? { fillOpacity: PARTIAL_OPACITY } : {},
     },
     segmentation: dashedPartials(data),
+    label: {
+      enabled: alone,
+      fontWeight: 600,
+      formatter: ({ datum }) =>
+        datum === topDatum ? formatValue(top.y, chart.unit) : "",
+    },
     tooltip: { renderer: ({ datum }) => tooltip(datum, chart.unit) },
   };
+  if (!alone) return options;
+  // A line alone gets a light wash under it, as an area. An area starts at
+  // 0, so the axis does too.
+  return { ...options, type: "area", fill: color, fillOpacity: WASH_OPACITY };
 }
 
 function bar(
@@ -278,7 +300,7 @@ const tooltip = (datum: Datum, unit: string): AgTooltipRendererResult => ({
  */
 export function dashedPartials(
   data: Datum[],
-): AgSeriesSegmentation<AgSeriesLineSegmentOptions> | undefined {
+): AgSeriesSegmentation<AgSeriesLineSegmentOptions> {
   const last = data.length - 1;
   // The stretches to dash, by index, merged where they touch.
   const dashed: [number, number][] = [];
@@ -290,7 +312,10 @@ export function dashedPartials(
     if (previous && from <= previous[1]) previous[1] = to;
     else dashed.push([from, to]);
   });
-  if (dashed.length === 0) return undefined;
+  // AG Charts drops the segments of segmentation that's off, and then fails
+  // to redraw a line that had some: the old chart stays on screen. So a line
+  // without partial days gets one plain segment, the whole line.
+  if (dashed.length === 0) return { enabled: true, key: "x", segments: [{}] };
 
   // A segment without a start begins where the line does, and one without a
   // stop runs to its end, so no stroke is cut off at either end.

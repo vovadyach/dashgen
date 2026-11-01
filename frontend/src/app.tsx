@@ -1,5 +1,5 @@
 import { SAMPLE_SERVICES } from "@dashgen/contracts";
-import { ChartNoAxesCombined } from "lucide-react";
+import { ChartNoAxesCombined, CircleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Answer, preloadChart } from "./components/answer.tsx";
@@ -7,11 +7,18 @@ import { QuestionBox } from "./components/question-box.tsx";
 import { Steps } from "./components/steps.tsx";
 import { ThemeToggle } from "./components/theme-toggle.tsx";
 import { Tips } from "./components/tips.tsx";
+import { Watchlist } from "./components/watchlist.tsx";
+import { type Pin, usePins } from "./pins.ts";
 import { useRun } from "./run.ts";
+import { chartFromLink, isChartLink } from "./share.ts";
 
 export function App() {
-  const { run, ask, stop } = useRun();
+  const { run, ask, stop, open } = useRun();
+  const pins = usePins();
   const [question, setQuestion] = useState("");
+  // A share link the page opened but couldn't read, which it says so about
+  // until the visitor moves on.
+  const [badLink, setBadLink] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
   const busy = run.status === "asking" || run.status === "streaming";
 
@@ -20,6 +27,7 @@ export function App() {
   // focus moves to the box, or keyboard users would be left nowhere.
   const askQuestion = (next: string) => {
     setQuestion(next);
+    setBadLink(false);
     preloadChart();
     ask(next);
     box.current?.focus();
@@ -29,6 +37,37 @@ export function App() {
     stop();
     box.current?.focus();
   }, [stop]);
+
+  const openPin = (pin: Pin) => {
+    setBadLink(false);
+    preloadChart();
+    open({ from: "pin", ...pin });
+    box.current?.focus();
+  };
+
+  // A share link opens its chart, then the address goes back to the page's
+  // own, so a reload starts fresh. A link pasted into a tab that's already
+  // open changes only the hash, so that's watched too.
+  useEffect(() => {
+    const openLink = () => {
+      const hash = location.hash;
+      if (!isChartLink(hash)) return;
+      preloadChart();
+      void chartFromLink(hash).then((chart) => {
+        // In development React runs this twice, and the first one done
+        // opens the chart.
+        if (location.hash !== hash) return;
+        history.replaceState(null, "", location.pathname + location.search);
+        setBadLink(!chart);
+        if (chart) open({ from: "link", chart });
+      });
+    };
+    openLink();
+    window.addEventListener("hashchange", openLink);
+    return () => {
+      window.removeEventListener("hashchange", openLink);
+    };
+  }, [open]);
 
   // Esc stops a question on its way, wherever the focus is.
   useEffect(() => {
@@ -80,14 +119,42 @@ export function App() {
             <Tips onAsk={askQuestion} busy={busy} />
           </div>
         </div>
+        {badLink && (
+          <p
+            role="alert"
+            className="mx-auto flex max-w-2xl items-start gap-2 rounded-lg border bg-card px-4 py-3 text-sm"
+          >
+            <CircleAlert
+              className="mt-0.5 size-4 shrink-0 text-destructive"
+              aria-hidden
+            />
+            This chart link couldn't be opened. It may have been cut short when
+            it was shared.
+          </p>
+        )}
         {run.status !== "idle" && (
           // The steps on the left, the answer on the right. When there are
-          // no steps to show, the answer takes the whole row.
+          // no steps to show, the answer takes the whole row. On a narrow
+          // screen the answer comes first, so it isn't pushed below the
+          // steps. Only the look changes: the steps panel has nothing to
+          // focus, so keyboard order stays the same, and screen readers
+          // still hear each step as it comes.
           <div className="grid items-start gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] lg:[&>:only-child]:col-span-2">
             <Steps run={run} />
-            <Answer run={run} onAsk={askQuestion} />
+            <div className="order-first min-w-0 lg:order-none">
+              <Answer run={run} onAsk={askQuestion} pins={pins} />
+            </div>
           </div>
         )}
+        <Watchlist
+          pins={pins.pins}
+          onOpen={openPin}
+          onUnpin={(pin) => {
+            pins.unpin(pin.chart);
+          }}
+          busy={busy}
+          stored={pins.stored}
+        />
       </main>
     </div>
   );

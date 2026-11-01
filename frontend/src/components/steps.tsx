@@ -7,10 +7,12 @@ import { Skeleton } from "./ui/skeleton.tsx";
 
 /**
  * The agent's tool calls, each as it arrives, beside the answer. A question
- * that failed before its first step has none, so nothing shows.
+ * that failed before its first step has none, and neither does a saved
+ * chart, so nothing shows.
  */
 export function Steps({ run }: { run: Exclude<Run, { status: "idle" }> }) {
-  const steps = run.status === "asking" ? [] : run.steps;
+  const steps =
+    run.status === "asking" || run.status === "opened" ? [] : run.steps;
   const working = run.status === "asking" || run.status === "streaming";
   if (!working && steps.length === 0) return null;
   return (
@@ -52,9 +54,16 @@ function StepRow({ step }: { step: Step }) {
           <span className="sr-only">{failed ? "Failed:" : "Done:"}</span>
           {describeStep(step)}
         </p>
-        <p className="font-mono text-xs break-words text-muted-foreground">
-          {step.tool} · {step.ms} ms{failed ? "" : ` · ${step.result}`}
+        {/* The tool and its time, then its result on a line of its own, so
+            a narrow sidebar doesn't break the result in the middle. */}
+        <p className="font-mono text-xs text-muted-foreground">
+          {step.tool} · {step.ms} ms
         </p>
+        {!failed && (
+          <p className="font-mono text-xs break-words text-muted-foreground">
+            {step.result}
+          </p>
+        )}
         {failed && (
           <p className="text-sm break-words text-muted-foreground">
             {step.error}

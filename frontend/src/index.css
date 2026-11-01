@@ -197,3 +197,78 @@
     opacity: 0;
   }
 }
+
+/*
+ * A pinned chart's mini chart in the watchlist (src/components/sparkline.tsx)
+ * draws itself once, as its card appears: the line runs across and its dot
+ * lands, the bars grow, or a pie's ring sweeps round, slice after slice, in
+ * the waiting chart's way. Still for reduced motion. Only transforms grow
+ * the bars, since the muted ones are see-through. A slice draws from nothing
+ * to the length its own stroke-dasharray gives it.
+ */
+.sparkline-line {
+  stroke-dasharray: 1;
+}
+.sparkline-bar,
+.sparkline-dot {
+  transform-box: fill-box;
+}
+.sparkline-bar {
+  transform-origin: bottom;
+}
+.sparkline-dot {
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sparkline-line {
+    animation: sparkline-line 0.9s ease-in-out both;
+  }
+  .sparkline-dot {
+    animation: sparkline-dot 1.1s ease-out both;
+  }
+  .sparkline-bar {
+    animation: sparkline-bar 0.6s ease-out both;
+  }
+  /* Its delay and duration come with it, from its place on the ring. */
+  .sparkline-slice {
+    animation: sparkline-slice 0.3s linear both;
+  }
+}
+
+@keyframes sparkline-slice {
+  from {
+    stroke-dasharray: 0 1;
+  }
+}
+
+@keyframes sparkline-line {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes sparkline-dot {
+  0%,
+  75% {
+    transform: scale(0);
+  }
+  88% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes sparkline-bar {
+  from {
+    transform: scaleY(0.1);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}

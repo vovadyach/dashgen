@@ -33,7 +33,10 @@ export function QuestionBox({
     const box = ref.current;
     if (!box) return;
     box.style.height = "auto";
-    box.style.height = `${String(box.scrollHeight)}px`;
+    // The height includes the borders, which scrollHeight leaves out. Short
+    // by them, one line would overflow and show a scrollbar.
+    const borders = box.offsetHeight - box.clientHeight;
+    box.style.height = `${String(box.scrollHeight + borders)}px`;
   }, [ref, question]);
   return (
     <form

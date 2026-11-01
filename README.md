@@ -20,7 +20,7 @@ The agent:
 
 Different questions lead to different tool calls. Ask *"What's the slowest service?"* and the agent calls `list_services`, then `query_metrics` for each service, then picks a chart type for the result.
 
-Each question gets one chart. A vague question gets a few complete questions to pick from instead of a guess. Charts you pin form a dashboard saved in your browser ([why not a chat](docs/decisions/0002-question-box.md)).
+Each question gets one chart. A vague question gets a few complete questions to pick from instead of a guess. Charts you pin form a watchlist saved in your browser, and a copied link carries its chart, so both open even while the backend is offline ([why not a chat](docs/decisions/0002-question-box.md)).
 
 ## The data
 
@@ -65,7 +65,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 | Database | Postgres 18, Docker Compose | Runs locally: one `dashgen` database, with tables from Drizzle migrations |
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
 | Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools), the Gemini adapter and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md)) |
-| Frontend (`frontend/`) | React, TypeScript, Vite, Tailwind, shadcn/ui, AG Charts, TanStack Query | Runs locally: the question box, the steps as they stream in, and the chart, with a data table, in light and dark themes |
+| Frontend (`frontend/`) | React, TypeScript, Vite, Tailwind, shadcn/ui, AG Charts, TanStack Query | Runs locally: the question box, the steps as they stream in, and the chart, with a data table, in light and dark themes. Charts can be pinned to a watchlist, shared as a link, or downloaded as a PNG |
 | Hosting | AWS, Terraform | Planned (step 5) |
 
 ## Running locally
@@ -144,6 +144,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [10. A hand-written agent loop](docs/decisions/0010-agent-loop.md)
 - [11. REST and SSE between the React app and the backend](docs/decisions/0011-rest-and-sse.md)
 - [12. shadcn/ui and AG Charts for the page](docs/decisions/0012-shadcn-and-ag-charts.md)
+- [13. Share links carry the chart](docs/decisions/0013-share-links-carry-the-chart.md)
 
 ## License
 

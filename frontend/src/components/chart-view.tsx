@@ -1,5 +1,7 @@
 import type { Chart } from "@dashgen/contracts";
 import {
+  type AgChartInstance,
+  AreaSeriesModule,
   BarSeriesModule,
   CategoryAxisModule,
   LegendModule,
@@ -10,7 +12,7 @@ import {
   TimeAxisModule,
 } from "ag-charts-community";
 import { AgCharts } from "ag-charts-react";
-import { useCallback, useMemo, useState } from "react";
+import { type Ref, useCallback, useMemo, useState } from "react";
 
 import { chartOptions } from "../chart/options.ts";
 import { useTheme } from "../theme.tsx";
@@ -18,6 +20,8 @@ import { useTheme } from "../theme.tsx";
 // Only the parts DashGen draws, so the rest of AG Charts stays out of the download.
 ModuleRegistry.registerModules([
   LineSeriesModule,
+  // A line alone is drawn as an area, for the wash under it.
+  AreaSeriesModule,
   BarSeriesModule,
   PieSeriesModule,
   CategoryAxisModule,
@@ -26,11 +30,17 @@ ModuleRegistry.registerModules([
   LegendModule,
 ]);
 
+interface Props {
+  chart: Chart;
+  /** Gets the drawn chart, which can download itself as a PNG. */
+  ref?: Ref<AgChartInstance>;
+}
+
 /**
  * Draws a chart with AG Charts, on a canvas. It's most of the page's code, so
  * it loads on its own, while the agent works on the first question.
  */
-export default function ChartView({ chart }: { chart: Chart }) {
+export default function ChartView({ chart, ref }: Props) {
   const { theme } = useTheme();
   const [width, setWidth] = useState<number>();
   // The chart's width decides how many day labels fit, how wide bars are and
@@ -52,7 +62,7 @@ export default function ChartView({ chart }: { chart: Chart }) {
   );
   return (
     <div ref={measure}>
-      <AgCharts options={options} className="h-72 w-full sm:h-96" />
+      <AgCharts ref={ref} options={options} className="h-72 w-full sm:h-96" />
     </div>
   );
 }

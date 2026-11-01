@@ -148,6 +148,48 @@ describe("chartOptions", () => {
     });
   });
 
+  it("labels only the peak of a lone line, with its value", () => {
+    const line = lineOf(CHART);
+    expect(line.label?.enabled).toBe(true);
+    expect(
+      line.data?.map((datum) => line.label?.formatter?.({ datum } as never)),
+    ).toEqual(["", "", "", "", "94", "", ""]);
+  });
+
+  it("labels the peak the summary names, leaving out a partial day's average", () => {
+    const latency: Chart = {
+      ...CHART,
+      unit: "ms",
+      series: [
+        {
+          name: "checkout-api",
+          points: [
+            { x: iso(29), y: 300 },
+            { x: iso(30), y: 320 },
+            { x: iso(31), y: 900, partial: true },
+          ],
+        },
+      ],
+    };
+    const line = lineOf(latency);
+    expect(
+      line.data?.map((datum) => line.label?.formatter?.({ datum } as never)),
+    ).toEqual(["", "320 ms", ""]);
+  });
+
+  it("washes a lone line's area faintly in its color, but leaves several lines bare, with no labels", () => {
+    expect(lineOf(CHART)).toMatchObject({
+      type: "area",
+      fill: PALETTE.light.series[0],
+      fillOpacity: 0.1,
+    });
+    const lines = cartesian(TWO_SERVICES).series as AgLineSeriesOptions[];
+    expect(lines.map((line) => [line.type, line.label?.enabled])).toEqual([
+      ["line", false],
+      ["line", false],
+    ]);
+  });
+
   it("gives a single series the first color, and no legend", () => {
     expect(lineOf(CHART).stroke).toBe(PALETTE.light.series[0]);
     expect(cartesian(CHART).legend?.enabled).toBe(false);
@@ -275,12 +317,16 @@ describe("dashedPartials", () => {
     }));
   const dash = { lineDash: [4, 4], strokeOpacity: 0.6 };
 
-  it("leaves a line without partial days solid", () => {
-    expect(dashedPartials(days(7, []))).toBeUndefined();
+  it("leaves a line without partial days solid, as one plain segment, so AG Charts can redraw a line that had dashes", () => {
+    expect(dashedPartials(days(7, []))).toEqual({
+      enabled: true,
+      key: "x",
+      segments: [{}],
+    });
   });
 
   it("dashes into and out of a partial day in the middle", () => {
-    expect(dashedPartials(days(7, [3]))?.segments).toEqual([
+    expect(dashedPartials(days(7, [3])).segments).toEqual([
       { stop: day(27) },
       { start: day(27), stop: day(29), ...dash },
       { start: day(29) },
@@ -288,7 +334,7 @@ describe("dashedPartials", () => {
   });
 
   it("merges partial days next to each other into one dashed stretch", () => {
-    expect(dashedPartials(days(7, [2, 3]))?.segments).toEqual([
+    expect(dashedPartials(days(7, [2, 3])).segments).toEqual([
       { stop: day(26) },
       { start: day(26), stop: day(29), ...dash },
       { start: day(29) },

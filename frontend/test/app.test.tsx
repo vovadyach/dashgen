@@ -1,6 +1,7 @@
 import { type Chart, EXAMPLE_QUESTIONS } from "@dashgen/contracts";
 import { onlineManager } from "@tanstack/react-query";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import type { Ref } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -25,11 +26,23 @@ import {
   stubTheBrowser,
 } from "./helpers/page.tsx";
 
-// AG Charts draws on a canvas, which jsdom doesn't have. The page gets a
-// stand-in that says which chart it was given.
-vi.mock("../src/components/chart-view.tsx", () => ({
-  default: ({ chart }: { chart: Chart }) => <p>{`${chart.type} chart`}</p>,
+// What the drawn chart does when it's asked to download itself.
+const { download } = vi.hoisted(() => ({
+  download: vi.fn(() => Promise.resolve()),
 }));
+
+// AG Charts draws on a canvas, which jsdom doesn't have. The page gets a
+// stand-in that says which chart it was given, and can download itself.
+vi.mock("../src/components/chart-view.tsx", async () => {
+  const { useImperativeHandle } = await import("react");
+  const drawn = { download };
+  function ChartStandIn({ chart, ref }: { chart: Chart; ref?: Ref<unknown> }) {
+    // Set once, as AG Charts' own React component does.
+    useImperativeHandle(ref, () => drawn, []);
+    return <p>{`${chart.type} chart`}</p>;
+  }
+  return { default: ChartStandIn };
+});
 
 stubTheBrowser();
 
@@ -51,7 +64,8 @@ describe("the page", () => {
     });
     // A plain title, then the tool's own name, time and result.
     screen.getByText("Looked up the services and metrics");
-    screen.getByText("list_services · 15 ms · 5 services, 2 metrics");
+    screen.getByText("list_services · 15 ms");
+    screen.getByText("5 services, 2 metrics");
     screen.getByText("Choosing the next step…");
 
     act(() => {
@@ -81,16 +95,44 @@ describe("the page", () => {
     expect(closedByHandler).toBe(true);
   });
 
-  it("puts the numbers in a data table, with the partial day marked", async () => {
+  it("puts the numbers in a data table, shown with its button, with the partial day marked", async () => {
+    started();
+    const user = renderPage();
+    await ask(user);
+    const stream = await waitFor(lastStream);
+    act(() => {
+      stream.send(CHART_OUTCOME);
+    });
+    const toggle = screen.getByRole("button", { name: "Data table" });
+    expect(screen.queryByRole("table")).toBeNull();
+    await user.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    screen.getByRole("columnheader", { name: "Day (UTC)" });
+    screen.getByRole("rowheader", { name: "Oct 25" });
+    screen.getByText("28 (partial)");
+  });
+
+  it("sums the chart up over it: the week's total, its peak, and the average of its full days", async () => {
     started();
     await ask(renderPage());
     const stream = await waitFor(lastStream);
     act(() => {
       stream.send(CHART_OUTCOME);
     });
-    screen.getByRole("columnheader", { name: "Day (UTC)" });
-    screen.getByRole("rowheader", { name: "Oct 25" });
-    screen.getByText("28 (partial)");
+    expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
+      ["Total", "Peak", "Daily average"],
+    );
+    // 26 + 36 + 35 + 39 + 94 + 32 + 28, and the first six, without today so far.
+    expect(
+      screen.getAllByRole("definition").map((value) => value.textContent),
+    ).toEqual([
+      "290",
+      "in 7 days",
+      "94",
+      "on Oct 29",
+      "43.7",
+      "over 6 full days",
+    ]);
   });
 
   it("shows a tool call that failed, with its error, and waits for the agent's next step", async () => {
@@ -133,6 +175,39 @@ describe("the page", () => {
     });
     await screen.findByText("line chart");
     expect(screen.queryByText(CLARIFY.message)).toBeNull();
+  });
+
+  it("shows the waiting sign over the last chart while the next question runs, until its answer arrives", async () => {
+    started(RUN_ID, SECOND_RUN_ID);
+    const user = renderPage();
+    await ask(user);
+    const first = await waitFor(lastStream);
+    act(() => {
+      first.send(CHART_OUTCOME);
+    });
+    await screen.findByText("line chart");
+
+    // The same question again, still in the box.
+    await user.click(askButton());
+    const second = await waitFor(() => {
+      expect(FakeEventSource.opened).toHaveLength(2);
+      return lastStream();
+    });
+    const waiting = screen.getByText(
+      "The new chart appears here when the agent is done.",
+    );
+    expect(waiting.closest('[role="status"]')).not.toBeNull();
+    // Over the old chart, not in its dimmed, inert part.
+    expect(waiting.closest("[inert]")).toBeNull();
+    expect(screen.getByText(CHART.title).closest("[inert]")).not.toBeNull();
+
+    act(() => {
+      second.send(CLARIFY);
+    });
+    expect(
+      screen.queryByText("The new chart appears here when the agent is done."),
+    ).toBeNull();
+    screen.getByRole("heading", { name: CLARIFY.message });
   });
 
   it("brings back the last answer when the next question is stopped", async () => {
@@ -266,7 +341,8 @@ describe("the page", () => {
 
   it("lists the days in time order in the table, even when the first service lacks one", async () => {
     started();
-    await ask(renderPage());
+    const user = renderPage();
+    await ask(user);
     const stream = await waitFor(lastStream);
     const day = (date: number) =>
       new Date(Date.UTC(2026, 9, date)).toISOString();
@@ -295,6 +371,7 @@ describe("the page", () => {
         },
       });
     });
+    await user.click(screen.getByRole("button", { name: "Data table" }));
     const days = screen.getAllByRole("rowheader").map((h) => h.textContent);
     expect(days).toEqual(["Oct 25", "Oct 26", "Oct 27"]);
   });
@@ -331,6 +408,70 @@ describe("the page", () => {
     });
     screen.getByRole("heading", { name: DECLINE.message });
     screen.getByRole("button", { name: DECLINE.examples[0] });
+  });
+
+  it("keeps the last answer under the error when the next question fails, labeled and still usable", async () => {
+    started(RUN_ID, SECOND_RUN_ID);
+    const user = renderPage();
+    await ask(user);
+    const first = await waitFor(lastStream);
+    act(() => {
+      first.send(CHART_OUTCOME);
+    });
+    await screen.findByText("line chart");
+
+    await user.click(askButton());
+    const second = await waitFor(() => {
+      expect(FakeEventSource.opened).toHaveLength(2);
+      return lastStream();
+    });
+    act(() => {
+      second.send(TIMEOUT);
+    });
+    screen.getByText(TIMEOUT.message);
+    screen.getByText("Your last answer");
+    const title = screen.getByRole("heading", { name: CHART.title });
+    expect(title.closest("[inert]")).toBeNull();
+    screen.getByRole("button", { name: "Pin" });
+  });
+
+  it("follows only the current question, when the one before was stopped before its run started", async () => {
+    // Each POST /api/ask answers only when the test says so.
+    const replies: ((runId: string) => void)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            replies.push((runId) => {
+              resolve(Response.json({ runId }, { status: 202 }));
+            });
+          }),
+      ),
+    );
+    const user = renderPage();
+    await ask(user);
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+    await user.clear(screen.getByLabelText("Your question"));
+    await ask(user, "Which service was slowest today?");
+
+    // The stopped question's run ID comes back late, while the new one waits
+    // for its own. It's not the new question's run, so no stream opens. A
+    // timer's turn lets the reply's whole chain of promises settle first.
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+    await act(async () => {
+      replies[0]?.(RUN_ID);
+      await settle();
+    });
+    expect(FakeEventSource.opened).toHaveLength(0);
+
+    await act(async () => {
+      replies[1]?.(SECOND_RUN_ID);
+      await settle();
+    });
+    const stream = await waitFor(lastStream);
+    expect(stream.url).toBe(`/api/runs/${SECOND_RUN_ID}/events`);
+    expect(FakeEventSource.opened).toHaveLength(1);
   });
 
   it("shows the stream's error, and asks the same question again on Try again", async () => {
@@ -438,6 +579,135 @@ describe("the page", () => {
     answerAsk(503, { status: "offline" });
     await ask(renderPage());
     await screen.findByText("DashGen isn't answering. Try again in a moment.");
+  });
+});
+
+describe("a chart's pin, link and download", () => {
+  afterEach(() => {
+    localStorage.clear();
+    history.replaceState(null, "", "/");
+    vi.restoreAllMocks();
+  });
+
+  /** Asks the question, and gets the chart. */
+  async function chartPage() {
+    const fetch = started();
+    const user = renderPage();
+    await ask(user);
+    const stream = await waitFor(lastStream);
+    act(() => {
+      stream.send(CHART_OUTCOME);
+    });
+    await screen.findByText("line chart");
+    return { user, fetch };
+  }
+
+  const watchlist = () =>
+    screen.queryByRole("region", { name: "Your watchlist" });
+
+  it("pins the chart to the watchlist, keeps it after a reload, and opens it again with no run", async () => {
+    const { user, fetch } = await chartPage();
+    expect(watchlist()).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Pin" }));
+    screen.getByRole("button", { name: "Unpin" });
+    const pinned = screen.getByRole("region", { name: "Your watchlist" });
+    // The week's errors add up: 26 + 36 + 35 + 39 + 94 + 32 + 28.
+    within(pinned).getByText("290");
+    within(pinned).getByText("total");
+
+    // A reload: the new page reads the pin back from the browser.
+    cleanup();
+    const reloaded = renderPage();
+    const open = screen.getByRole("button", {
+      name: `Open ${CHART.title}`,
+      description: "290 total",
+    });
+    await reloaded.click(open);
+    await screen.findByText("line chart");
+    screen.getByRole("heading", { name: CHART.title });
+    screen.getByText(/Pinned .+\. It keeps the numbers it had then\./);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(FakeEventSource.opened).toHaveLength(1);
+  });
+
+  it("unpins from the watchlist", async () => {
+    const { user } = await chartPage();
+    await user.click(screen.getByRole("button", { name: "Pin" }));
+    await user.click(
+      screen.getByRole("button", { name: `Unpin ${CHART.title}` }),
+    );
+    expect(watchlist()).toBeNull();
+    screen.getByRole("button", { name: "Pin" });
+    expect(localStorage.getItem("pins")).toBe("[]");
+  });
+
+  it("still pins while the page is open when the browser blocks storage, and says the pins won't last", async () => {
+    const blocked = () => {
+      throw new DOMException("The operation is insecure.", "SecurityError");
+    };
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(blocked);
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(blocked);
+    const { user } = await chartPage();
+    await user.click(screen.getByRole("button", { name: "Pin" }));
+    const pinned = screen.getByRole("region", { name: "Your watchlist" });
+    within(pinned).getByText(
+      "Your browser isn't saving pins, so these last only until you leave the page.",
+    );
+    expect(screen.queryByText(/Saved in this browser only/)).toBeNull();
+  });
+
+  it("copies a link that opens the chart on a new page, with no run", async () => {
+    const { user, fetch } = await chartPage();
+    await user.click(screen.getByRole("button", { name: "Copy link" }));
+    await screen.findByText("Link copied.");
+    const link = await navigator.clipboard.readText();
+    expect(link.startsWith(`${location.origin}/#chart=`)).toBe(true);
+
+    cleanup();
+    history.replaceState(null, "", link);
+    renderPage();
+    await screen.findByText("line chart");
+    screen.getByRole("heading", { name: CHART.title });
+    screen.getByText(/Opened from a link, which carries its own numbers\./);
+    // The address goes back to the page's own, so a reload starts fresh.
+    expect(location.hash).toBe("");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("says so when a link can't be read, until the next question", async () => {
+    started();
+    history.replaceState(null, "", "/#chart=not-a-chart");
+    const user = renderPage();
+    const notice = await screen.findByRole("alert");
+    expect(notice.textContent).toMatch(/This chart link couldn't be opened/);
+    expect(location.hash).toBe("");
+    expect(screen.queryByRole("heading", { name: CHART.title })).toBeNull();
+
+    await ask(user);
+    expect(screen.queryByText(/This chart link couldn't be opened/)).toBeNull();
+  });
+
+  it("draws a pinned chart's mini chart again when the pointer comes onto its card", async () => {
+    localStorage.setItem(
+      "pins",
+      JSON.stringify([{ chart: CHART, pinnedAt: "2026-10-31T10:00:00.000Z" }]),
+    );
+    const user = renderPage();
+    const card = screen.getByRole("button", { name: `Open ${CHART.title}` });
+    // New elements, so their animation starts over.
+    const line = () => card.querySelector(".sparkline-line");
+    const before = line();
+    expect(before).not.toBeNull();
+    await user.hover(card);
+    expect(line()).not.toBe(before);
+  });
+
+  it("downloads the chart as a PNG named after its title", async () => {
+    const { user } = await chartPage();
+    await user.click(screen.getByRole("button", { name: "Download PNG" }));
+    expect(download).toHaveBeenCalledWith({
+      fileName: "errors-for-payments-service-last-7-days.png",
+    });
   });
 });
 
