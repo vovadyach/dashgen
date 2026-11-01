@@ -23,6 +23,7 @@ import type {
 import { ChartActions } from "./chart-actions.tsx";
 import { ChartBoundary } from "./chart-boundary.tsx";
 import { DrawingChart } from "./drawing-chart.tsx";
+import { ServiceTable } from "./service-table.tsx";
 import { Button } from "./ui/button.tsx";
 import {
   Card,
@@ -304,7 +305,7 @@ function ChartCard({
           </Button>
         </div>
         {/* Built only when open: a month of hours is thousands of cells. */}
-        <div id={tableId}>{table && <DataTable chart={chart} />}</div>
+        <div id={tableId}>{table && <DataPanel chart={chart} />}</div>
       </CardContent>
     </Card>
   );
@@ -367,6 +368,47 @@ function ChartFailed() {
   );
 }
 
+/**
+ * The chart's numbers, under its Data table button: a row per service, then
+ * every value, day by day or hour by hour, so no value depends on the canvas
+ * (ADR-0012).
+ */
+function DataPanel({ chart }: { chart: Chart }) {
+  // Services side by side need no second table: their rows are every value.
+  const overTime = chart.type !== "pie" && chart.x !== "category";
+  // Built only when open, as the panel is: a closed one still costs its
+  // cells, thousands for a month of hours.
+  const [everyValue, setEveryValue] = useState(false);
+  return (
+    <div className="space-y-3">
+      <ServiceTable chart={chart} />
+      {overTime && (
+        <details
+          className="text-sm"
+          onToggle={(event) => {
+            setEveryValue(event.currentTarget.open);
+          }}
+        >
+          <summary className="w-fit cursor-pointer text-muted-foreground select-none hover:text-foreground">
+            {EVERY_VALUE[chart.x]}
+          </summary>
+          {everyValue && (
+            <div className="mt-3">
+              <DataTable chart={chart} />
+            </div>
+          )}
+        </details>
+      )}
+    </div>
+  );
+}
+
+const EVERY_VALUE = {
+  day: "Day by day",
+  hour: "Hour by hour",
+  category: "Every value",
+};
+
 /** The chart's numbers as a table, for screen readers and anyone who wants exact values. */
 function DataTable({ chart }: { chart: Chart }) {
   // A row per x value, with each series' point at it.
@@ -383,6 +425,7 @@ function DataTable({ chart }: { chart: Chart }) {
   return (
     <div className="overflow-x-auto text-sm">
       <table className="w-full tabular-nums">
+        <caption className="sr-only">{EVERY_VALUE[chart.x]}</caption>
         <thead className="text-muted-foreground">
           <tr className="border-b">
             <th scope="col" className="py-1.5 pr-4 text-left font-medium">

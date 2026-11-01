@@ -105,6 +105,73 @@ export function peak(series: Series, unit: string): Point {
   return highest(points, (point) => point.y);
 }
 
+/** A row of the data table's view by service. */
+export interface ServiceRow {
+  /** The service: a series over time, or a point when services sit side by side. */
+  name: string;
+  /** Its place in the chart's colors. */
+  color: number;
+  /** Over time: its points, drawn as its trend. */
+  series?: Series;
+  /** Its total, for counts, or else its average. Side by side, its value. */
+  value: string;
+  /** Side by side: its value as a share of the largest, from 0 to 1, for its bar. */
+  size?: number;
+  /** In a pie: its share of the whole, like "34.8%". */
+  share?: string;
+  /** Over time: its highest point, and when. */
+  peak?: { value: string; when: string };
+  /** Over time: its last point, and when, saying so when it's partial. */
+  latest?: { value: string; when: string };
+}
+
+/**
+ * The data table's view by service, worked out from the chart's points, like
+ * the numbers over the chart:
+ * - over time, a row per series: its total or average, its peak and its
+ *   latest point;
+ * - side by side, as bars or a pie, a row per service: its value and, in a
+ *   pie, its share of the whole.
+ */
+export function serviceRows(chart: Chart): ServiceRow[] {
+  const { unit } = chart;
+  if (chart.type === "pie" || chart.x === "category") {
+    const points = chart.series.flatMap((series) => series.points);
+    const top = highest(points, (point) => point.y).y;
+    const total = sum(points);
+    return points.map((point, index) => ({
+      name: point.x,
+      // A pie gives each slice a color of its own. Bars share their series'.
+      color: chart.type === "pie" ? index : 0,
+      value: formatValue(point.y, unit),
+      size: top > 0 ? point.y / top : 0,
+      // Only a pie is sure to be a whole: the backend draws one only of
+      // totals. Bars can be each service's highest hour, and those don't
+      // add up to anything.
+      ...(chart.type === "pie" && unit === "count" && total > 0
+        ? { share: SHARE.format(point.y / total) }
+        : {}),
+    }));
+  }
+  return chart.series.map((series, index) => {
+    const top = peak(series, unit);
+    // ISO times sort by time as strings.
+    const last = series.points.reduce((a, b) => (b.x > a.x ? b : a));
+    return {
+      name: series.name,
+      color: index,
+      series,
+      value: formatValue(summarize(series, unit), unit),
+      peak: { value: formatValue(top.y, unit), when: whenOf(top, chart) },
+      latest: { value: formatValue(last.y, unit), when: whenOf(last, chart) },
+    };
+  });
+}
+
+/** When a point was, like "Oct 28", or "Oct 31, so far" when it's partial. */
+const whenOf = (point: Point, chart: Chart) =>
+  `${formatX(point.x, chart.x)}${point.partial ? ", so far" : ""}`;
+
 /** One series over time, like a service's errors this week. */
 function oneOverTime(chart: Chart, series: Series): Stat[] {
   const { unit } = chart;

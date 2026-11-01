@@ -10,6 +10,8 @@ interface Props {
   series: Chart["series"][number];
   /** Which drawing this is: a new number draws the chart again, from the start. */
   drawing?: number;
+  /** The line's end dot, in its series' color. The page's accent by default. */
+  dot?: string;
 }
 
 /**
@@ -19,7 +21,7 @@ interface Props {
  * index.css. Hidden from screen readers, since the card's title and number
  * say what it shows.
  */
-export function Sparkline({ chart, series, drawing = 0 }: Props) {
+export function Sparkline({ chart, series, drawing = 0, dot }: Props) {
   const sideBySide = chart.type === "pie" || chart.x === "category";
   const values = sideBySide
     ? chart.series.flatMap((s) => s.points.map((point) => point.y))
@@ -48,7 +50,7 @@ export function Sparkline({ chart, series, drawing = 0 }: Props) {
         ) : sideBySide ? (
           <Bars values={values} high={high} y={y} />
         ) : (
-          <Line values={values} y={y} />
+          <Line values={values} y={y} dot={dot} />
         )}
       </g>
     </svg>
@@ -58,9 +60,11 @@ export function Sparkline({ chart, series, drawing = 0 }: Props) {
 function Line({
   values,
   y,
+  dot,
 }: {
   values: number[];
   y: (value: number) => number;
+  dot?: string;
 }) {
   const step = (WIDTH - 2 * PAD) / Math.max(values.length - 1, 1);
   const points = values.map((value, index) => ({
@@ -88,6 +92,7 @@ function Line({
           cy={last.y}
           r="3"
           className="sparkline-dot fill-primary"
+          style={dot ? { fill: dot } : undefined}
         />
       )}
     </>

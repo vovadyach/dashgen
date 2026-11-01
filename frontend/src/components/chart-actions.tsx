@@ -1,8 +1,9 @@
 import type { Chart } from "@dashgen/contracts";
 import type { AgChartInstance } from "ag-charts-community";
-import { Download, Link, Pin, PinOff } from "lucide-react";
+import { Download, FileSpreadsheet, Link, Pin, PinOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { chartCsv } from "../chart/csv.ts";
 import type { Pins } from "../pins.ts";
 import { chartLink } from "../share.ts";
 import { Button } from "./ui/button.tsx";
@@ -118,7 +119,7 @@ export function ChartActions({ chart, drawn, pins, fromLink }: Props) {
           onClick={() => {
             // A failed download leaves nothing to show.
             void drawn
-              .download({ fileName: fileName(chart) })
+              .download({ fileName: fileName(chart, "png") })
               .catch(() => undefined);
           }}
         >
@@ -126,6 +127,17 @@ export function ChartActions({ chart, drawn, pins, fromLink }: Props) {
           Download PNG
         </Button>
       )}
+      {/* The numbers need no drawn chart, so this one is always there. */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          downloadCsv(chart);
+        }}
+      >
+        <FileSpreadsheet aria-hidden />
+        Download CSV
+      </Button>
       {/* Always there, so screen readers hear what goes into it. */}
       <p role="status" className="text-sm text-muted-foreground">
         {note && NOTES[note]}
@@ -135,10 +147,30 @@ export function ChartActions({ chart, drawn, pins, fromLink }: Props) {
 }
 
 /** A file name from the chart's title, like "errors-for-payments-service-last-7-days.png". */
-const fileName = (chart: Chart) =>
+const fileName = (chart: Chart, extension: string) =>
   `${
     chart.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "") || "chart"
-  }.png`;
+  }.${extension}`;
+
+/** Saves the chart's numbers as a CSV file, named after its title. */
+function downloadCsv(chart: Chart) {
+  // A byte order mark first, or Excel reads the file in an older encoding.
+  const file = new Blob(["﻿", chartCsv(chart)], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName(chart, "csv");
+  // Firefox follows a link's click only when the link is in the page.
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // Later, since some browsers still read the file just after the click.
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 10_000);
+}

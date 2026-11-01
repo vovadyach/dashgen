@@ -1,7 +1,7 @@
 import type { Chart } from "@dashgen/contracts";
 import { describe, expect, it } from "vitest";
 
-import { headline, summary } from "../src/chart/summary.ts";
+import { headline, serviceRows, summary } from "../src/chart/summary.ts";
 import { CHART } from "./fixtures/run.ts";
 
 const day = (date: number) => new Date(Date.UTC(2026, 9, date)).toISOString();
@@ -141,6 +141,59 @@ describe("headline of a pie", () => {
       value: "351 ms",
       label: "checkout-api, the highest",
     });
+  });
+});
+
+describe("serviceRows", () => {
+  it("sums up a series over time: its total, its peak, and its latest point, so far", () => {
+    expect(serviceRows(CHART)).toEqual([
+      {
+        name: "payments-service",
+        color: 0,
+        series: CHART.series[0],
+        value: "290",
+        peak: { value: "94", when: "Oct 29" },
+        latest: { value: "28", when: "Oct 31, so far" },
+      },
+    ]);
+  });
+
+  it("averages other units over the full days, and leaves a partial one out of the peak", () => {
+    const latency: Chart = {
+      ...CHART,
+      unit: "ms",
+      series: [
+        { name: "payments-service", points: days([300, 320, 280, 900]) },
+        { name: "checkout-api", points: days([200, 250, 210, 100]) },
+      ],
+    };
+    expect(serviceRows(latency)).toMatchObject([
+      {
+        name: "payments-service",
+        color: 0,
+        value: "300 ms",
+        peak: { value: "320 ms", when: "Oct 26" },
+        latest: { value: "900 ms", when: "Oct 28, so far" },
+      },
+      { name: "checkout-api", color: 1, value: "220 ms" },
+    ]);
+  });
+
+  it("gives each service side by side its value and its bar, and no share, since bars could be maxima", () => {
+    expect(serviceRows(byService("bar"))).toEqual([
+      { name: "payments-service", color: 0, value: "290", size: 290 / 351 },
+      { name: "checkout-api", color: 0, value: "351", size: 1 },
+      { name: "search-service", color: 0, value: "59", size: 59 / 351 },
+    ]);
+  });
+
+  it("gives a pie's slices their own colors and their shares of the whole", () => {
+    const rows = serviceRows(byService("pie"));
+    expect(rows.map((row) => [row.color, row.share])).toEqual([
+      [0, "41.4%"],
+      [1, "50.1%"],
+      [2, "8.4%"],
+    ]);
   });
 });
 

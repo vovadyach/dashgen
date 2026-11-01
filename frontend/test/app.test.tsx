@@ -117,9 +117,32 @@ describe("the page", () => {
     expect(document.querySelector("table")).toBeNull();
     await user.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    screen.getByRole("columnheader", { name: "Day (UTC)" });
-    screen.getByRole("rowheader", { name: "Oct 25" });
-    screen.getByText("28 (partial)");
+
+    // First a row per service, summed up: the week's errors add up to 290,
+    // the peak was 94 on Oct 29, and today has 28 so far.
+    const byService = screen.getByRole("table", { name: "By service" });
+    const service = within(byService).getByRole("rowheader", {
+      name: "payments-service",
+    });
+    const cells = within(service.parentElement ?? byService)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent);
+    // The trend line is hidden from screen readers, who hear where it went.
+    expect(cells).toEqual([
+      "26 to 28",
+      "290",
+      "94, Oct 29",
+      "28, Oct 31, so far",
+    ]);
+
+    // Then every value, day by day, with today's marked. It's built only
+    // once it's opened.
+    expect(screen.queryByRole("table", { name: "Day by day" })).toBeNull();
+    await user.click(screen.getByText("Day by day", { selector: "summary" }));
+    const byDay = await screen.findByRole("table", { name: "Day by day" });
+    within(byDay).getByRole("columnheader", { name: "Day (UTC)" });
+    within(byDay).getByRole("rowheader", { name: "Oct 25" });
+    within(byDay).getByText("28 (partial)");
   });
 
   it("sums the chart up over it: the week's total, its peak, and the average of its full days", async () => {
@@ -392,7 +415,12 @@ describe("the page", () => {
       });
     });
     await user.click(screen.getByRole("button", { name: "Data table" }));
-    const days = screen.getAllByRole("rowheader").map((h) => h.textContent);
+    await user.click(screen.getByText("Day by day", { selector: "summary" }));
+    const days = within(
+      await screen.findByRole("table", { name: "Day by day" }),
+    )
+      .getAllByRole("rowheader")
+      .map((h) => h.textContent);
     expect(days).toEqual(["Oct 25", "Oct 26", "Oct 27"]);
   });
 
@@ -845,6 +873,47 @@ describe("a chart's pin, link and download", () => {
     expect(download).toHaveBeenCalledWith({
       fileName: "errors-for-payments-service-last-7-days.png",
     });
+  });
+
+  it("downloads the chart's numbers as a CSV file named after its title", async () => {
+    // jsdom makes no URLs for files, so the test keeps the file it's given.
+    const files: Blob[] = [];
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: (file: Blob) => {
+        files.push(file);
+        return "blob:dashgen/csv";
+      },
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: () => undefined,
+    });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+    try {
+      const { user } = await chartPage();
+      await user.click(screen.getByRole("button", { name: "Download CSV" }));
+
+      const link = click.mock.contexts[0] as HTMLAnchorElement;
+      expect(link.download).toBe("errors-for-payments-service-last-7-days.csv");
+      expect(link.href).toBe("blob:dashgen/csv");
+      // The link only lives for its click.
+      expect(link.isConnected).toBe(false);
+
+      const [file] = files;
+      expect(file?.type).toBe("text/csv;charset=utf-8");
+      const bytes = new Uint8Array((await file?.arrayBuffer()) ?? []);
+      // A byte order mark, so Excel reads it as UTF-8.
+      expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+      const lines = new TextDecoder().decode(bytes).split("\r\n");
+      expect(lines[0]).toBe("day (UTC),payments-service,partial");
+      expect(lines.at(-1)).toBe("2026-10-31,28,yes");
+    } finally {
+      Reflect.deleteProperty(URL, "createObjectURL");
+      Reflect.deleteProperty(URL, "revokeObjectURL");
+    }
   });
 });
 
