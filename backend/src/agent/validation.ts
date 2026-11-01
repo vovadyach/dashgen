@@ -1,4 +1,4 @@
-import type { MetricsResult } from "@dashgen/contracts";
+import { MAX_SERIES, type MetricsResult } from "@dashgen/contracts";
 import { z } from "zod";
 
 import { ToolError } from "./errors.ts";
@@ -10,8 +10,11 @@ import type {
   ToolOutput,
 } from "./types.ts";
 
-/** Every result is resent with each later model call, so a question gets this many. */
-export const MAX_QUERIES = 10;
+/**
+ * Every result is resent with each later model call, so a question gets this
+ * many. Each can be a chart's series, so it's the cap on those too.
+ */
+export const MAX_QUERIES = MAX_SERIES;
 
 /** Checks a tool's arguments from the model. A bad one is a ToolError it can correct, not a crash. */
 export function parseArgs<T extends z.ZodType>(

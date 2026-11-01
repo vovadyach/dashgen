@@ -1,0 +1,13 @@
+{
+  // The page runs in the browser, and Vite bundles it: it gets the DOM's
+  // types, JSX, and the bundler's way of finding modules instead of Node's.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "types": ["vite/client"],
+    "jsx": "react-jsx"
+  },
+  "include": ["src", "test", "vite.config.ts"]
+}

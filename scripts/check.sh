@@ -14,6 +14,8 @@ fi
 npm run --silent format:check
 npm run --silent lint
 npm run --silent typecheck
+# The frontend's production build, which catches what only the bundler sees.
+npm run --silent build --workspace frontend -- --logLevel warn
 # Database tests need the throwaway Postgres from compose.test.yaml.
 docker compose --file compose.test.yaml up --detach --wait --quiet-pull
 npm test --silent

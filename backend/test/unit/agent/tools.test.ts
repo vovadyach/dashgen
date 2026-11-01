@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { Outcome } from "@dashgen/contracts";
+import { EXAMPLE_QUESTIONS, Outcome } from "@dashgen/contracts";
 import { z } from "zod";
 
-import { createTools, EXAMPLE_QUESTIONS } from "../../../src/agent/tools.ts";
+import { createTools } from "../../../src/agent/tools.ts";
 import { MAX_QUERIES } from "../../../src/agent/validation.ts";
 import { CHECKOUT_QUERY } from "../../fixtures/agent.ts";
 import { CATALOG } from "../../fixtures/metrics.ts";

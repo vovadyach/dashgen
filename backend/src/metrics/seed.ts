@@ -1,17 +1,29 @@
+import { SAMPLE_SERVICES, type SampleService } from "@dashgen/contracts";
+
 import type { Db } from "../db.ts";
 import { metrics, points, services } from "./schema.ts";
 
 import { DAY_MS, HOUR_MS, startOfDay, startOfHour } from "./time.ts";
 const SEED_DAYS = 30;
 
+// Each sample service's typical errors per hour and latency. The names come
+// from @dashgen/contracts, which the page shows visitors too.
+const PROFILES: Record<
+  SampleService,
+  { errorsPerHour: number; latencyMs: number }
+> = {
+  "auth-service": { errorsPerHour: 1, latencyMs: 80 },
+  "payments-service": { errorsPerHour: 1.5, latencyMs: 230 },
+  "checkout-api": { errorsPerHour: 2, latencyMs: 420 },
+  "search-service": { errorsPerHour: 0.8, latencyMs: 280 },
+  "notifications-worker": { errorsPerHour: 0.5, latencyMs: 150 },
+};
+
 /** The sample services, with each one's typical errors per hour and latency. */
-export const SERVICES = [
-  { name: "auth-service", errorsPerHour: 1, latencyMs: 80 },
-  { name: "payments-service", errorsPerHour: 1.5, latencyMs: 230 },
-  { name: "checkout-api", errorsPerHour: 2, latencyMs: 420 },
-  { name: "search-service", errorsPerHour: 0.8, latencyMs: 280 },
-  { name: "notifications-worker", errorsPerHour: 0.5, latencyMs: 150 },
-] as const;
+export const SERVICES = SAMPLE_SERVICES.map((name) => ({
+  name,
+  ...PROFILES[name],
+}));
 
 export const METRICS = [
   { name: "errors", unit: "count", rollup: "sum" },

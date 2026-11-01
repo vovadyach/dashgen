@@ -1,0 +1,274 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* dark: utilities follow the class that index.html and the theme toggle set. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * The colors, as shadcn/ui's names for them. The neutrals are the chart
+ * palette's surfaces and inks (src/chart/palette.ts), so the cards and the
+ * charts on them match. The accent is the light theme's first series color,
+ * in both themes, since white text needs its contrast.
+ */
+:root {
+  --radius: 0.625rem;
+  --background: #f9f9f7;
+  --foreground: #0b0b0b;
+  --card: #fcfcfb;
+  --card-foreground: #0b0b0b;
+  --popover: #fcfcfb;
+  --popover-foreground: #0b0b0b;
+  --primary: #2a78d6;
+  --primary-foreground: #ffffff;
+  --secondary: #f0efec;
+  --secondary-foreground: #0b0b0b;
+  --muted: #f0efec;
+  --muted-foreground: #52514e;
+  --accent: #f0efec;
+  --accent-foreground: #0b0b0b;
+  --destructive: #d03b3b;
+  --success: #0ca30c;
+  --shimmer: rgb(255 255 255 / 0.75);
+  --border: #e1e0d9;
+  --input: #c3c2b7;
+  --ring: #2a78d6;
+}
+
+.dark {
+  --background: #0d0d0d;
+  --foreground: #f0efec;
+  --card: #1a1a19;
+  --card-foreground: #f0efec;
+  --popover: #1a1a19;
+  --popover-foreground: #f0efec;
+  --primary: #2a78d6;
+  --primary-foreground: #ffffff;
+  --secondary: #2c2c2a;
+  --secondary-foreground: #f0efec;
+  --muted: #2c2c2a;
+  --muted-foreground: #c3c2b7;
+  --accent: #2c2c2a;
+  --accent-foreground: #f0efec;
+  --destructive: #e66767;
+  --success: #0ca30c;
+  --shimmer: rgb(255 255 255 / 0.07);
+  --border: #2c2c2a;
+  --input: #383835;
+  --ring: #3987e5;
+}
+
+@theme inline {
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-shimmer: var(--shimmer);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* A light band that sweeps across a skeleton while something loads. */
+@theme {
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+
+  @keyframes shimmer {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -50% 0;
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+}
+
+/*
+ * The chart in the waiting box (src/components/drawing-chart.tsx) draws
+ * itself in a loop: bars grow, the line runs across them, the dot lands,
+ * then it all fades and starts again. Still for reduced motion.
+ */
+.drawing-chart-line {
+  stroke-dasharray: 1;
+}
+.drawing-chart-bar,
+.drawing-chart-dot {
+  transform-box: fill-box;
+}
+.drawing-chart-bar {
+  transform-origin: bottom;
+}
+.drawing-chart-dot {
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .drawing-chart-bar {
+    animation: drawing-chart-bar 2.8s ease-out infinite both;
+  }
+  .drawing-chart-line {
+    animation: drawing-chart-line 2.8s ease-in-out infinite both;
+  }
+  .drawing-chart-dot {
+    animation: drawing-chart-dot 2.8s ease-out infinite both;
+  }
+}
+
+@keyframes drawing-chart-bar {
+  0% {
+    transform: scaleY(0.1);
+    opacity: 0;
+  }
+  30%,
+  85% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 0;
+  }
+}
+
+@keyframes drawing-chart-line {
+  0%,
+  15% {
+    stroke-dashoffset: 1;
+    opacity: 1;
+  }
+  60%,
+  85% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes drawing-chart-dot {
+  0%,
+  58% {
+    transform: scale(0);
+  }
+  66% {
+    transform: scale(1.4);
+  }
+  72%,
+  85% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/*
+ * A pinned chart's mini chart in the watchlist (src/components/sparkline.tsx)
+ * draws itself once, as its card appears: the line runs across and its dot
+ * lands, the bars grow, or a pie's ring sweeps round, slice after slice, in
+ * the waiting chart's way. Still for reduced motion. Only transforms grow
+ * the bars, since the muted ones are see-through. A slice draws from nothing
+ * to the length its own stroke-dasharray gives it.
+ */
+.sparkline-line {
+  stroke-dasharray: 1;
+}
+.sparkline-bar,
+.sparkline-dot {
+  transform-box: fill-box;
+}
+.sparkline-bar {
+  transform-origin: bottom;
+}
+.sparkline-dot {
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sparkline-line {
+    animation: sparkline-line 0.9s ease-in-out both;
+  }
+  .sparkline-dot {
+    animation: sparkline-dot 1.1s ease-out both;
+  }
+  .sparkline-bar {
+    animation: sparkline-bar 0.6s ease-out both;
+  }
+  /* Its delay and duration come with it, from its place on the ring. */
+  .sparkline-slice {
+    animation: sparkline-slice 0.3s linear both;
+  }
+}
+
+@keyframes sparkline-slice {
+  from {
+    stroke-dasharray: 0 1;
+  }
+}
+
+@keyframes sparkline-line {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes sparkline-dot {
+  0%,
+  75% {
+    transform: scale(0);
+  }
+  88% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes sparkline-bar {
+  from {
+    transform: scaleY(0.1);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}

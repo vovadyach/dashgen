@@ -1,8 +1,9 @@
 // PostToolUse hook: formats each file Claude writes or edits.
 //
-// TypeScript, JavaScript and JSON files in the backend, the shared packages,
-// these hooks and the repo root get Prettier, and other files are left alone.
-// It never blocks Claude: scripts/check.sh catches anything this misses.
+// TypeScript, JavaScript, JSON, CSS and HTML files in the backend, the
+// frontend, the shared packages, these hooks and the repo root get Prettier,
+// and other files are left alone. It never blocks Claude: scripts/check.sh
+// catches anything this misses.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -10,9 +11,17 @@ import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const PRETTIER = path.join(ROOT, "node_modules", ".bin", "prettier");
-const PRETTIER_EXTENSIONS = new Set([".ts", ".js", ".json"]);
+const PRETTIER_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".json",
+  ".css",
+  ".html",
+]);
 const PRETTIER_FOLDERS = [
   path.join(ROOT, "backend"),
+  path.join(ROOT, "frontend"),
   path.join(ROOT, "packages"),
   import.meta.dirname,
 ];

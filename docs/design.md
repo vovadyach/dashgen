@@ -217,7 +217,7 @@ sequenceDiagram
     B->>B: build the chart from q1's real points, then validate it
     B->>DB: save the run: steps, chart, tokens, cost, latency
     B-->>F: last event: the chart
-    F-->>V: draws the chart under the steps it watched arrive
+    F-->>V: draws the chart next to the steps it watched arrive
 ```
 
 - **A day's cost has a ceiling.** The backend reserves one of the day's questions before any work starts, and the loop stops at fixed limits on model calls and tokens ([the daily cap](#the-daily-cap)).
@@ -267,7 +267,7 @@ sequenceDiagram
 - **Two kinds of error.** Before a run starts, `POST /api/ask` fails like a normal request, with an HTTP status. Once the run's stream is open, the HTTP status is already 200, so a failure arrives as the stream's last event instead. Both carry one of [our error codes](#the-frontends-api), so the page shows the right message either way.
 - **Timeouts and retries:** every outside call has a timeout. For a database query, Postgres cancels a statement after 2 seconds, and if Postgres stops answering, the backend gives up a second later and closes that connection. An error that retrying can fix, like a timeout or a 503, gets one retry, after a random wait of 0.5 to 1.5 seconds, so retries from many requests don't all land at once. Any other error, like a wrong key, fails at once. A request to Gemini gets one more try in all, whatever went wrong, so a retry that gets a reply without a tool call ends the run.
 - **25 seconds per question,** under CloudFront's 30-second timeout, so a slow question gets the backend's own error ([ADR-0003](decisions/0003-cloudfront-front-door.md) explains the three timeouts).
-- **A run always finishes within its limits,** even if the visitor leaves, so a reconnect finds it intact. Its cost is already capped: at most 6 model calls and 25 seconds, and the question was reserved when it started.
+- **A run always finishes within its limits,** even if the visitor leaves or presses Stop, so a reconnect finds it intact. Stop only stops the page from watching, and the run is still saved. Its cost is already capped: at most 6 model calls and 25 seconds, and the question was reserved when it started.
 - The numbers here (6 calls, 25 seconds per question, a 2-second timeout, one retry) are starting values for the evals to tune.
 
 ### On AWS
@@ -489,7 +489,7 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 
 ### The frontend's API
 
-The React app calls the backend with REST and SSE under `/api` ([ADR-0011](decisions/0011-rest-and-sse.md)), with TanStack Query for loading, errors and caching. The schemas and their types come from `@dashgen/contracts`, which the page and the backend share.
+The React app calls the backend with REST and SSE under `/api` ([ADR-0011](decisions/0011-rest-and-sse.md)). TanStack Query runs `POST /api/ask`, and an `EventSource` reads the stream. The schemas and their types come from `@dashgen/contracts`, which the page and the backend share.
 
 | Call | Does |
 |---|---|
@@ -520,8 +520,8 @@ Each event's data is one `RunEvent` from `@dashgen/contracts`, as JSON:
 
 - `outcome` is `chart`, `clarify` (with `message` and `choices`) or `decline` (with `message` and `examples`).
 - `x` says what the x values are: `hour` or `day` timestamps for a chart over time, so the page can label the axis, or `category` when each point is a service.
-- The schema is `Chart` in `@dashgen/contracts`, and the backend validates every chart against it before sending it.
-- A point marked `"partial": true` is a day with fewer than 24 hours of data, in a daily chart: usually today so far, or a gap in the data. The frontend draws it lighter, so it doesn't read as a drop.
+- The schema is `Chart` in `@dashgen/contracts`, and the backend validates every chart against it before sending it. It caps a chart at what a run can make: 10 series, one per query, of up to 720 points, an hour's each over 30 days. The page parses charts from share links and pins with it too, so a crafted one can't be larger, or carry an hour or day that isn't a real ISO time.
+- A point marked `"partial": true` is a day with fewer than 24 hours of data, in a daily chart: usually today so far, or a gap in the data. The frontend draws it lighter, and dashes the line into and out of it, so it doesn't read as a drop.
 - A chart carries its own numbers, so charts pinned in the browser still draw while the backend is offline.
 
 Every error carries our own code and a message that's safe to show visitors. Where it arrives depends on when it happens:

@@ -50,15 +50,15 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] `POST /ask` starts a run and answers 202 with its ID; `GET /runs/:id/events` streams its events over SSE and resumes after a reconnect ([ADR-0011](decisions/0011-rest-and-sse.md))
 - [x] Errors keep [our codes](design.md#the-frontends-api): in `POST /ask`'s error body, and as the stream's last event
 - [x] Each run saved to `runs`, under its UUIDv7 ID ([ADR-0009](decisions/0009-uuidv7-ids.md))
-- [ ] React + Vite + Tailwind + Recharts, with TanStack Query and `EventSource`: question box, steps panel, chart
-- [ ] Vite's dev server forwards `/api` to the backend, so the app calls the same paths locally and on AWS
-- [ ] Component tests with Vitest, frontend checks in `scripts/check.sh`, and a `frontend/AGENTS.md` with a `CLAUDE.md` that imports it
+- [x] React + Vite + Tailwind, with shadcn/ui and AG Charts ([ADR-0012](decisions/0012-shadcn-and-ag-charts.md)), TanStack Query and `EventSource`: question box, steps panel, chart
+- [x] Vite's dev server forwards `/api` to the backend, so the app calls the same paths locally and on AWS
+- [x] Component tests with Vitest, frontend checks in `scripts/check.sh`, and a `frontend/AGENTS.md` with a `CLAUDE.md` that imports it
 
 **Done when:** locally, asking "Show errors for payments-service this week" in the browser streams the steps and draws the chart.
 
 ## 4. Guardrails and cost
 
-- [ ] `clarify` with clickable choices when the question is vague, and `decline` with example questions when it's off-topic
+- [x] `clarify` with clickable choices when the question is vague, and `decline` with example questions when it's off-topic
 - [x] Gemini errors classified as retryable or not; a retryable one gets one retry, after a short random wait
 - [ ] The same for database errors: one retry, then `unavailable`
 - [ ] [Daily cap](design.md#the-daily-cap) of 150 questions, counted in DynamoDB, with DynamoDB Local in Docker Compose
@@ -80,10 +80,11 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] No database backups: every deploy reseeds the data, and the `runs` history starts over
 - [ ] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
 - [ ] VPC with public and private subnets, a NAT gateway, and a gateway endpoint for DynamoDB
-- [ ] The backend's routes under `/api` (`/api/ask`, `/api/runs/:id/events`, `/api/health`)
+- [x] The backend's routes under `/api` (`/api/ask`, `/api/runs/:id/events`, `/api/health`), moved in step 3 so the page calls the same paths locally
 - [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding the `Last-Event-ID` header
 - [ ] A CloudFront Function and key-value store that send `/api/*` to the running session, or answer 503 `{"status": "offline"}` between sessions, and a `make down` that drains the API before `terraform destroy`
 - [ ] The backend on ECS Fargate behind a load balancer that accepts only our CloudFront: exactly one task, since the rate limit and run events live in its memory, and deploys that stop the old task first
+- [ ] When a reconnecting stream gets CloudFront's own error, like a passing 502, the page tries once more before saying the answer was interrupted, which would invite a second, paid run
 - [ ] Postgres on RDS (db.t4g.micro) in private subnets, with migrations and the seed run as a one-off ECS task
 - [ ] Database password and the Gemini key in AWS Secrets Manager, passed to the container by ECS
 - [ ] Structured JSON logs with a request ID, collected in CloudWatch
@@ -111,8 +112,9 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 ## 7. Frontend polish
 
-- [ ] Example questions under the box for first-time visitors
-- [ ] Pin charts to a dashboard, saved in the browser with their data, so they still draw while the backend is offline
+- [x] Example questions under the box for first-time visitors, shared with the refusals through `@dashgen/contracts`
+- [x] Pin charts to a watchlist, saved in the browser with their data, so they still draw while the backend is offline
+- [x] Copy a link that carries the chart ([ADR-0013](decisions/0013-share-links-carry-the-chart.md)), and download it as a PNG
 - [ ] A note under the question box says questions are saved
 - [ ] A mascot of our own: an animal (a meerkat, a lookout watching the metrics) drawn as one flat SVG, no memes since the repo is public. Animated with CSS and still for visitors who turned on reduced motion. Its mood follows the outcome: playful on `decline`, curious on `clarify`, sorry on errors, asleep when the backend is offline or the daily cap is reached. No mascot next to a chart
 - [ ] Works on a phone

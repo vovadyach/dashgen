@@ -1,10 +1,11 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
-import type {
-  Outcome,
-  RunErrorCode,
-  RunEvent,
-  ToolStep,
+import {
+  EXAMPLE_QUESTIONS,
+  type Outcome,
+  type RunErrorCode,
+  type RunEvent,
+  type ToolStep,
 } from "@dashgen/contracts";
 
 import { withoutQueryValues } from "../db.ts";
@@ -13,7 +14,7 @@ import { consoleLogger, type Logger } from "../logger.ts";
 import type { Metrics } from "../metrics/index.ts";
 import { ModelError, ToolError } from "./errors.ts";
 import { instructions } from "./instructions.ts";
-import { createTools, EXAMPLE_QUESTIONS } from "./tools.ts";
+import { createTools } from "./tools.ts";
 import type {
   Message,
   Model,
