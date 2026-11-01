@@ -12,7 +12,7 @@ Browser ──▶ Frontend ──── /api ──▶ Backend ─────�
                                      └── runs module ─────▶ one row per finished run
 ```
 
-- **Frontend** (`frontend/`): the React page. It has a question box, the agent's steps as they stream in, and the chart, which AG Charts draws ([ADR-0012](decisions/0012-shadcn-and-ag-charts.md)), with a data table under it. Locally, Vite's dev server forwards `/api` to the backend, the paths CloudFront will forward on AWS.
+- **Frontend** (`frontend/`): the React page. It has a question box with example questions to click, the agent's steps as they stream in, and the chart, which AG Charts draws ([ADR-0012](decisions/0012-shadcn-and-ag-charts.md)), with a data table under it. Stop, or Esc, stops watching a question; the run still finishes and is saved. Locally, Vite's dev server forwards `/api` to the backend, the paths CloudFront will forward on AWS.
 - **Backend** (`backend/`): one TypeScript service. Its HTTP API takes a question, runs the agent in the background, and streams the run's events.
 - **The `metrics` module** (`backend/src/metrics/`): `listServices()` and `query()` over the seeded data. The agent's tools call it.
 - **The `agent` module** (`backend/src/agent/`): the [five tools](design.md#the-agents-tools), the Gemini adapter, and `runAgent`, the loop that answers a question with them within [its limits](design.md#the-daily-cap) ([ADR-0010](decisions/0010-agent-loop.md)). `POST /api/ask` runs it for each question. `npm run gemini:check` tries the adapter with two real requests.

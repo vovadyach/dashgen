@@ -1,4 +1,4 @@
-import type { Chart } from "@dashgen/contracts";
+import { type Chart, EXAMPLE_QUESTIONS } from "@dashgen/contracts";
 import { onlineManager } from "@tanstack/react-query";
 import { act, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -49,8 +49,9 @@ describe("the page", () => {
     act(() => {
       stream.send(STEPS[0]);
     });
-    screen.getByText("list_services");
-    screen.getByText("5 services, 2 metrics");
+    // A plain title, then the tool's own name, time and result.
+    screen.getByText("Looked up the services and metrics");
+    screen.getByText("list_services · 15 ms · 5 services, 2 metrics");
     screen.getByText("Choosing the next step…");
 
     act(() => {
@@ -61,6 +62,8 @@ describe("the page", () => {
     await screen.findByText("line chart");
     screen.getByRole("heading", { name: CHART.title });
     expect(screen.queryByText("Choosing the next step…")).toBeNull();
+    // The steps stay beside the chart.
+    screen.getByText("Drew a line chart");
   });
 
   it("closes the stream as the last event arrives, before the backend ends it, so EventSource never reconnects", async () => {
@@ -103,7 +106,7 @@ describe("the page", () => {
     screen.getByText("Choosing the next step…");
   });
 
-  it("starts afresh with each question: the old steps and answer go, and a new stream opens", async () => {
+  it("keeps the last answer, dimmed and out of reach, until the next question's answer arrives", async () => {
     started(RUN_ID, SECOND_RUN_ID);
     const user = renderPage();
     await ask(user);
@@ -119,15 +122,40 @@ describe("the page", () => {
       return lastStream();
     });
     expect(second.url).toBe(`/api/runs/${SECOND_RUN_ID}/events`);
-    expect(screen.queryByText("list_services")).toBeNull();
-    expect(screen.queryByRole("heading", { name: CLARIFY.message })).toBeNull();
+    // New steps, but the old answer stays, inert, so it can't be clicked.
+    expect(screen.queryByText("Looked up the services and metrics")).toBeNull();
     screen.getByText("Reading the question…");
+    const old = screen.getByText(CLARIFY.message);
+    expect(old.closest("[inert]")).not.toBeNull();
+
+    act(() => {
+      second.send(CHART_OUTCOME);
+    });
+    await screen.findByText("line chart");
+    expect(screen.queryByText(CLARIFY.message)).toBeNull();
+  });
+
+  it("brings back the last answer when the next question is stopped", async () => {
+    started(RUN_ID, SECOND_RUN_ID);
+    const user = renderPage();
+    await ask(user);
+    const first = await waitFor(lastStream);
+    act(() => {
+      first.send(CLARIFY);
+    });
+
+    await user.click(screen.getByRole("button", { name: CLARIFY.choices[0] }));
+    await waitFor(() => {
+      expect(FakeEventSource.opened).toHaveLength(2);
+    });
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+    screen.getByRole("heading", { name: CLARIFY.message });
   });
 
   it("asks the question without its outer spaces, and takes at most 300 characters", async () => {
     const fetch = started();
     const user = renderPage();
-    const box = screen.getByLabelText<HTMLInputElement>("Your question");
+    const box = screen.getByLabelText<HTMLTextAreaElement>("Your question");
     await user.click(box);
     await user.paste("x".repeat(301));
     expect(box.value).toHaveLength(300);
@@ -140,7 +168,7 @@ describe("the page", () => {
     );
   });
 
-  it("can't ask while a question is on its way, or ask a blank one", async () => {
+  it("can't ask a blank question, or another while one is on its way", async () => {
     started();
     const user = renderPage();
     await user.type(screen.getByLabelText("Your question"), "   ");
@@ -148,7 +176,92 @@ describe("the page", () => {
 
     await ask(user);
     await waitFor(lastStream);
-    expect(askButton().disabled).toBe(true);
+    // Ask turns into Stop, and the examples wait too.
+    expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
+    screen.getByRole("button", { name: "Stop" });
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "payments-service errors",
+      }).disabled,
+    ).toBe(true);
+  });
+
+  it("stops a question with Stop: the stream closes, the box is free, and the steps so far stay", async () => {
+    started();
+    const user = renderPage();
+    await ask(user);
+    const stream = await waitFor(lastStream);
+    act(() => {
+      stream.send(STEPS[0]);
+    });
+
+    const stopButton = screen.getByRole("button", { name: "Stop" });
+    await user.click(stopButton);
+    expect(stream.readyState).toBe(FakeEventSource.CLOSED);
+    expect(askButton().disabled).toBe(false);
+    // A new element, not the Stop button changed into Ask: in a real browser,
+    // a reused one would submit the form as its click finished.
+    expect(askButton()).not.toBe(stopButton);
+    screen.getByText("Looked up the services and metrics");
+    screen.getByText("Stopped.");
+    expect(document.activeElement).toBe(screen.getByLabelText("Your question"));
+  });
+
+  it("stops a question with Esc too, wherever the focus is", async () => {
+    started();
+    const user = renderPage();
+    await ask(user);
+    const stream = await waitFor(lastStream);
+
+    await user.keyboard("{Escape}");
+    expect(stream.readyState).toBe(FakeEventSource.CLOSED);
+    screen.getByRole("button", { name: "Ask" });
+  });
+
+  it("asks with Enter, and starts a new line with Shift+Enter", async () => {
+    const fetch = started();
+    const user = renderPage();
+    const box = screen.getByLabelText<HTMLTextAreaElement>("Your question");
+    await user.type(box, "Show errors{Shift>}{Enter}{/Shift}this week");
+    expect(box.value).toBe("Show errors\nthis week");
+    expect(fetch).not.toHaveBeenCalled();
+
+    await user.type(box, "{Enter}");
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/ask",
+      expect.objectContaining({
+        body: JSON.stringify({ question: "Show errors\nthis week" }),
+      }),
+    );
+  });
+
+  it("names the sample data, and asks an example question when it's clicked", async () => {
+    const fetch = started();
+    const user = renderPage();
+    screen.getByText("Sample data · 5 services · 30 days");
+    screen.getByText(/auth-service, payments-service, checkout-api/);
+
+    // A short label, with the whole question in the box once clicked.
+    const example = EXAMPLE_QUESTIONS[3];
+    await user.click(
+      screen.getByRole("button", { name: "Share of errors, as a pie" }),
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/ask",
+      expect.objectContaining({ body: JSON.stringify({ question: example }) }),
+    );
+    expect(
+      screen.getByLabelText<HTMLTextAreaElement>("Your question").value,
+    ).toBe(example);
+  });
+
+  it("shows no steps for a question that fails before its first one", async () => {
+    answerAsk(429, {
+      error: { code: "rate_limited", message: "Rate limit exceeded." },
+    });
+    await ask(renderPage());
+    await screen.findByText("Rate limit exceeded.");
+    expect(screen.queryByText(/steps?\b/i)).toBeNull();
   });
 
   it("lists the days in time order in the table, even when the first service lacks one", async () => {
@@ -202,7 +315,7 @@ describe("the page", () => {
       "/api/ask",
       expect.objectContaining({ body: JSON.stringify({ question: choice }) }),
     );
-    const box = screen.getByLabelText<HTMLInputElement>("Your question");
+    const box = screen.getByLabelText<HTMLTextAreaElement>("Your question");
     expect(box.value).toBe(choice);
     // The clicked button went away with its card, so focus is in the box,
     // not lost for keyboard users.
@@ -231,7 +344,7 @@ describe("the page", () => {
     });
     screen.getByRole("alert");
     screen.getByText(TIMEOUT.message);
-    screen.getByText("list_services");
+    screen.getByText("Looked up the services and metrics");
 
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(document.activeElement).toBe(screen.getByLabelText("Your question"));
@@ -270,7 +383,7 @@ describe("the page", () => {
       stream.fail();
     });
     screen.getByText("The answer was interrupted. Ask the question again.");
-    screen.getByText("list_services");
+    screen.getByText("Looked up the services and metrics");
   });
 
   it("shows the API's message when a question can't start, and opens no stream", async () => {

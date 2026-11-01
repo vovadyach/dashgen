@@ -72,6 +72,46 @@ describe("nextRun", () => {
       streaming,
     );
   });
+
+  it("keeps the last answer while the next question runs, and drops it when the new one comes", () => {
+    const answered = nextRun(streaming, {
+      type: "event",
+      event: CHART_OUTCOME,
+    });
+    let run = nextRun(answered, { type: "ask", question: "Next question" });
+    expect(run).toMatchObject({ status: "asking", previous: CHART_OUTCOME });
+    run = nextRun(run, { type: "started", runId: RUN_ID });
+    expect(run).toMatchObject({ status: "streaming", previous: CHART_OUTCOME });
+    run = nextRun(run, { type: "event", event: TIMEOUT });
+    expect(run).not.toHaveProperty("previous");
+  });
+
+  it("stops a question, keeping its steps so far and the answer before it", () => {
+    const withStep = nextRun(
+      { ...streaming, previous: CHART_OUTCOME },
+      { type: "event", event: STEPS[0] },
+    );
+    expect(nextRun(withStep, { type: "stop" })).toEqual({
+      status: "stopped",
+      question: QUESTION,
+      steps: [STEPS[0]],
+      previous: CHART_OUTCOME,
+    });
+  });
+
+  it("ignores what a stopped question's request and stream bring later", () => {
+    const stopped = nextRun(asking, { type: "stop" });
+    expect(stopped).toEqual({
+      status: "stopped",
+      question: QUESTION,
+      steps: [],
+    });
+    expect(nextRun(stopped, { type: "started", runId: RUN_ID })).toBe(stopped);
+    expect(nextRun(stopped, { type: "event", event: STEPS[0] })).toBe(stopped);
+    expect(nextRun(stopped, { type: "failed", failure: INTERRUPTED })).toBe(
+      stopped,
+    );
+  });
 });
 
 describe("parseEvent", () => {

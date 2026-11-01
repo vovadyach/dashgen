@@ -1,8 +1,31 @@
 // The shapes DashGen's APIs send and receive. A service validates with these
 // schemas, and its clients get their types from the same place, so the two
-// can't drift apart.
+// can't drift apart. The same goes for the few values that both the backend
+// and the page show.
 
 import { z } from "zod";
+
+/** The made-up services in DashGen's sample data. */
+export const SAMPLE_SERVICES = [
+  "auth-service",
+  "payments-service",
+  "checkout-api",
+  "search-service",
+  "notifications-worker",
+] as const;
+export type SampleService = (typeof SAMPLE_SERVICES)[number];
+
+/**
+ * Questions that show what DashGen answers, each with a different chart: one
+ * line, several lines, bars and a pie. The page offers them to new visitors,
+ * and every refusal lists them.
+ */
+export const EXAMPLE_QUESTIONS = [
+  "Show errors for payments-service this week",
+  "Compare errors across all services over the last 7 days",
+  "Which service was slowest over the last 3 days?",
+  "Show each service's share of errors this week as a pie chart",
+] as const;
 
 /** Why a request failed: the `code` of an error response. */
 export const ApiErrorCode = z.enum([

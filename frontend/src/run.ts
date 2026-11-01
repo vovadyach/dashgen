@@ -1,6 +1,6 @@
 import { RunEvent } from "@dashgen/contracts";
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useReducer } from "react";
+import { useCallback, useEffect, useReducer } from "react";
 
 import { ApiError, ask } from "./api.ts";
 
@@ -13,19 +13,32 @@ export interface Failure {
   message: string;
 }
 
-/** A question on its way to an answer, as the page shows it. */
+/**
+ * A question on its way to an answer, as the page shows it. Until the new
+ * answer arrives, `previous` keeps the last one, which the page shows dimmed,
+ * so it never goes blank.
+ */
 export type Run =
   | { status: "idle" }
-  | { status: "asking"; question: string }
-  | { status: "streaming"; question: string; runId: string; steps: Step[] }
+  | { status: "asking"; question: string; previous?: Answer }
+  | {
+      status: "streaming";
+      question: string;
+      runId: string;
+      steps: Step[];
+      previous?: Answer;
+    }
   | { status: "answered"; question: string; steps: Step[]; answer: Answer }
-  | { status: "failed"; question: string; steps: Step[]; failure: Failure };
+  | { status: "failed"; question: string; steps: Step[]; failure: Failure }
+  /** The visitor stopped it. The backend still finishes the run. */
+  | { status: "stopped"; question: string; steps: Step[]; previous?: Answer };
 
 export type Action =
   | { type: "ask"; question: string }
   | { type: "started"; runId: string }
   | { type: "event"; event: RunEvent }
-  | { type: "failed"; failure: Failure };
+  | { type: "failed"; failure: Failure }
+  | { type: "stop" };
 
 /** The backend no longer knows the run: it ended over 5 minutes ago, or the backend restarted. */
 export const INTERRUPTED: Failure = {
@@ -46,7 +59,11 @@ const BROKEN = {
 export function nextRun(run: Run, action: Action): Run {
   switch (action.type) {
     case "ask":
-      return { status: "asking", question: action.question };
+      return {
+        status: "asking",
+        question: action.question,
+        previous: lastAnswer(run),
+      };
     case "started":
       return run.status === "asking"
         ? { ...run, status: "streaming", runId: action.runId, steps: [] }
@@ -63,12 +80,27 @@ export function nextRun(run: Run, action: Action): Run {
       return { status: "failed", question, steps, failure };
     }
     case "failed":
-      if (run.status === "asking") {
-        return { ...run, status: "failed", steps: [], failure: action.failure };
-      }
-      return run.status === "streaming"
-        ? { ...run, status: "failed", failure: action.failure }
-        : run;
+    case "stop": {
+      if (run.status !== "asking" && run.status !== "streaming") return run;
+      const { question, previous } = run;
+      const steps = run.status === "streaming" ? run.steps : [];
+      return action.type === "stop"
+        ? { status: "stopped", question, steps, previous }
+        : { status: "failed", question, steps, failure: action.failure };
+    }
+  }
+}
+
+/** The answer the page shows now, if any, to keep while the next question runs. */
+function lastAnswer(run: Run): Answer | undefined {
+  switch (run.status) {
+    case "idle":
+    case "failed":
+      return undefined;
+    case "answered":
+      return run.answer;
+    default:
+      return run.previous;
   }
 }
 
@@ -135,10 +167,17 @@ export function useRun() {
     };
   }, [runId]);
 
+  // Stopping closes the stream, since the run's ID goes. The backend still
+  // finishes the run, within its limits, and saves it.
+  const stop = useCallback(() => {
+    dispatch({ type: "stop" });
+  }, []);
+
   return {
     run,
     ask: (question: string) => {
       mutate(question);
     },
+    stop,
   };
 }

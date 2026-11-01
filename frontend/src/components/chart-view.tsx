@@ -52,7 +52,7 @@ export default function ChartView({ chart }: { chart: Chart }) {
   );
   return (
     <div ref={measure}>
-      <AgCharts options={options} className="h-72 w-full sm:h-80" />
+      <AgCharts options={options} className="h-72 w-full sm:h-96" />
     </div>
   );
 }

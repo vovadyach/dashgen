@@ -112,7 +112,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 ## 7. Frontend polish
 
-- [ ] Example questions under the box for first-time visitors
+- [x] Example questions under the box for first-time visitors, shared with the refusals through `@dashgen/contracts`
 - [ ] Pin charts to a dashboard, saved in the browser with their data, so they still draw while the backend is offline
 - [ ] A note under the question box says questions are saved
 - [ ] A mascot of our own: an animal (a meerkat, a lookout watching the metrics) drawn as one flat SVG, no memes since the repo is public. Animated with CSS and still for visitors who turned on reduced motion. Its mood follows the outcome: playful on `decline`, curious on `clarify`, sorry on errors, asleep when the backend is offline or the daily cap is reached. No mascot next to a chart

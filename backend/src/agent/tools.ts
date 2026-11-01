@@ -1,4 +1,4 @@
-import type { MetricsResult } from "@dashgen/contracts";
+import { EXAMPLE_QUESTIONS, type MetricsResult } from "@dashgen/contracts";
 import type { z } from "zod";
 
 import { type Metrics, MetricsError } from "../metrics/index.ts";
@@ -14,13 +14,6 @@ import {
   type ToolResult,
 } from "./types.ts";
 import { checkQueryCount, MAX_QUERIES, parseArgs } from "./validation.ts";
-
-/** Shown with every refusal, so the visitor sees what DashGen can answer. */
-export const EXAMPLE_QUESTIONS = [
-  "Show errors for payments-service this week",
-  "Which service was slowest over the last 3 days?",
-  "Compare errors across all services over the last 7 days",
-];
 
 /**
  * A tool whose `run` gets arguments already checked against its own schema,

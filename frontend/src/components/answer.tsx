@@ -1,6 +1,5 @@
 import type { ApiErrorCode, Chart } from "@dashgen/contracts";
 import {
-  ChartLine,
   CircleAlert,
   MessageCircleQuestion,
   RotateCcw,
@@ -9,8 +8,10 @@ import {
 import { lazy, type ReactNode, Suspense } from "react";
 
 import { formatValue, formatX } from "../chart/format.ts";
+import { cn } from "../lib/utils.ts";
 import type { Answer as RunAnswer, Failure, Run } from "../run.ts";
 import { ChartBoundary } from "./chart-boundary.tsx";
+import { DrawingChart } from "./drawing-chart.tsx";
 import { Button } from "./ui/button.tsx";
 import {
   Card,
@@ -36,22 +37,29 @@ interface Props {
 
 /** What the question got: the chart, a question back, a refusal, or an error. */
 export function Answer({ run, onAsk }: Props) {
-  switch (run.status) {
-    case "asking":
-    case "streaming":
-      return <Waiting />;
-    case "answered":
-      return <Outcome answer={run.answer} onAsk={onAsk} />;
-    case "failed":
-      return (
-        <Failed
-          failure={run.failure}
-          onRetry={() => {
-            onAsk(run.question);
-          }}
-        />
-      );
+  if (run.status === "failed") {
+    return (
+      <Failed
+        failure={run.failure}
+        onRetry={() => {
+          onAsk(run.question);
+        }}
+      />
+    );
   }
+  const working = run.status === "asking" || run.status === "streaming";
+  const answer = run.status === "answered" ? run.answer : run.previous;
+  if (!answer) return working ? <Waiting /> : null;
+  // While the next question runs, the last answer stays, dimmed and out of
+  // reach, so the page doesn't go blank. Stopping brings it back.
+  return (
+    <div
+      inert={working}
+      className={cn("transition-opacity", working && "opacity-40")}
+    >
+      <Outcome answer={answer} onAsk={onAsk} />
+    </div>
+  );
 }
 
 function Outcome({
@@ -88,11 +96,11 @@ function Outcome({
 
 function Waiting() {
   return (
-    <Card aria-busy className="min-h-72 items-center justify-center">
-      <ChartLine
-        className="size-8 text-muted-foreground motion-safe:animate-pulse"
-        aria-hidden
-      />
+    <Card
+      aria-busy
+      className="min-h-72 items-center justify-center sm:min-h-96"
+    >
+      <DrawingChart />
       <p className="text-sm text-muted-foreground">
         The chart appears here when the agent is done.
       </p>
@@ -122,7 +130,7 @@ function ChartCard({ chart }: { chart: Chart }) {
       </CardHeader>
       <CardContent className="space-y-4">
         <ChartBoundary fallback={<ChartFailed />}>
-          <Suspense fallback={<div className="h-72 sm:h-80" />}>
+          <Suspense fallback={<div className="h-72 sm:h-96" />}>
             <ChartView chart={chart} />
           </Suspense>
         </ChartBoundary>
@@ -137,7 +145,7 @@ function ChartFailed() {
   return (
     <p
       role="alert"
-      className="flex h-72 items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground sm:h-80"
+      className="flex h-72 items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground sm:h-96"
     >
       <CircleAlert className="size-4 shrink-0 text-destructive" aria-hidden />
       The chart couldn't load. Reload the page to try again. Its numbers are in

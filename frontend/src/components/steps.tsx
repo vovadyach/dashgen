@@ -1,16 +1,18 @@
-import { Check, LoaderCircle, X } from "lucide-react";
+import { Check, Square, X } from "lucide-react";
 
-import type { Step } from "../run.ts";
+import type { Run, Step } from "../run.ts";
+import { describeStep } from "../steps.ts";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx";
+import { Skeleton } from "./ui/skeleton.tsx";
 
-interface Props {
-  steps: Step[];
-  /** The agent is still working, so another step may come. */
-  working: boolean;
-}
-
-/** The agent's tool calls, each as it arrives. */
-export function Steps({ steps, working }: Props) {
+/**
+ * The agent's tool calls, each as it arrives, beside the answer. A question
+ * that failed before its first step has none, so nothing shows.
+ */
+export function Steps({ run }: { run: Exclude<Run, { status: "idle" }> }) {
+  const steps = run.status === "asking" ? [] : run.steps;
+  const working = run.status === "asking" || run.status === "streaming";
+  if (!working && steps.length === 0) return null;
   return (
     <Card className="gap-4">
       <CardHeader>
@@ -23,19 +25,12 @@ export function Steps({ steps, working }: Props) {
           {steps.map((step, index) => (
             <StepRow key={index} step={step} />
           ))}
-          {working && (
-            <li className="flex items-center gap-2 text-sm text-muted-foreground">
-              <LoaderCircle
-                className="size-4 motion-safe:animate-spin"
-                aria-hidden
-              />
-              {steps.length === 0
-                ? "Reading the question…"
-                : "Choosing the next step…"}
+          {working && <NextStep first={steps.length === 0} />}
+          {run.status === "stopped" && (
+            <li className="flex items-center gap-3 text-sm text-muted-foreground">
+              <Square className="size-4 shrink-0" aria-hidden />
+              Stopped.
             </li>
-          )}
-          {!working && steps.length === 0 && (
-            <li className="text-sm text-muted-foreground">No steps.</li>
           )}
         </ol>
       </CardContent>
@@ -53,16 +48,33 @@ function StepRow({ step }: { step: Step }) {
         <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
       )}
       <div className="min-w-0 space-y-0.5">
-        <p className="flex items-baseline gap-2 font-mono text-sm">
+        <p className="text-sm">
           <span className="sr-only">{failed ? "Failed:" : "Done:"}</span>
-          <span className="font-medium">{step.tool}</span>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {step.ms} ms
-          </span>
+          {describeStep(step)}
         </p>
-        <p className="text-sm break-words text-muted-foreground">
-          {failed ? step.error : step.result}
+        <p className="font-mono text-xs break-words text-muted-foreground">
+          {step.tool} · {step.ms} ms{failed ? "" : ` · ${step.result}`}
         </p>
+        {failed && (
+          <p className="text-sm break-words text-muted-foreground">
+            {step.error}
+          </p>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** Where the agent's next step will be, while it decides. */
+function NextStep({ first }: { first: boolean }) {
+  return (
+    <li className="flex gap-3">
+      <Skeleton className="mt-0.5 size-4 shrink-0 rounded-full" />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <p className="text-sm text-muted-foreground">
+          {first ? "Reading the question…" : "Choosing the next step…"}
+        </p>
+        <Skeleton className="h-3 w-3/4" />
       </div>
     </li>
   );

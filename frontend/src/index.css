@@ -28,6 +28,7 @@
   --accent-foreground: #0b0b0b;
   --destructive: #d03b3b;
   --success: #0ca30c;
+  --shimmer: rgb(255 255 255 / 0.75);
   --border: #e1e0d9;
   --input: #c3c2b7;
   --ring: #2a78d6;
@@ -50,6 +51,7 @@
   --accent-foreground: #f0efec;
   --destructive: #e66767;
   --success: #0ca30c;
+  --shimmer: rgb(255 255 255 / 0.07);
   --border: #2c2c2a;
   --input: #383835;
   --ring: #3987e5;
@@ -74,6 +76,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-success: var(--success);
+  --color-shimmer: var(--shimmer);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -81,6 +84,20 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* A light band that sweeps across a skeleton while something loads. */
+@theme {
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+
+  @keyframes shimmer {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -50% 0;
+    }
+  }
 }
 
 @layer base {
@@ -95,5 +112,88 @@
   }
   body {
     @apply bg-background font-sans text-foreground antialiased;
+  }
+}
+
+/*
+ * The chart in the waiting box (src/components/drawing-chart.tsx) draws
+ * itself in a loop: bars grow, the line runs across them, the dot lands,
+ * then it all fades and starts again. Still for reduced motion.
+ */
+.drawing-chart-line {
+  stroke-dasharray: 1;
+}
+.drawing-chart-bar,
+.drawing-chart-dot {
+  transform-box: fill-box;
+}
+.drawing-chart-bar {
+  transform-origin: bottom;
+}
+.drawing-chart-dot {
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .drawing-chart-bar {
+    animation: drawing-chart-bar 2.8s ease-out infinite both;
+  }
+  .drawing-chart-line {
+    animation: drawing-chart-line 2.8s ease-in-out infinite both;
+  }
+  .drawing-chart-dot {
+    animation: drawing-chart-dot 2.8s ease-out infinite both;
+  }
+}
+
+@keyframes drawing-chart-bar {
+  0% {
+    transform: scaleY(0.1);
+    opacity: 0;
+  }
+  30%,
+  85% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 0;
+  }
+}
+
+@keyframes drawing-chart-line {
+  0%,
+  15% {
+    stroke-dashoffset: 1;
+    opacity: 1;
+  }
+  60%,
+  85% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes drawing-chart-dot {
+  0%,
+  58% {
+    transform: scale(0);
+  }
+  66% {
+    transform: scale(1.4);
+  }
+  72%,
+  85% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
   }
 }

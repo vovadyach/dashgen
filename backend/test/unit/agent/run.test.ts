@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import type { RunEvent } from "@dashgen/contracts";
+import { EXAMPLE_QUESTIONS, type RunEvent } from "@dashgen/contracts";
 
 import { ModelError } from "../../../src/agent/errors.ts";
 import { type RunOptions, runAgent } from "../../../src/agent/run.ts";
-import { EXAMPLE_QUESTIONS } from "../../../src/agent/tools.ts";
 import type { ModelReply, RunResult } from "../../../src/agent/types.ts";
 import { CHART, QUERY, QUESTION, REASON } from "../../fixtures/agent.ts";
 import { recordingLogger } from "../../helpers/logger.ts";
