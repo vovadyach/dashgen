@@ -1,0 +1,98 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* dark: utilities follow the class that index.html and the theme toggle set. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * The colors, as shadcn/ui's names for them. The neutrals are the chart
+ * palette's surfaces and inks (src/chart/palette.ts), so the cards and the
+ * charts on them match, and the accent is the charts' first series color.
+ */
+:root {
+  --radius: 0.625rem;
+  --background: #f9f9f7;
+  --foreground: #0b0b0b;
+  --card: #fcfcfb;
+  --card-foreground: #0b0b0b;
+  --popover: #fcfcfb;
+  --popover-foreground: #0b0b0b;
+  --primary: #2a78d6;
+  --primary-foreground: #ffffff;
+  --secondary: #f0efec;
+  --secondary-foreground: #0b0b0b;
+  --muted: #f0efec;
+  --muted-foreground: #52514e;
+  --accent: #f0efec;
+  --accent-foreground: #0b0b0b;
+  --destructive: #d03b3b;
+  --success: #0ca30c;
+  --border: #e1e0d9;
+  --input: #c3c2b7;
+  --ring: #2a78d6;
+}
+
+.dark {
+  --background: #0d0d0d;
+  --foreground: #f0efec;
+  --card: #1a1a19;
+  --card-foreground: #f0efec;
+  --popover: #1a1a19;
+  --popover-foreground: #f0efec;
+  --primary: #2a78d6;
+  --primary-foreground: #ffffff;
+  --secondary: #2c2c2a;
+  --secondary-foreground: #f0efec;
+  --muted: #2c2c2a;
+  --muted-foreground: #c3c2b7;
+  --accent: #2c2c2a;
+  --accent-foreground: #f0efec;
+  --destructive: #e66767;
+  --success: #0ca30c;
+  --border: #2c2c2a;
+  --input: #383835;
+  --ring: #3987e5;
+}
+
+@theme inline {
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+}

@@ -1,9 +1,12 @@
 // @ts-check
 import eslint from "@eslint/js";
-import { defineConfig } from "eslint/config";
+import { defineConfig, globalIgnores } from "eslint/config";
+import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
+  // Build output.
+  globalIgnores(["**/dist/"]),
   eslint.configs.recommended,
   // The type-aware rules catch mistakes like a promise nobody awaits.
   tseslint.configs.strictTypeChecked,
@@ -29,6 +32,11 @@ export default defineConfig(
         },
       ],
     },
+  },
+  {
+    // React's rules for hooks and components, the ones its compiler relies on too.
+    files: ["frontend/**/*.{ts,tsx}"],
+    extends: [reactHooks.configs.flat.recommended],
   },
   {
     // This file isn't part of the TypeScript project, so it gets the plain rules.

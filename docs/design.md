@@ -217,7 +217,7 @@ sequenceDiagram
     B->>B: build the chart from q1's real points, then validate it
     B->>DB: save the run: steps, chart, tokens, cost, latency
     B-->>F: last event: the chart
-    F-->>V: draws the chart under the steps it watched arrive
+    F-->>V: draws the chart next to the steps it watched arrive
 ```
 
 - **A day's cost has a ceiling.** The backend reserves one of the day's questions before any work starts, and the loop stops at fixed limits on model calls and tokens ([the daily cap](#the-daily-cap)).
@@ -489,7 +489,7 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 
 ### The frontend's API
 
-The React app calls the backend with REST and SSE under `/api` ([ADR-0011](decisions/0011-rest-and-sse.md)), with TanStack Query for loading, errors and caching. The schemas and their types come from `@dashgen/contracts`, which the page and the backend share.
+The React app calls the backend with REST and SSE under `/api` ([ADR-0011](decisions/0011-rest-and-sse.md)). TanStack Query runs `POST /api/ask`, and an `EventSource` reads the stream. The schemas and their types come from `@dashgen/contracts`, which the page and the backend share.
 
 | Call | Does |
 |---|---|
@@ -521,7 +521,7 @@ Each event's data is one `RunEvent` from `@dashgen/contracts`, as JSON:
 - `outcome` is `chart`, `clarify` (with `message` and `choices`) or `decline` (with `message` and `examples`).
 - `x` says what the x values are: `hour` or `day` timestamps for a chart over time, so the page can label the axis, or `category` when each point is a service.
 - The schema is `Chart` in `@dashgen/contracts`, and the backend validates every chart against it before sending it.
-- A point marked `"partial": true` is a day with fewer than 24 hours of data, in a daily chart: usually today so far, or a gap in the data. The frontend draws it lighter, so it doesn't read as a drop.
+- A point marked `"partial": true` is a day with fewer than 24 hours of data, in a daily chart: usually today so far, or a gap in the data. The frontend draws it lighter, and dashes the line into and out of it, so it doesn't read as a drop.
 - A chart carries its own numbers, so charts pinned in the browser still draw while the backend is offline.
 
 Every error carries our own code and a message that's safe to show visitors. Where it arrives depends on when it happens:

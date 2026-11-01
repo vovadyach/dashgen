@@ -13,14 +13,14 @@ export const ErrorBody = z.object({
 });
 export type ErrorBody = z.infer<typeof ErrorBody>;
 
-/** The backend's `GET /health` answer. */
+/** The backend's `GET /api/health` answer. */
 export const Health = z.object({
   status: z.literal("ok"),
 });
 export type Health = z.infer<typeof Health>;
 
 /**
- * The body of the backend's `POST /ask`: a question of 1 to 300 characters,
+ * The body of the backend's `POST /api/ask`: a question of 1 to 300 characters,
  * after trimming, with no NUL character, which Postgres can't store.
  */
 export const AskRequest = z.object({
@@ -35,7 +35,7 @@ export const AskRequest = z.object({
 });
 export type AskRequest = z.infer<typeof AskRequest>;
 
-/** The backend's answer to `POST /ask`: the run it started, whose events stream from `GET /runs/:id/events`. */
+/** The backend's answer to `POST /api/ask`: the run it started, whose events stream from `GET /api/runs/:id/events`. */
 export const AskResponse = z.object({
   runId: z.uuid(),
 });
@@ -165,7 +165,7 @@ export const RunErrorCode = z.enum([
 export type RunErrorCode = z.infer<typeof RunErrorCode>;
 
 /**
- * What the backend's `GET /runs/:id/events` streams, as each SSE event's data:
+ * What the backend's `GET /api/runs/:id/events` streams, as each SSE event's data:
  * a step per tool call, then an outcome or an error, which ends the run. An
  * error's message is safe to show visitors. Each shape is spelled out, so the
  * API docs get plain objects.

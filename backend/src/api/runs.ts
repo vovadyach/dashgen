@@ -35,7 +35,10 @@ export interface RunRoutesOptions extends RunDeps {
   price: Price;
 }
 
-/** `POST /ask` starts a run, and `GET /runs/:id/events` streams its events (ADR-0011). */
+/**
+ * `POST /api/ask` starts a run, and `GET /api/runs/:id/events` streams its
+ * events (ADR-0011). app.ts registers these routes under `/api`.
+ */
 export const runRoutes: FastifyPluginCallbackZod<RunRoutesOptions> = (
   app,
   { store, price, model, metrics, save },

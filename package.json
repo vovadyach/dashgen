@@ -8,15 +8,17 @@
   },
   "workspaces": [
     "backend",
+    "frontend",
     "packages/*"
   ],
   "scripts": {
     "dev": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
     "db:migrate": "npm run db:migrate --workspace backend",
     "db:seed": "npm run db:seed --workspace backend",
     "gemini:check": "npm run gemini:check --workspace backend --",
-    "format": "prettier --write \"*.{js,json}\" \"{backend,packages/*}/{src,test}/**\" \"{backend,packages/*}/*.{js,json,ts}\" \".claude/hooks/*.{ts,json}\"",
-    "format:check": "prettier --check \"*.{js,json}\" \"{backend,packages/*}/{src,test}/**\" \"{backend,packages/*}/*.{js,json,ts}\" \".claude/hooks/*.{ts,json}\"",
+    "format": "prettier --write \"*.{js,json}\" \"{backend,frontend,packages/*}/{src,test}/**\" \"{backend,frontend,packages/*}/*.{js,json,ts,html}\" \".claude/hooks/*.{ts,json}\"",
+    "format:check": "prettier --check \"*.{js,json}\" \"{backend,frontend,packages/*}/{src,test}/**\" \"{backend,frontend,packages/*}/*.{js,json,ts,html}\" \".claude/hooks/*.{ts,json}\"",
     "lint": "eslint .",
     "typecheck": "tsc --project .claude/hooks && npm run --workspaces --if-present typecheck",
     "test": "npm run --workspaces --if-present test",
@@ -27,8 +29,10 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.19.2",
     "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.9.10",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.72.1"
+    "typescript-eslint": "^8.72.1",
+    "vite": "^8.3.5"
   }
 }

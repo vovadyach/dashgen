@@ -7,7 +7,7 @@
 
 Natural-language dashboard generator. Type a question in plain English, an LLM agent decides which tools to call, fetches the data, and renders a chart.
 
-> **Work in progress.** The backend works today: it takes a question, runs the Gemini agent and streams its steps. The frontend and the AWS deploy come next; see the [roadmap](docs/roadmap.md).
+> **Work in progress.** It works locally today: ask a question in the browser, watch the agent's steps arrive, and get the chart. The guardrails and the AWS deploy come next; see the [roadmap](docs/roadmap.md).
 
 ## What it will do
 
@@ -16,7 +16,7 @@ You type: *"Show errors for payments-service this week"*
 The agent:
 1. Calls `query_metrics(service="payments-service", metric="errors", days=7)`
 2. Calls `create_chart(type="line", sources=["q1"], title="Payments errors this week")`, naming the query result to draw. The backend fills in the real numbers, so the model never copies data.
-3. Streams each step to the page as it happens, then the chart, which the page draws with Recharts.
+3. Streams each step to the page as it happens, then the chart, which the page draws with AG Charts.
 
 Different questions lead to different tool calls. Ask *"What's the slowest service?"* and the agent calls `list_services`, then `query_metrics` for each service, then picks a chart type for the result.
 
@@ -34,7 +34,7 @@ Where it's headed (the [status](#status) table says what exists today):
 
 ```
 ┌─────────────────┐
-│   Frontend      │  React + TypeScript + Recharts
+│   Frontend      │  React + TypeScript + AG Charts
 │   (CloudFront)  │  TanStack Query, EventSource
 └────────┬────────┘
          │ HTTPS: REST calls, steps streamed over SSE
@@ -65,7 +65,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 | Database | Postgres 18, Docker Compose | Runs locally: one `dashgen` database, with tables from Drizzle migrations |
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
 | Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools), the Gemini adapter and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md)) |
-| Frontend | React, TypeScript, Vite, Tailwind, Recharts, TanStack Query | Planned (step 3) |
+| Frontend (`frontend/`) | React, TypeScript, Vite, Tailwind, shadcn/ui, AG Charts, TanStack Query | Runs locally: the question box, the steps as they stream in, and the chart, with a data table, in light and dark themes |
 | Hosting | AWS, Terraform | Planned (step 5) |
 
 ## Running locally
@@ -76,9 +76,10 @@ You'll need Node.js 24.16+, and Docker for Postgres.
 make install                           # install every TypeScript package
 cp backend/.env.example backend/.env   # asking a question needs a real GEMINI_API_KEY, and Postgres (below)
 npm run dev                            # the backend on :3000
+npm run dev:frontend                   # the page on :5173, in a second terminal
 ```
 
-Open http://localhost:3000/docs to try the backend's endpoints in the browser.
+Open http://localhost:5173 to ask a question, or http://localhost:3000/docs to try the backend's endpoints in the browser.
 
 With a real `GEMINI_API_KEY` in `backend/.env` (free from [Google AI Studio](https://aistudio.google.com)), `npm run gemini:check` sends Gemini two test requests and prints its replies, to show the key and the model work. `npm run gemini:check -- --json` also prints each reply's JSON, exactly as Gemini sent it.
 
@@ -90,6 +91,8 @@ make db                # Postgres on localhost:5432
 npm run db:migrate     # create the tables (set DATABASE_URL in backend/.env first)
 npm run db:seed        # 30 days of hourly sample data, ending this hour
 ```
+
+Once Postgres is set up, `make dev` runs everything in one terminal: Postgres, the backend and the page. Ctrl+C stops the backend and the page, and Postgres keeps running.
 
 `docker compose down` stops it, and `docker compose down --volumes` also deletes its data. Postgres runs `postgres/init.sh`, which creates the users and the database, only the first time it starts, while its volume is empty. So after changing the passwords in `.env` or the init script, recreate the volume: run `docker compose down --volumes`, then `make db`. Local data is disposable, because the seed recreates it.
 
@@ -104,7 +107,7 @@ dashgen/
 ├── .claude/       # Claude Code settings, hooks and skills
 ├── .github/       # CI workflow: runs scripts/check.sh
 ├── docs/          # architecture, design, roadmap and decision records
-├── frontend/      # React + Vite app (planned)
+├── frontend/      # the React page, built with Vite
 ├── backend/       # the Node.js + Fastify backend, in TypeScript
 ├── packages/      # shared TypeScript packages: contracts (API schemas)
 ├── postgres/      # init script: the `dashgen` database and user
@@ -122,9 +125,9 @@ dashgen/
 
 The repo is set up for [Claude Code](https://claude.com/claude-code):
 
-- `AGENTS.md` holds the project rules, and `backend/AGENTS.md` the backend's conventions, for any coding agent, Codex included. Each `CLAUDE.md` imports its folder's `AGENTS.md` (`@AGENTS.md`) and adds only what's specific to Claude Code, so there's one copy of each rule.
+- `AGENTS.md` holds the project rules, and `backend/AGENTS.md` and `frontend/AGENTS.md` each part's conventions, for any coding agent, Codex included. Each `CLAUDE.md` imports its folder's `AGENTS.md` (`@AGENTS.md`) and adds only what's specific to Claude Code, so there's one copy of each rule.
 - `.claude/settings.json` stops Claude from committing or pushing, so every change is reviewed and committed by hand. It also keeps Claude's file tools, and shell commands like `cat`, away from `.env` files other than `.env.example`. A script that opens a file itself isn't covered; only Claude Code's [sandbox](https://code.claude.com/docs/en/sandboxing) blocks that.
-- Hooks, written in TypeScript and run by Node, format each TypeScript file Claude edits, and run `scripts/check.sh` when Claude finishes a turn that changed files. If a check fails, Claude is sent back to fix it, up to twice; after that it stops with a warning.
+- Hooks, written in TypeScript and run by Node, format each file Claude edits, and run `scripts/check.sh` when Claude finishes a turn that changed files. If a check fails, Claude is sent back to fix it, up to twice; after that it stops with a warning.
 - Skills: `/fix-issue <number>` works a GitHub issue through to passing checks, and `/adr` records a decision in `docs/decisions/`.
 
 ## Decisions
@@ -140,6 +143,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [9. UUIDv7 for IDs](docs/decisions/0009-uuidv7-ids.md)
 - [10. A hand-written agent loop](docs/decisions/0010-agent-loop.md)
 - [11. REST and SSE between the React app and the backend](docs/decisions/0011-rest-and-sse.md)
+- [12. shadcn/ui and AG Charts for the page](docs/decisions/0012-shadcn-and-ag-charts.md)
 
 ## License
 

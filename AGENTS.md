@@ -8,7 +8,7 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 
 - `backend/`: the one Node.js + Fastify service, in TypeScript, where the agent lives. See `backend/AGENTS.md`.
 - `packages/contracts/`: Zod schemas shared between packages, imported as `@dashgen/contracts`. The root `package.json` makes `backend` and `packages/*` one npm workspace, with the shared tools and settings ([ADR-0004](docs/decisions/0004-npm-workspaces.md)).
-- `frontend/`: React + Vite app, empty until step 3.
+- `frontend/`: the React page, built with Vite. See `frontend/AGENTS.md`.
 - `compose.yaml` and `postgres/`: Postgres in Docker for local development, with one `dashgen` database and user.
 - `docs/architecture.md`: what runs today, and its API. Update it whenever an API changes.
 - `docs/design.md`: the target design, with requirements, estimates and diagrams. Update it when a design choice changes.
@@ -20,7 +20,7 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 - `make check` runs every formatter, linter, type checker and test. Run it before you finish any change: it must pass, and CI (`.github/workflows/ci.yml`) runs it on every pull request.
 - `make install` runs `npm ci` at the root, which installs every TypeScript workspace and the shared tools.
 - `make fmt` formats the TypeScript code.
-- `npm run dev` starts the backend on :3000. `make` is for repo-wide and infrastructure commands, npm scripts for the TypeScript packages.
+- `make dev` starts Postgres, the backend and the page in one terminal, and Ctrl+C stops the backend and the page. To start one alone, `npm run dev` starts the backend on :3000, and `npm run dev:frontend` the page on :5173, which forwards `/api` to the backend. `make` is for repo-wide and infrastructure commands, npm scripts for the TypeScript packages.
 - `make db` starts Postgres in Docker on localhost:5432, with the passwords from the root `.env` that the user makes from `.env.example`. Don't create that file: for a test run, set `POSTGRES_PASSWORD` and `DASHGEN_DB_PASSWORD` as environment variables instead.
 - `npm run db:migrate` and `npm run db:seed` create the tables and the sample data. After a schema change, `npm run db:generate --workspace backend -- --name <change>` writes the SQL migration to commit with it. Never run `npx drizzle-kit` itself: it reads `backend/.env`, which `generate` doesn't need. Never edit a migration that has been merged; add a new one.
 - `npm run gemini:check` sends two real requests to Gemini, to check the key, the model and the request format. Only the user runs it (see Rules).

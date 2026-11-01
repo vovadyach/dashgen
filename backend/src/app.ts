@@ -63,7 +63,7 @@ export async function buildApp(config: Config, options: AppOptions) {
         .code(error.statusCode)
         .send(errorBody(error.code, error.message));
     }
-    // Only /ask has a request body to validate.
+    // Only POST /api/ask has a request body to validate.
     if (hasZodFastifySchemaValidationErrors(error)) {
       return reply
         .code(422)
@@ -134,13 +134,15 @@ export async function buildApp(config: Config, options: AppOptions) {
     configuration: { metaData: { title: "DashGen API" } },
   });
 
-  app.get("/health", { schema: { response: { 200: Health } } }, () => ({
+  // Every route is under /api, the paths CloudFront forwards unchanged (ADR-0003).
+  app.get("/api/health", { schema: { response: { 200: Health } } }, () => ({
     status: "ok" as const,
   }));
 
   const { close, ...runs } = options.runs(app.log);
   if (close) app.addHook("onClose", close);
   await app.register(runRoutes, {
+    prefix: "/api",
     ...runs,
     store: createRunStore<RunEvent>({ log: app.log }),
     price: config.geminiPrice,

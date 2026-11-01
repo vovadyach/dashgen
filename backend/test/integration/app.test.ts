@@ -19,7 +19,7 @@ type App = Awaited<ReturnType<typeof startApp>>;
 async function ask(app: App): Promise<string> {
   const response = await app.inject({
     method: "POST",
-    url: "/ask",
+    url: "/api/ask",
     payload: { question: QUESTION },
   });
   assert.equal(response.statusCode, 202);
@@ -30,7 +30,7 @@ async function ask(app: App): Promise<string> {
 async function readEvents(app: App, runId: string, lastEventId?: number) {
   const response = await app.inject({
     method: "GET",
-    url: `/runs/${runId}/events`,
+    url: `/api/runs/${runId}/events`,
     headers:
       lastEventId === undefined ? {} : { "last-event-id": String(lastEventId) },
   });
@@ -92,7 +92,10 @@ describe("HTTP API", () => {
 
     const ids = await Promise.all(
       [1, 2].map(async () => {
-        const response = await app.inject({ method: "GET", url: "/health" });
+        const response = await app.inject({
+          method: "GET",
+          url: "/api/health",
+        });
         return response.headers["x-request-id"];
       }),
     );
@@ -101,11 +104,11 @@ describe("HTTP API", () => {
     assert.notEqual(ids[0], ids[1]);
   });
 
-  describe("GET /health", () => {
+  describe("GET /api/health", () => {
     it("answers ok", async (t) => {
       const app = await startApp(t);
 
-      const response = await app.inject({ method: "GET", url: "/health" });
+      const response = await app.inject({ method: "GET", url: "/api/health" });
 
       assert.equal(response.statusCode, 200);
       assert.deepEqual(response.json(), { status: "ok" });
@@ -115,13 +118,16 @@ describe("HTTP API", () => {
       const app = await startApp(t);
 
       for (let i = 0; i < 15; i++) {
-        const response = await app.inject({ method: "GET", url: "/health" });
+        const response = await app.inject({
+          method: "GET",
+          url: "/api/health",
+        });
         assert.equal(response.statusCode, 200);
       }
     });
   });
 
-  describe("POST /ask", () => {
+  describe("POST /api/ask", () => {
     it("starts a run and answers 202 with its ID, a UUIDv7", async (t) => {
       const app = await startApp(t);
 
@@ -141,7 +147,7 @@ describe("HTTP API", () => {
       ]) {
         const response = await app.inject({
           method: "POST",
-          url: "/ask",
+          url: "/api/ask",
           payload,
         });
 
@@ -152,7 +158,7 @@ describe("HTTP API", () => {
       // The longest allowed question, with spaces around it that trimming removes.
       const longest = await app.inject({
         method: "POST",
-        url: "/ask",
+        url: "/api/ask",
         payload: { question: `  ${"x".repeat(300)}  ` },
       });
       assert.equal(longest.statusCode, 202);
@@ -163,7 +169,7 @@ describe("HTTP API", () => {
       const askFrom = (remoteAddress: string) =>
         app.inject({
           method: "POST",
-          url: "/ask",
+          url: "/api/ask",
           payload: { question: QUESTION },
           remoteAddress,
         });
@@ -199,7 +205,7 @@ describe("HTTP API", () => {
     });
   });
 
-  describe("GET /runs/:id/events", () => {
+  describe("GET /api/runs/:id/events", () => {
     it("streams the run's steps, then how it ended, numbered from 1", async (t) => {
       const app = await startApp(t, { model: exampleModel() });
 
@@ -259,7 +265,7 @@ describe("HTTP API", () => {
 
       const response = await app.inject({
         method: "GET",
-        url: `/runs/${randomUUIDv7()}/events`,
+        url: `/api/runs/${randomUUIDv7()}/events`,
       });
 
       assert.equal(response.statusCode, 404);
@@ -276,7 +282,7 @@ describe("HTTP API", () => {
       // fetch resolves when the headers arrive, while the model is still
       // thinking, or fails after 2 seconds. The model answers either way, so
       // the run ends and the app can close.
-      const response = await fetch(`${url}/runs/${runId}/events`, {
+      const response = await fetch(`${url}/api/runs/${runId}/events`, {
         signal: AbortSignal.timeout(2_000),
       }).finally(() => {
         answer();
@@ -368,7 +374,7 @@ describe("HTTP API", () => {
 
       const response = await app.inject({
         method: "OPTIONS",
-        url: "/ask",
+        url: "/api/ask",
         headers: {
           origin,
           "access-control-request-method": "POST",
@@ -389,7 +395,7 @@ describe("HTTP API", () => {
 
       const response = await app.inject({
         method: "OPTIONS",
-        url: "/ask",
+        url: "/api/ask",
         headers: {
           origin: "https://evil.example",
           "access-control-request-method": "POST",
@@ -444,8 +450,8 @@ describe("HTTP API", () => {
 
       assert.equal(response.statusCode, 200);
       const spec = response.json<{ paths: Record<string, unknown> }>();
-      assert.ok("/ask" in spec.paths);
-      assert.ok("/runs/{id}/events" in spec.paths);
+      assert.ok("/api/ask" in spec.paths);
+      assert.ok("/api/runs/{id}/events" in spec.paths);
     });
   });
 });
