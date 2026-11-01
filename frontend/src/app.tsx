@@ -1,5 +1,5 @@
 import { ChartNoAxesCombined } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Answer, preloadChart } from "./components/answer.tsx";
 import { QuestionBox } from "./components/question-box.tsx";
@@ -10,14 +10,17 @@ import { useRun } from "./run.ts";
 export function App() {
   const { run, ask } = useRun();
   const [question, setQuestion] = useState("");
+  const box = useRef<HTMLInputElement>(null);
   const busy = run.status === "asking" || run.status === "streaming";
 
   // A clicked choice or example goes into the box too, so the box always
-  // shows what was asked.
+  // shows what was asked. The button clicked goes away with its card, so
+  // focus moves to the box, or keyboard users would be left nowhere.
   const askQuestion = (next: string) => {
     setQuestion(next);
     preloadChart();
     ask(next);
+    box.current?.focus();
   };
 
   return (
@@ -41,6 +44,7 @@ export function App() {
         </div>
         <div className="mx-auto max-w-2xl">
           <QuestionBox
+            ref={box}
             question={question}
             onChange={setQuestion}
             onAsk={askQuestion}

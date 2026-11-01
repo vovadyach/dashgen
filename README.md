@@ -127,7 +127,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 
 - `AGENTS.md` holds the project rules, and `backend/AGENTS.md` and `frontend/AGENTS.md` each part's conventions, for any coding agent, Codex included. Each `CLAUDE.md` imports its folder's `AGENTS.md` (`@AGENTS.md`) and adds only what's specific to Claude Code, so there's one copy of each rule.
 - `.claude/settings.json` stops Claude from committing or pushing, so every change is reviewed and committed by hand. It also keeps Claude's file tools, and shell commands like `cat`, away from `.env` files other than `.env.example`. A script that opens a file itself isn't covered; only Claude Code's [sandbox](https://code.claude.com/docs/en/sandboxing) blocks that.
-- Hooks, written in TypeScript and run by Node, format each file Claude edits, and run `scripts/check.sh` when Claude finishes a turn that changed files. If a check fails, Claude is sent back to fix it, up to twice; after that it stops with a warning.
+- Hooks, written in TypeScript and run by Node, format each TypeScript, JSON, CSS or HTML file Claude edits, and run `scripts/check.sh` when Claude finishes a turn that changed files. If a check fails, Claude is sent back to fix it, up to twice; after that it stops with a warning.
 - Skills: `/fix-issue <number>` works a GitHub issue through to passing checks, and `/adr` records a decision in `docs/decisions/`.
 
 ## Decisions

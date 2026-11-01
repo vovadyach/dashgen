@@ -4,7 +4,22 @@
 
 import { z } from "zod";
 
-/** Every error response: a code for programs, and a message that's safe to show visitors. */
+/** Why a request failed: the `code` of an error response. */
+export const ApiErrorCode = z.enum([
+  "bad_request",
+  "invalid_question",
+  "not_found",
+  "rate_limited",
+  "run_not_found",
+  "internal_error",
+]);
+export type ApiErrorCode = z.infer<typeof ApiErrorCode>;
+
+/**
+ * Every error response: a code for programs, and a message that's safe to
+ * show visitors. The backend sends an `ApiErrorCode`, but any string parses,
+ * so a page that's older than a new code still shows its message.
+ */
 export const ErrorBody = z.object({
   error: z.object({
     code: z.string(),

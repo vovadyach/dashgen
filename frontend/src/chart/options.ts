@@ -11,14 +11,21 @@ import type {
   AgTooltipRendererResult,
 } from "ag-charts-community";
 
-import { formatDay, formatTick, formatValue, formatX } from "./format.ts";
+import {
+  formatDay,
+  formatHour,
+  formatTick,
+  formatValue,
+  formatX,
+} from "./format.ts";
 import { type Colors, type Mode, PALETTE, seriesColor } from "./palette.ts";
 
 /** A point as AG Charts reads it. */
 export interface Datum {
-  /** A Date on a time axis, else the label itself, as a category. */
+  /** A Date on a time axis, else the point's own x: an ISO time or a service. */
   x: Date | string;
-  y: number;
+  /** Null for a bar a series doesn't have, which AG Charts leaves out. */
+  y: number | null;
   /** The x value as people read it. */
   label: string;
   /** The series the point belongs to. */
@@ -33,19 +40,22 @@ const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 // and out of it dashed, so it reads as incomplete, not as a drop.
 const PARTIAL_OPACITY = 0.4;
 const DASH = [4, 4];
+// Roughly what the y-axis and its labels take from the chart's width.
+const Y_AXIS_WIDTH = 48;
+const BAR_PADDING = 0.4;
+// Thin marks: a bar at most this wide, and a dot only where each gets this much room.
+const MAX_BAR_WIDTH = 24;
+const MIN_DOT_ROOM = 14;
 
-/** How many day labels fit across a chart `width` pixels wide, beside its y-axis. */
+/** How many day labels fit across a chart `width` pixels wide. */
 export const dayLabelsFor = (width: number): number =>
-  Math.max(2, Math.floor((width - 48) / 60));
+  Math.max(2, Math.floor((width - Y_AXIS_WIDTH) / 60));
 
-/**
- * The AG Charts options that draw `chart` in the `mode` theme, with at most
- * `dayLabels` labels on a daily x-axis.
- */
+/** The AG Charts options that draw `chart` in the `mode` theme, `width` pixels wide. */
 export function chartOptions(
   chart: Chart,
   mode: Mode,
-  dayLabels = 7,
+  width = 640,
 ): AgChartOptions {
   const colors = PALETTE[mode];
   const common = {
@@ -60,6 +70,8 @@ export function chartOptions(
       series: [pie(chart, colors)],
     };
   }
+  const plotWidth = width - Y_AXIS_WIDTH;
+  const categories = categoriesOf(chart);
   return {
     ...common,
     // A single series needs no legend: the title names it.
@@ -67,7 +79,7 @@ export function chartOptions(
     // One tooltip lists every series at the x it points to.
     tooltip: { mode: "shared" },
     axes: {
-      x: xAxis(chart, dayLabels),
+      x: xAxis(chart, width),
       y: {
         type: "number",
         position: "left",
@@ -77,47 +89,88 @@ export function chartOptions(
         },
       },
     },
-    series: chart.series.map((series, index) =>
-      chart.type === "line"
-        ? line(chart, series, seriesColor(colors, index), colors)
-        : bar(chart, series, seriesColor(colors, index)),
-    ),
+    series: chart.series.map((series, index) => {
+      const color = seriesColor(colors, index);
+      if (chart.type === "line") {
+        const dots = plotWidth / categories.length >= MIN_DOT_ROOM;
+        return line(chart, series, color, colors, dots);
+      }
+      // AG Charts splits each band between the series. Without a fixed
+      // width, which would make it cut off bars that don't fit, a share of
+      // the band keeps each bar thin.
+      const share =
+        ((plotWidth / categories.length) * (1 - BAR_PADDING)) /
+        chart.series.length;
+      return bar(chart, series, color, categories, MAX_BAR_WIDTH / share);
+    }),
   };
+}
+
+/**
+ * The x values of all series, in order: by time on a time scale, so a day
+ * one series lacks still sits in its place.
+ */
+function categoriesOf(chart: Chart): string[] {
+  const xs = [
+    ...new Set(chart.series.flatMap((s) => s.points.map((p) => p.x))),
+  ];
+  // ISO times sort by time as strings.
+  return chart.x === "category" ? xs : xs.sort();
 }
 
 /** The points of `series`, with Dates for a line over time. */
 export function toData(series: Series, chart: Chart): Datum[] {
   const onTimeAxis = chart.type === "line" && chart.x !== "category";
-  return series.points.map((point) => {
-    const label = formatX(point.x, chart.x);
-    return {
-      x: onTimeAxis ? new Date(point.x) : label,
-      y: point.y,
-      label,
-      name: series.name,
-      ...(point.partial ? { partial: true as const } : {}),
-    };
-  });
+  return series.points.map((point) => ({
+    x: onTimeAxis ? new Date(point.x) : point.x,
+    y: point.y,
+    label: formatX(point.x, chart.x),
+    name: series.name,
+    ...(point.partial ? { partial: true as const } : {}),
+  }));
 }
 
-function xAxis(chart: Chart, dayLabels: number): AgCartesianAxisOptions {
-  // Bars sit in bands, one per service, day or hour, labeled with our own
-  // labels, which keep days in UTC.
+function xAxis(chart: Chart, width: number): AgCartesianAxisOptions {
+  // Bars sit in bands, one per service, day or hour. Each band is keyed by
+  // its exact time, since two hours can share a label on the night the
+  // clocks go back, and labeled with our own labels, which keep days in UTC.
   if (chart.type === "bar" || chart.x === "category") {
-    return { type: "category", position: "bottom", paddingInner: 0.4 };
+    return {
+      type: "category",
+      position: "bottom",
+      paddingInner: BAR_PADDING,
+      label: {
+        formatter: ({ value }: { value: unknown }) =>
+          formatX(String(value), chart.x),
+      },
+    };
   }
+  // AG Charts rounds a time axis out to whole steps unless told not to, so
+  // the axis would run past the data, even into future days.
   if (chart.x === "hour") {
-    // AG Charts places and labels the ticks in the visitor's time zone.
-    return { type: "time", position: "bottom" };
+    // Ticks fall on the visitor's whole hours, labeled like the tooltips.
+    return {
+      type: "time",
+      position: "bottom",
+      nice: false,
+      label: {
+        formatter: ({ value }: { value: unknown }) => formatHour(toDate(value)),
+      },
+    };
   }
   const days = Math.max(...chart.series.map((s) => s.points.length));
   return {
     type: "time",
     position: "bottom",
+    nice: false,
     // Ticks on UTC midnights, where the points are. With a fixed step, AG
     // Charts shows every tick, so the step leaves room for each label.
     interval: {
-      step: { unit: "day", step: Math.ceil(days / dayLabels), utc: true },
+      step: {
+        unit: "day",
+        step: Math.ceil(days / dayLabelsFor(width)),
+        utc: true,
+      },
     },
     label: {
       formatter: ({ value }: { value: unknown }) => formatDay(toDate(value)),
@@ -130,6 +183,7 @@ function line(
   series: Series,
   color: string,
   colors: Colors,
+  dots: boolean,
 ): AgLineSeriesOptions<Datum> {
   const data = toData(series, chart);
   return {
@@ -141,8 +195,8 @@ function line(
     stroke: color,
     strokeWidth: 2,
     marker: {
-      // 48 hourly dots would crowd the line.
-      enabled: chart.x !== "hour",
+      // Dots that would touch, like a month of days on a phone, crowd the line.
+      enabled: dots,
       size: 8,
       fill: color,
       // A ring in the card's color keeps each dot clear of the lines it crosses.
@@ -160,17 +214,29 @@ function bar(
   chart: Chart,
   series: Series,
   color: string,
+  categories: string[],
+  widthRatio: number,
 ): AgBarSeriesOptions<Datum> {
+  const points = new Map(toData(series, chart).map((d) => [d.x, d]));
   return {
     type: "bar",
-    data: toData(series, chart),
+    // Every series lists every category, in order, since AG Charts orders
+    // the axis by first appearance. A point it lacks draws no bar.
+    data: categories.map(
+      (x) =>
+        points.get(x) ?? {
+          x,
+          y: null,
+          label: formatX(x, chart.x),
+          name: series.name,
+        },
+    ),
     xKey: "x",
     yKey: "y",
     yName: series.name,
     fill: color,
     cornerRadius: 4,
-    // Thin bars when there are few, with air between them.
-    ...(series.points.length <= 8 ? { width: 24 } : {}),
+    widthRatio: Math.min(1, widthRatio),
     itemStyler: ({ datum }) =>
       datum.partial ? { fillOpacity: PARTIAL_OPACITY } : {},
     tooltip: { renderer: ({ datum }) => tooltip(datum, chart.unit) },
@@ -198,7 +264,10 @@ const tooltip = (datum: Datum, unit: string): AgTooltipRendererResult => ({
     {
       label: datum.name,
       value:
-        formatValue(datum.y, unit) + (datum.partial ? " (partial day)" : ""),
+        datum.y === null
+          ? "–"
+          : formatValue(datum.y, unit) +
+            (datum.partial ? " (partial day)" : ""),
     },
   ],
 });

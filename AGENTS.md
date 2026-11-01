@@ -7,7 +7,7 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 ## Layout
 
 - `backend/`: the one Node.js + Fastify service, in TypeScript, where the agent lives. See `backend/AGENTS.md`.
-- `packages/contracts/`: Zod schemas shared between packages, imported as `@dashgen/contracts`. The root `package.json` makes `backend` and `packages/*` one npm workspace, with the shared tools and settings ([ADR-0004](docs/decisions/0004-npm-workspaces.md)).
+- `packages/contracts/`: Zod schemas shared between packages, imported as `@dashgen/contracts`. The root `package.json` makes `backend`, `frontend` and `packages/*` one npm workspace, with the shared tools and settings ([ADR-0004](docs/decisions/0004-npm-workspaces.md)).
 - `frontend/`: the React page, built with Vite. See `frontend/AGENTS.md`.
 - `compose.yaml` and `postgres/`: Postgres in Docker for local development, with one `dashgen` database and user.
 - `docs/architecture.md`: what runs today, and its API. Update it whenever an API changes.

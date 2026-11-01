@@ -58,7 +58,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 ## 4. Guardrails and cost
 
-- [ ] `clarify` with clickable choices when the question is vague, and `decline` with example questions when it's off-topic
+- [x] `clarify` with clickable choices when the question is vague, and `decline` with example questions when it's off-topic
 - [x] Gemini errors classified as retryable or not; a retryable one gets one retry, after a short random wait
 - [ ] The same for database errors: one retry, then `unavailable`
 - [ ] [Daily cap](design.md#the-daily-cap) of 150 questions, counted in DynamoDB, with DynamoDB Local in Docker Compose
@@ -84,6 +84,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding the `Last-Event-ID` header
 - [ ] A CloudFront Function and key-value store that send `/api/*` to the running session, or answer 503 `{"status": "offline"}` between sessions, and a `make down` that drains the API before `terraform destroy`
 - [ ] The backend on ECS Fargate behind a load balancer that accepts only our CloudFront: exactly one task, since the rate limit and run events live in its memory, and deploys that stop the old task first
+- [ ] When a reconnecting stream gets CloudFront's own error, like a passing 502, the page tries once more before saying the answer was interrupted, which would invite a second, paid run
 - [ ] Postgres on RDS (db.t4g.micro) in private subnets, with migrations and the seed run as a one-off ECS task
 - [ ] Database password and the Gemini key in AWS Secrets Manager, passed to the container by ECS
 - [ ] Structured JSON logs with a request ID, collected in CloudWatch

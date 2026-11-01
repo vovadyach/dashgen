@@ -26,7 +26,7 @@ export function Steps({ steps, working }: Props) {
           {working && (
             <li className="flex items-center gap-2 text-sm text-muted-foreground">
               <LoaderCircle
-                className="size-4 animate-spin motion-reduce:animate-none"
+                className="size-4 motion-safe:animate-spin"
                 aria-hidden
               />
               {steps.length === 0

@@ -15,7 +15,7 @@ Browser ──▶ Frontend ──── /api ──▶ Backend ─────�
 - **Frontend** (`frontend/`): the React page. It has a question box, the agent's steps as they stream in, and the chart, which AG Charts draws ([ADR-0012](decisions/0012-shadcn-and-ag-charts.md)), with a data table under it. Locally, Vite's dev server forwards `/api` to the backend, the paths CloudFront will forward on AWS.
 - **Backend** (`backend/`): one TypeScript service. Its HTTP API takes a question, runs the agent in the background, and streams the run's events.
 - **The `metrics` module** (`backend/src/metrics/`): `listServices()` and `query()` over the seeded data. The agent's tools call it.
-- **The `agent` module** (`backend/src/agent/`): the [five tools](design.md#the-agents-tools), the Gemini adapter, and `runAgent`, the loop that answers a question with them within [its limits](design.md#the-daily-cap) ([ADR-0010](decisions/0010-agent-loop.md)). `POST /ask` runs it for each question. `npm run gemini:check` tries the adapter with two real requests.
+- **The `agent` module** (`backend/src/agent/`): the [five tools](design.md#the-agents-tools), the Gemini adapter, and `runAgent`, the loop that answers a question with them within [its limits](design.md#the-daily-cap) ([ADR-0010](decisions/0010-agent-loop.md)). `POST /api/ask` runs it for each question. `npm run gemini:check` tries the adapter with two real requests.
 - **The `runs` module** (`backend/src/runs/`): each run's events in memory, for its stream, and `saveRun()`, which keeps each finished run in the `runs` table, with its cost.
 - **Postgres** runs in Docker Compose (`make db`), with one `dashgen` database and user. The tables come from Drizzle migrations, and the data from the seed.
 
@@ -47,7 +47,7 @@ Every response carries an `x-request-id` header: a UUIDv7, which also appears in
 | 204 | | every event was sent already, which tells `EventSource` to stop reconnecting |
 | 404 | `run_not_found` | the run is unknown, or ended more than 5 minutes ago |
 
-Every error is `{"error": {"code": "...", "message": "..."}}`, and the message is safe to show visitors. The [target design](design.md#the-frontends-api) keeps these codes. CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
+Every error is `{"error": {"code": "...", "message": "..."}}`, and the message is safe to show visitors. The codes are `ApiErrorCode` in `@dashgen/contracts`. The [target design](design.md#the-frontends-api) keeps these codes. CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
 
 ## Data
 

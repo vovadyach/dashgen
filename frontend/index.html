@@ -15,16 +15,19 @@
     <script>
       // Picks the theme before the page draws, so a dark page never flashes
       // white: the visitor's own choice if they made one, else their system's.
-      let saved = null;
-      try {
-        saved = localStorage.getItem("theme");
-      } catch {
-        // Storage can be blocked, and then the system's choice applies.
-      }
-      const dark = saved
-        ? saved === "dark"
-        : matchMedia("(prefers-color-scheme: dark)").matches;
-      document.documentElement.classList.toggle("dark", dark);
+      // In a function, so its names don't become the page's globals.
+      (() => {
+        let saved = null;
+        try {
+          saved = localStorage.getItem("theme");
+        } catch {
+          // Storage can be blocked, and then the system's choice applies.
+        }
+        const dark = saved
+          ? saved === "dark"
+          : matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.classList.toggle("dark", dark);
+      })();
     </script>
   </head>
   <body>

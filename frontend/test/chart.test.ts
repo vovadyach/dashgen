@@ -18,7 +18,6 @@ import {
   chartOptions,
   dashedPartials,
   type Datum,
-  dayLabelsFor,
 } from "../src/chart/options.ts";
 import { PALETTE } from "../src/chart/palette.ts";
 import { CHART } from "./fixtures/run.ts";
@@ -26,12 +25,35 @@ import { CHART } from "./fixtures/run.ts";
 const cartesian = (
   chart: Chart,
   mode: "light" | "dark" = "light",
-  dayLabels?: number,
-) => chartOptions(chart, mode, dayLabels) as AgCartesianChartOptions<Datum>;
-const lineOf = (chart: Chart, index = 0) =>
-  cartesian(chart).series?.[index] as AgLineSeriesOptions<Datum>;
+  width?: number,
+) => chartOptions(chart, mode, width) as AgCartesianChartOptions<Datum>;
+const lineOf = (chart: Chart, width?: number) =>
+  cartesian(chart, "light", width).series?.[0] as AgLineSeriesOptions<Datum>;
+const barsOf = (chart: Chart, width?: number) =>
+  cartesian(chart, "light", width).series as AgBarSeriesOptions<Datum>[];
+const xLabel = (chart: Chart, value: unknown) =>
+  (
+    cartesian(chart).axes?.x?.label as {
+      formatter: (params: { value: unknown }) => string;
+    }
+  ).formatter({ value });
 
 const day = (date: number) => new Date(Date.UTC(2026, 9, date));
+const iso = (date: number) => day(date).toISOString();
+
+/** `count` days of one service's daily errors, from Oct 25. */
+const daily = (count: number): Chart => ({
+  ...CHART,
+  series: [
+    {
+      name: "payments-service",
+      points: Array.from({ length: count }, (_, i) => ({
+        x: iso(25 + i),
+        y: i,
+      })),
+    },
+  ],
+});
 
 /** Two services' daily errors, for charts that compare them. */
 const TWO_SERVICES: Chart = {
@@ -66,24 +88,35 @@ const BY_SERVICE: Chart = {
 
 describe("chartOptions", () => {
   it("draws a daily line on a time axis, with its ticks on UTC midnights", () => {
-    const x = cartesian(CHART).axes?.x;
-    expect(x).toMatchObject({
+    expect(cartesian(CHART).axes?.x).toMatchObject({
       type: "time",
       interval: { step: { unit: "day", step: 1, utc: true } },
     });
-    const label = x?.label as { formatter: (p: { value: Date }) => string };
-    expect(label.formatter({ value: day(25) })).toBe("Oct 25");
+    expect(xLabel(CHART, day(25))).toBe("Oct 25");
+  });
+
+  it("ends a time axis at the data, instead of rounding it out into days to come", () => {
+    expect(cartesian(daily(30)).axes?.x).toMatchObject({ nice: false });
+    expect(cartesian({ ...CHART, x: "hour" }).axes?.x).toMatchObject({
+      nice: false,
+    });
   });
 
   it("leaves room for each day's label: every day when wide, every other day on a phone", () => {
     const step = (width: number) =>
       (
-        cartesian(CHART, "light", dayLabelsFor(width)).axes?.x as {
+        cartesian(CHART, "light", width).axes?.x as {
           interval: { step: { step: number } };
         }
       ).interval.step.step;
     expect(step(640)).toBe(1);
     expect(step(310)).toBe(2);
+  });
+
+  it("draws dots only where they have room: a week on a phone, but a month only when wide", () => {
+    expect(lineOf(daily(7), 310).marker?.enabled).toBe(true);
+    expect(lineOf(daily(30), 310).marker?.enabled).toBe(false);
+    expect(lineOf(daily(30), 640).marker?.enabled).toBe(true);
   });
 
   it("dashes the line into today so far, and draws its dot lighter", () => {
@@ -128,25 +161,84 @@ describe("chartOptions", () => {
     expect(options.legend?.enabled).toBe(true);
   });
 
-  it("draws an hourly line without dots, in the visitor's time zone", () => {
+  it("labels an hourly axis in the visitor's time zone, like its tooltips", () => {
     const hourly: Chart = { ...CHART, x: "hour" };
-    expect(lineOf(hourly).marker?.enabled).toBe(false);
-    expect(cartesian(hourly).axes?.x).toEqual({
-      type: "time",
-      position: "bottom",
+    expect(cartesian(hourly).axes?.x).toMatchObject({ type: "time" });
+    // 21:00 UTC is 2 PM in Los Angeles, where the tests run.
+    expect(xLabel(hourly, new Date("2026-10-30T21:00:00Z"))).toBe(
+      "Oct 30, 2:00 PM",
+    );
+  });
+
+  it("puts bars in bands keyed by their time, with our own labels, so days stay in UTC", () => {
+    const bars: Chart = { ...CHART, type: "bar" };
+    expect(cartesian(bars).axes?.x?.type).toBe("category");
+    expect(barsOf(bars)[0]?.data?.[0]?.x).toBe(iso(25));
+    expect(xLabel(bars, iso(25))).toBe("Oct 25");
+  });
+
+  it("keeps hourly bars apart on the night the clocks go back, when two hours share a label", () => {
+    // In Los Angeles, 08:00 and 09:00 UTC on Nov 1 are both 1 AM.
+    const hours = ["2026-11-01T08:00:00.000Z", "2026-11-01T09:00:00.000Z"];
+    const data =
+      barsOf({
+        ...CHART,
+        type: "bar",
+        x: "hour",
+        series: [
+          { name: "auth-service", points: hours.map((x) => ({ x, y: 4 })) },
+        ],
+      })[0]?.data ?? [];
+    expect(data.map((d) => d.x)).toEqual(hours);
+    expect(data.map((d) => d.label)).toEqual([
+      "Nov 1, 1:00 AM",
+      "Nov 1, 1:00 AM",
+    ]);
+  });
+
+  it("keeps the days in order when the first service lacks one, with no bar for it", () => {
+    const [first] = barsOf({
+      ...CHART,
+      type: "bar",
+      series: [
+        {
+          name: "payments-service",
+          points: [25, 27].map((d) => ({ x: iso(d), y: d })),
+        },
+        {
+          name: "checkout-api",
+          points: [25, 26, 27].map((d) => ({ x: iso(d), y: d })),
+        },
+      ],
     });
+    expect(first?.data?.map((d) => [d.x, d.y])).toEqual([
+      [iso(25), 25],
+      [iso(26), null],
+      [iso(27), 27],
+    ]);
   });
 
-  it("puts bars in bands with our own labels, so days stay in UTC", () => {
-    const bars = cartesian({ ...CHART, type: "bar" });
-    expect(bars.axes?.x?.type).toBe("category");
-    const series = bars.series?.[0] as AgBarSeriesOptions<Datum>;
-    expect(series.data?.[0]?.x).toBe("Oct 25");
-  });
-
-  it("keeps a few bars thin, with air between them", () => {
-    const series = cartesian(BY_SERVICE).series?.[0] as AgBarSeriesOptions;
-    expect(series).toMatchObject({ width: 24, cornerRadius: 4 });
+  it("keeps bars at most 24 px wide, without a fixed width, which would make AG Charts cut bars off", () => {
+    // Two services on a wide chart: each band could hold a thick bar.
+    const [few] = barsOf(BY_SERVICE, 640);
+    expect(few?.width).toBeUndefined();
+    expect(few?.widthRatio).toBeLessThan(0.2);
+    // A week of five services on a phone: the bars are thin already.
+    const week = barsOf(
+      {
+        ...CHART,
+        type: "bar",
+        series: Array.from({ length: 5 }, (_, s) => ({
+          name: `service-${String(s)}`,
+          points: [25, 26, 27, 28, 29, 30, 31].map((d) => ({
+            x: iso(d),
+            y: s,
+          })),
+        })),
+      },
+      310,
+    );
+    expect(week.map((bar) => bar.widthRatio)).toEqual([1, 1, 1, 1, 1]);
   });
 
   it("draws a pie with a slice per service, a gap between slices and a legend", () => {
@@ -213,7 +305,7 @@ describe("chart labels", () => {
 
   it("label hours in the visitor's time zone", () => {
     // 21:00 UTC is 2 PM in Los Angeles, where the tests run.
-    expect(formatX("2026-10-30T21:00:00.000Z", "hour")).toBe("Oct 30, 2 PM");
+    expect(formatX("2026-10-30T21:00:00.000Z", "hour")).toBe("Oct 30, 2:00 PM");
   });
 
   it("show values with their units, and compact ticks from 1,000 up", () => {

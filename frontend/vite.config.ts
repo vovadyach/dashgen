@@ -1,10 +1,24 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import type { ProxyOptions } from "vite";
 import { defineConfig } from "vitest/config";
 
 // The page calls /api, the paths CloudFront will forward to the backend
 // (ADR-0003). Locally, Vite forwards them to the backend on :3000.
-const proxy = { "/api": "http://localhost:3000" };
+const api: ProxyOptions = {
+  target: "http://localhost:3000",
+  // When the backend stops in the middle of a stream, as node --watch does on
+  // every save, the page's response ends too. Vite's proxy would keep it
+  // open, and EventSource would wait forever instead of reconnecting.
+  configure: (proxy) => {
+    proxy.on("proxyRes", (backend, _request, page) => {
+      backend.on("close", () => {
+        if (!backend.complete) page.destroy();
+      });
+    });
+  },
+};
+const proxy = { "/api": api };
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

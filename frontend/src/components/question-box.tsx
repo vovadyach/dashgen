@@ -1,4 +1,5 @@
 import { ArrowUp, LoaderCircle } from "lucide-react";
+import type { Ref } from "react";
 
 import { Button } from "./ui/button.tsx";
 import { Input } from "./ui/input.tsx";
@@ -7,6 +8,7 @@ import { Input } from "./ui/input.tsx";
 const MAX_LENGTH = 300;
 
 interface Props {
+  ref?: Ref<HTMLInputElement>;
   question: string;
   onChange: (question: string) => void;
   onAsk: (question: string) => void;
@@ -14,7 +16,7 @@ interface Props {
   busy: boolean;
 }
 
-export function QuestionBox({ question, onChange, onAsk, busy }: Props) {
+export function QuestionBox({ ref, question, onChange, onAsk, busy }: Props) {
   const trimmed = question.trim();
   return (
     <form
@@ -28,6 +30,7 @@ export function QuestionBox({ question, onChange, onAsk, busy }: Props) {
         Your question
       </label>
       <Input
+        ref={ref}
         id="question"
         value={question}
         onChange={(event) => {
@@ -45,7 +48,7 @@ export function QuestionBox({ question, onChange, onAsk, busy }: Props) {
         className="h-11"
       >
         {busy ? (
-          <LoaderCircle className="animate-spin" aria-hidden />
+          <LoaderCircle className="motion-safe:animate-spin" aria-hidden />
         ) : (
           <ArrowUp aria-hidden />
         )}

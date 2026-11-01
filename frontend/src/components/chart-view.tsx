@@ -12,7 +12,7 @@ import {
 import { AgCharts } from "ag-charts-react";
 import { useCallback, useMemo, useState } from "react";
 
-import { chartOptions, dayLabelsFor } from "../chart/options.ts";
+import { chartOptions } from "../chart/options.ts";
 import { useTheme } from "../theme.tsx";
 
 // Only the parts DashGen draws, so the rest of AG Charts stays out of the download.
@@ -33,22 +33,22 @@ ModuleRegistry.registerModules([
 export default function ChartView({ chart }: { chart: Chart }) {
   const { theme } = useTheme();
   const [width, setWidth] = useState<number>();
-  // The chart's width decides how many day labels fit, and a phone turned
-  // sideways changes it.
+  // The chart's width decides how many day labels fit, how wide bars are and
+  // whether dots fit, and a phone turned sideways changes it. It's kept in
+  // steps of 20 px, so resizing redraws the chart only when that matters.
   const measure = useCallback((element: HTMLDivElement | null) => {
     if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) setWidth(entry.contentRect.width);
+      if (entry) setWidth(Math.round(entry.contentRect.width / 20) * 20);
     });
     observer.observe(element);
     return () => {
       observer.disconnect();
     };
   }, []);
-  const dayLabels = width === undefined ? undefined : dayLabelsFor(width);
   const options = useMemo(
-    () => chartOptions(chart, theme, dayLabels),
-    [chart, theme, dayLabels],
+    () => chartOptions(chart, theme, width),
+    [chart, theme, width],
   );
   return (
     <div ref={measure}>

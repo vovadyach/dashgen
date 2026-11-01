@@ -1,11 +1,8 @@
 import type { Chart } from "@dashgen/contracts";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { onlineManager } from "@tanstack/react-query";
+import { act, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { App } from "../src/app.tsx";
-import { ThemeProvider } from "../src/theme.tsx";
 import {
   CHART,
   CHART_OUTCOME,
@@ -19,6 +16,14 @@ import {
   TIMEOUT,
 } from "./fixtures/run.ts";
 import { FakeEventSource, lastStream } from "./helpers/event-source.ts";
+import {
+  answerAsk,
+  ask,
+  askButton,
+  renderPage,
+  started,
+  stubTheBrowser,
+} from "./helpers/page.tsx";
 
 // AG Charts draws on a canvas, which jsdom doesn't have. The page gets a
 // stand-in that says which chart it was given.
@@ -26,55 +31,7 @@ vi.mock("../src/components/chart-view.tsx", () => ({
   default: ({ chart }: { chart: Chart }) => <p>{`${chart.type} chart`}</p>,
 }));
 
-type User = ReturnType<typeof userEvent.setup>;
-
-/** The page, with what main.tsx gives it. */
-function renderPage(): User {
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <ThemeProvider>
-        <App />
-      </ThemeProvider>
-    </QueryClientProvider>,
-  );
-  return userEvent.setup();
-}
-
-/** Makes POST /api/ask answer with `status` and `body`. */
-function answerAsk(status: number, body: unknown) {
-  const fetch = vi.fn(() => Promise.resolve(Response.json(body, { status })));
-  vi.stubGlobal("fetch", fetch);
-  return fetch;
-}
-
-/** Makes POST /api/ask start runs, with these IDs in turn, then RUN_ID. */
-function started(...runIds: string[]) {
-  const fetch = vi.fn(() =>
-    Promise.resolve(
-      Response.json({ runId: runIds.shift() ?? RUN_ID }, { status: 202 }),
-    ),
-  );
-  vi.stubGlobal("fetch", fetch);
-  return fetch;
-}
-
-/** Types `question` and asks it. */
-async function ask(user: User, question = QUESTION) {
-  await user.type(screen.getByLabelText("Your question"), question);
-  await user.click(screen.getByRole("button", { name: "Ask" }));
-}
-
-const askButton = () =>
-  screen.getByRole<HTMLButtonElement>("button", { name: "Ask" });
-
-beforeEach(() => {
-  FakeEventSource.opened = [];
-  vi.stubGlobal("EventSource", FakeEventSource);
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+stubTheBrowser();
 
 describe("the page", () => {
   it("streams the steps as they come, then draws the chart", async () => {
@@ -194,6 +151,41 @@ describe("the page", () => {
     expect(askButton().disabled).toBe(true);
   });
 
+  it("lists the days in time order in the table, even when the first service lacks one", async () => {
+    started();
+    await ask(renderPage());
+    const stream = await waitFor(lastStream);
+    const day = (date: number) =>
+      new Date(Date.UTC(2026, 9, date)).toISOString();
+    act(() => {
+      stream.send({
+        ...CHART_OUTCOME,
+        chart: {
+          ...CHART,
+          series: [
+            {
+              name: "payments-service",
+              points: [
+                { x: day(25), y: 26 },
+                { x: day(27), y: 35 },
+              ],
+            },
+            {
+              name: "checkout-api",
+              points: [
+                { x: day(25), y: 48 },
+                { x: day(26), y: 51 },
+                { x: day(27), y: 40 },
+              ],
+            },
+          ],
+        },
+      });
+    });
+    const days = screen.getAllByRole("rowheader").map((h) => h.textContent);
+    expect(days).toEqual(["Oct 25", "Oct 26", "Oct 27"]);
+  });
+
   it("asks a clarifying choice when it's clicked, and puts it in the box", async () => {
     const fetch = started();
     const user = renderPage();
@@ -210,9 +202,11 @@ describe("the page", () => {
       "/api/ask",
       expect.objectContaining({ body: JSON.stringify({ question: choice }) }),
     );
-    expect(screen.getByLabelText<HTMLInputElement>("Your question").value).toBe(
-      choice,
-    );
+    const box = screen.getByLabelText<HTMLInputElement>("Your question");
+    expect(box.value).toBe(choice);
+    // The clicked button went away with its card, so focus is in the box,
+    // not lost for keyboard users.
+    expect(document.activeElement).toBe(box);
   });
 
   it("offers example questions when it declines", async () => {
@@ -240,6 +234,7 @@ describe("the page", () => {
     screen.getByText("list_services");
 
     await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(document.activeElement).toBe(screen.getByLabelText("Your question"));
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(fetch).toHaveBeenLastCalledWith(
       "/api/ask",
@@ -286,12 +281,32 @@ describe("the page", () => {
     expect(FakeEventSource.opened).toEqual([]);
   });
 
-  it("offers no Try again for a question the backend refused as invalid", async () => {
-    const message = "The question must be 1 to 300 characters.";
-    answerAsk(422, { error: { code: "invalid_question", message } });
-    await ask(renderPage());
-    await screen.findByText(message);
-    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  it.each([
+    ["invalid_question", 422, "The question must be 1 to 300 characters."],
+    ["rate_limited", 429, "Rate limit exceeded, try again later."],
+  ])(
+    "offers no Try again after %s, which would fail the same way",
+    async (code, status, message) => {
+      answerAsk(status, { error: { code, message } });
+      await ask(renderPage());
+      await screen.findByText(message);
+      expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    },
+  );
+
+  it("fails at once when the browser says it's offline, instead of holding the question to send later", async () => {
+    const fetch = vi.fn(() => Promise.reject(new TypeError("Failed to fetch")));
+    vi.stubGlobal("fetch", fetch);
+    onlineManager.setOnline(false);
+    try {
+      await ask(renderPage());
+      await screen.findByText(
+        "Can't reach DashGen. Check your connection, and try again.",
+      );
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      onlineManager.setOnline(true);
+    }
   });
 
   it("says it can't reach DashGen when the request itself fails, and offers Try again", async () => {

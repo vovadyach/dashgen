@@ -7,7 +7,8 @@
 /*
  * The colors, as shadcn/ui's names for them. The neutrals are the chart
  * palette's surfaces and inks (src/chart/palette.ts), so the cards and the
- * charts on them match, and the accent is the charts' first series color.
+ * charts on them match. The accent is the light theme's first series color,
+ * in both themes, since white text needs its contrast.
  */
 :root {
   --radius: 0.625rem;

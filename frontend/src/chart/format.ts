@@ -5,10 +5,13 @@ const DAY = new Intl.DateTimeFormat("en", {
   day: "numeric",
   timeZone: "UTC",
 });
+// With minutes, since in time zones like India's (UTC+5:30) each hour of data
+// starts at half past.
 const HOUR = new Intl.DateTimeFormat("en", {
   month: "short",
   day: "numeric",
   hour: "numeric",
+  minute: "2-digit",
 });
 const COMPACT = new Intl.NumberFormat("en", {
   notation: "compact",
@@ -22,7 +25,7 @@ const FULL = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
  */
 export const formatDay = (date: Date): string => DAY.format(date);
 
-/** An hour, like "Oct 30, 2 PM", in the visitor's time zone. */
+/** An hour, like "Oct 30, 2:00 PM", in the visitor's time zone. */
 export const formatHour = (date: Date): string => HOUR.format(date);
 
 /** An x value, as the tooltip and the data table show it. */

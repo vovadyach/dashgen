@@ -91,6 +91,10 @@ export function useRun() {
   const { mutate } = useMutation({
     mutationFn: ask,
     retry: false,
+    // Send it even when the browser says it's offline. By default TanStack
+    // Query would hold it, leave the page waiting, and send it by itself
+    // once the browser is back online, maybe hours later.
+    networkMode: "always",
     onMutate: (question) => {
       dispatch({ type: "ask", question });
     },
@@ -119,7 +123,9 @@ export function useRun() {
     };
     source.onerror = () => {
       // After a dropped connection, EventSource reconnects by itself, with
-      // Last-Event-ID. CLOSED means it gave up: the backend answered 404.
+      // Last-Event-ID. CLOSED means it gave up, after an answer that isn't a
+      // stream. Locally that's the backend's 404 for a run it no longer has.
+      // Through CloudFront it could also be a passing 502 (step 5).
       if (source.readyState === EventSource.CLOSED) {
         dispatch({ type: "failed", failure: INTERRUPTED });
       }

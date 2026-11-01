@@ -20,9 +20,14 @@ db:
 	docker compose up --detach --wait postgres
 
 # The backend and the page together in this terminal, each restarting on
-# changes. Ctrl+C stops both, and Postgres keeps running.
+# changes. Ctrl+C stops both, and so does either one stopping by itself;
+# Postgres keeps running. `kill 0` ends this recipe's whole process group,
+# make included, so make then reports "Terminated".
 dev: db
-	npm run dev & npm run dev:frontend & wait
+	@trap 'kill 0' EXIT; \
+	npm run dev & back=$$!; \
+	npm run dev:frontend & front=$$!; \
+	while kill -0 $$back 2>/dev/null && kill -0 $$front 2>/dev/null; do sleep 1; done
 
 fmt:
 	npm run --silent format -- --log-level warn
