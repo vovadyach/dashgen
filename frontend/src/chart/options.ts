@@ -18,6 +18,7 @@ import {
   formatTick,
   formatValue,
   formatX,
+  xValuesOf,
 } from "./format.ts";
 import { type Colors, type Mode, PALETTE, seriesColor } from "./palette.ts";
 import { peak } from "./summary.ts";
@@ -75,7 +76,7 @@ export function chartOptions(
     };
   }
   const plotWidth = width - Y_AXIS_WIDTH;
-  const categories = categoriesOf(chart);
+  const categories = xValuesOf(chart);
   return {
     ...common,
     // A single series needs no legend: the title names it.
@@ -111,18 +112,6 @@ export function chartOptions(
       return bar(chart, series, color, categories, MAX_BAR_WIDTH / share);
     }),
   };
-}
-
-/**
- * The x values of all series, in order: by time on a time scale, so a day
- * one series lacks still sits in its place.
- */
-function categoriesOf(chart: Chart): string[] {
-  const xs = [
-    ...new Set(chart.series.flatMap((s) => s.points.map((p) => p.x))),
-  ];
-  // ISO times sort by time as strings.
-  return chart.x === "category" ? xs : xs.sort();
 }
 
 /** The points of `series`, with Dates for a line over time. */

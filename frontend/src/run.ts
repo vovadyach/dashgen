@@ -1,4 +1,4 @@
-import { type Chart, RunEvent } from "@dashgen/contracts";
+import { type Chart, INTERNAL_ERROR, RunEvent } from "@dashgen/contracts";
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 
@@ -19,8 +19,11 @@ export interface Failure {
  * came with it.
  */
 export type SavedChart =
-  | { from: "pin"; chart: Chart; pinnedAt: string }
+  | { from: "pin"; chart: Chart; pinnedAt: string; fromLink?: true }
   | { from: "link"; chart: Chart };
+
+/** What the page shows for a question or a chart, kept while the next question runs. */
+export type Shown = Answer | SavedChart;
 
 /**
  * A question on its way to an answer, as the page shows it. Until the new
@@ -31,14 +34,14 @@ export type SavedChart =
  */
 export type Run =
   | { status: "idle" }
-  | { status: "asking"; askId: number; question: string; previous?: Answer }
+  | { status: "asking"; askId: number; question: string; previous?: Shown }
   | {
       status: "streaming";
       askId: number;
       question: string;
       runId: string;
       steps: Step[];
-      previous?: Answer;
+      previous?: Shown;
     }
   | { status: "answered"; question: string; steps: Step[]; answer: Answer }
   | {
@@ -46,10 +49,10 @@ export type Run =
       question: string;
       steps: Step[];
       failure: Failure;
-      previous?: Answer;
+      previous?: Shown;
     }
   /** The visitor stopped it. The backend still finishes the run. */
-  | { status: "stopped"; question: string; steps: Step[]; previous?: Answer }
+  | { status: "stopped"; question: string; steps: Step[]; previous?: Shown }
   /** A saved chart, opened with no question asked. */
   | { status: "opened"; saved: SavedChart };
 
@@ -69,8 +72,7 @@ export const INTERRUPTED: Failure = {
 
 const BROKEN = {
   type: "error",
-  code: "internal_error",
-  message: "Something went wrong.",
+  ...INTERNAL_ERROR,
 } as const satisfies RunEvent;
 
 /**
@@ -86,7 +88,7 @@ export function nextRun(run: Run, action: Action): Run {
         status: "asking",
         askId: action.askId,
         question: action.question,
-        previous: lastAnswer(run),
+        previous: lastShown(run),
       };
     case "started":
       return run.status === "asking" && run.askId === action.askId
@@ -120,22 +122,25 @@ export function nextRun(run: Run, action: Action): Run {
           };
     }
     case "open":
-      // A question on its way keeps the page until it ends or is stopped.
-      return run.status === "asking" || run.status === "streaming"
-        ? run
-        : { status: "opened", saved: action.saved };
+      // The visitor chose the chart, as by opening a link, so it shows even
+      // over a question on its way. Like Stop, that closes the stream, and
+      // the backend still finishes and saves the run.
+      return { status: "opened", saved: action.saved };
   }
 }
 
-/** The answer the page shows now, if any, to keep while the next question runs. */
-function lastAnswer(run: Run): Answer | undefined {
+/**
+ * What the page shows now, if anything, to keep while the next question runs.
+ * A saved chart stays one, so it keeps saying where its numbers came from.
+ */
+function lastShown(run: Run): Shown | undefined {
   switch (run.status) {
     case "idle":
       return undefined;
     case "answered":
       return run.answer;
     case "opened":
-      return { type: "outcome", outcome: "chart", chart: run.saved.chart };
+      return run.saved;
     default:
       return run.previous;
   }

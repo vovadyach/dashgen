@@ -1,7 +1,8 @@
 // From shadcn/ui (MIT): https://ui.shadcn.com/docs/components/button
+// Without its asChild option, which nothing here uses, so radix-ui isn't
+// needed. A component that needs Radix brings in just its own package.
 
 import { cva, type VariantProps } from "class-variance-authority";
-import { Slot } from "radix-ui";
 import type { ComponentProps } from "react";
 
 import { cn } from "../../lib/utils.ts";
@@ -34,13 +35,10 @@ function Button({
   className,
   variant,
   size,
-  asChild = false,
   ...props
-}: ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
-  const Comp = asChild ? Slot.Root : "button";
+}: ComponentProps<"button"> & VariantProps<typeof buttonVariants>) {
   return (
-    <Comp
+    <button
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}

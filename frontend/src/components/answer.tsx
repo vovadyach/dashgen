@@ -9,11 +9,17 @@ import {
 } from "lucide-react";
 import { lazy, type ReactNode, Suspense, useId, useState } from "react";
 
-import { formatValue, formatX } from "../chart/format.ts";
+import { formatValue, formatX, xValuesOf } from "../chart/format.ts";
 import { summary } from "../chart/summary.ts";
 import { cn } from "../lib/utils.ts";
 import type { Pins } from "../pins.ts";
-import type { Answer as RunAnswer, Failure, Run, SavedChart } from "../run.ts";
+import type {
+  Answer as RunAnswer,
+  Failure,
+  Run,
+  SavedChart,
+  Shown,
+} from "../run.ts";
 import { ChartActions } from "./chart-actions.tsx";
 import { ChartBoundary } from "./chart-boundary.tsx";
 import { DrawingChart } from "./drawing-chart.tsx";
@@ -44,7 +50,7 @@ interface Props {
 /** What the question got: the chart, a question back, a refusal, or an error. */
 export function Answer({ run, onAsk, pins }: Props) {
   if (run.status === "opened") {
-    return <ChartCard chart={run.saved.chart} saved={run.saved} pins={pins} />;
+    return <ShownCard shown={run.saved} onAsk={onAsk} pins={pins} />;
   }
   if (run.status === "failed") {
     // The error comes first. The answer before it stays below, labeled so
@@ -62,15 +68,15 @@ export function Answer({ run, onAsk, pins }: Props) {
             <p className="text-sm font-medium text-muted-foreground">
               Your last answer
             </p>
-            <Outcome answer={run.previous} onAsk={onAsk} pins={pins} />
+            <ShownCard shown={run.previous} onAsk={onAsk} pins={pins} />
           </div>
         )}
       </div>
     );
   }
   const working = run.status === "asking" || run.status === "streaming";
-  const answer = run.status === "answered" ? run.answer : run.previous;
-  if (!answer) return working ? <Waiting /> : null;
+  const shown = run.status === "answered" ? run.answer : run.previous;
+  if (!shown) return working ? <Waiting /> : null;
   // While the next question runs, the last answer stays, dimmed and out of
   // reach, so the page doesn't go blank, with the waiting sign over it.
   // Stopping brings it back. A short answer's card, like a question back,
@@ -84,10 +90,27 @@ export function Answer({ run, onAsk, pins }: Props) {
           working && "min-h-48 opacity-40",
         )}
       >
-        <Outcome answer={answer} onAsk={onAsk} pins={pins} />
+        <ShownCard shown={shown} onAsk={onAsk} pins={pins} />
       </div>
       {working && <WaitingOver />}
     </div>
+  );
+}
+
+/** An answer, or a saved chart, which says where its numbers came from. */
+function ShownCard({
+  shown,
+  onAsk,
+  pins,
+}: {
+  shown: Shown;
+  onAsk: (question: string) => void;
+  pins: Pins;
+}) {
+  return "from" in shown ? (
+    <GuardedChartCard chart={shown.chart} saved={shown} pins={pins} />
+  ) : (
+    <Outcome answer={shown} onAsk={onAsk} pins={pins} />
   );
 }
 
@@ -102,7 +125,7 @@ function Outcome({
 }) {
   switch (answer.outcome) {
     case "chart":
-      return <ChartCard chart={answer.chart} pins={pins} />;
+      return <GuardedChartCard chart={answer.chart} pins={pins} />;
     case "clarify":
       return (
         <Choices
@@ -175,10 +198,56 @@ const PINNED_AT = new Intl.DateTimeFormat("en", {
 });
 
 /** Where a saved chart's numbers came from, since no run fetched them. */
-const savedNote = (saved: SavedChart) =>
-  saved.from === "pin"
-    ? `Pinned ${PINNED_AT.format(new Date(saved.pinnedAt))}. It keeps the numbers it had then.`
-    : "Opened from a link, which carries its own numbers.";
+const savedNote = (saved: SavedChart) => {
+  if (saved.from === "link") {
+    return "Opened from a link, which carries its own numbers.";
+  }
+  const pinned = `Pinned ${PINNED_AT.format(new Date(saved.pinnedAt))}`;
+  // A chart pinned from a link keeps saying so, since the link's numbers
+  // could be anyone's.
+  return saved.fromLink
+    ? `${pinned}, from a link, which carries its own numbers.`
+    : `${pinned}. It keeps the numbers it had then.`;
+};
+
+/** Whether a saved chart's numbers came from a link, not from DashGen. */
+const fromLink = (saved?: SavedChart) =>
+  saved?.from === "link" || (saved?.from === "pin" && saved.fromLink === true);
+
+/**
+ * A chart card that, if anything in it fails, like the numbers of a chart
+ * crafted for a link, leaves the rest of the page.
+ */
+function GuardedChartCard(props: Parameters<typeof ChartCard>[0]) {
+  return (
+    <ChartBoundary fallback={<BrokenChart />} resetKey={props.chart}>
+      <ChartCard {...props} />
+    </ChartBoundary>
+  );
+}
+
+/** In place of a chart card that failed. */
+function BrokenChart() {
+  return (
+    <Card role="alert">
+      <CardHeader className="flex items-start gap-3">
+        <CircleAlert
+          className="mt-0.5 size-5 shrink-0 text-destructive"
+          aria-hidden
+        />
+        <div className="space-y-1.5">
+          <h2 className="leading-none font-semibold">
+            This chart can't be shown
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Something in its numbers isn't right. If it came from a link, the
+            link may be broken.
+          </p>
+        </div>
+      </CardHeader>
+    </Card>
+  );
+}
 
 function ChartCard({
   chart,
@@ -208,13 +277,18 @@ function ChartCard({
       </CardHeader>
       <CardContent className="space-y-4">
         <Summary chart={chart} />
-        <ChartBoundary fallback={<ChartFailed />}>
+        <ChartBoundary fallback={<ChartFailed />} resetKey={chart}>
           <Suspense fallback={<ChartLoading />}>
             <ChartView chart={chart} ref={setDrawn} />
           </Suspense>
         </ChartBoundary>
         <div className="flex flex-wrap items-center gap-2">
-          <ChartActions chart={chart} drawn={drawn} pins={pins} />
+          <ChartActions
+            chart={chart}
+            drawn={drawn}
+            pins={pins}
+            fromLink={fromLink(saved)}
+          />
           <Button
             variant="ghost"
             size="sm"
@@ -229,9 +303,8 @@ function ChartCard({
             Data table
           </Button>
         </div>
-        <div id={tableId} hidden={!table}>
-          <DataTable chart={chart} />
-        </div>
+        {/* Built only when open: a month of hours is thousands of cells. */}
+        <div id={tableId}>{table && <DataTable chart={chart} />}</div>
       </CardContent>
     </Card>
   );
@@ -306,10 +379,7 @@ function DataTable({ chart }: { chart: Chart }) {
       rows.set(point.x, row);
     }
   }
-  // In time order, even when the first series lacks a day another one has.
-  // ISO times sort by time as strings.
-  const xs = [...rows.keys()];
-  if (chart.x !== "category") xs.sort();
+  const xs = xValuesOf(chart);
   return (
     <div className="overflow-x-auto text-sm">
       <table className="w-full tabular-nums">

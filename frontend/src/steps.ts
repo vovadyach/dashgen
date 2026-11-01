@@ -1,3 +1,5 @@
+import { DEFAULT_DAYS } from "@dashgen/contracts";
+
 import type { Step } from "./run.ts";
 
 const METRICS: Record<string, string> = {
@@ -24,7 +26,7 @@ export function describeStep(step: Step): string {
       const metric = text(args.metric) ?? "metrics";
       const service = text(args.service) ?? "a service";
       // The tool's default, when the model leaves days out.
-      const days = typeof args.days === "number" ? args.days : 7;
+      const days = typeof args.days === "number" ? args.days : DEFAULT_DAYS;
       const span =
         days === 1 ? "the last day" : `the last ${String(days)} days`;
       const what = `${METRICS[metric] ?? metric} for ${service} over ${span}`;

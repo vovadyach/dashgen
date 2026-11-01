@@ -6,3 +6,17 @@ import { afterEach } from "vitest";
 afterEach(() => {
   cleanup();
 });
+
+// jsdom has no ResizeObserver, and lays nothing out, so a width never
+// changes. The question box watches its width only to fit its text again.
+globalThis.ResizeObserver = class {
+  observe() {
+    // Nothing changes size in jsdom.
+  }
+  unobserve() {
+    // Nothing to stop watching.
+  }
+  disconnect() {
+    // Nothing to stop watching.
+  }
+};

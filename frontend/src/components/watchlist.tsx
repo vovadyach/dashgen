@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { headline } from "../chart/summary.ts";
 import type { Pin } from "../pins.ts";
 import { preloadChart } from "./answer.tsx";
+import { ChartBoundary } from "./chart-boundary.tsx";
 import { Sparkline } from "./sparkline.tsx";
 import { Button } from "./ui/button.tsx";
 
@@ -19,7 +20,9 @@ interface Props {
 
 /** The charts pinned in this browser, each with its number, to open again with no run. */
 export function Watchlist({ pins, onOpen, onUnpin, busy, stored }: Props) {
-  if (pins.length === 0) return null;
+  // With no pins, the section goes, unless the browser didn't save that:
+  // the warning stays, or the last unpin would look as if it had worked.
+  if (pins.length === 0 && stored) return null;
   return (
     // A section of its own, so a little more room above it.
     <section aria-labelledby="watchlist" className="space-y-3 pt-6">
@@ -41,22 +44,29 @@ export function Watchlist({ pins, onOpen, onUnpin, busy, stored }: Props) {
               className="mt-0.5 size-4 shrink-0 text-destructive"
               aria-hidden
             />
-            Your browser isn't saving pins, so these last only until you leave
-            the page.
+            Your browser isn't saving pins, so your changes last only until you
+            leave the page.
           </p>
         )}
       </div>
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {pins.map((pin) => (
-          <PinCard
-            key={pin.pinnedAt}
-            pin={pin}
-            onOpen={onOpen}
-            onUnpin={onUnpin}
-            busy={busy}
-          />
-        ))}
-      </ul>
+      {pins.length > 0 && (
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {pins.map((pin) => (
+            // One pin that can't be shown leaves the others, and the page.
+            <ChartBoundary
+              key={pin.pinnedAt}
+              fallback={<BrokenPin pin={pin} onUnpin={onUnpin} />}
+            >
+              <PinCard
+                pin={pin}
+                onOpen={onOpen}
+                onUnpin={onUnpin}
+                busy={busy}
+              />
+            </ChartBoundary>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
@@ -119,6 +129,37 @@ function PinCard({
         }}
       >
         <X aria-hidden />
+      </Button>
+    </li>
+  );
+}
+
+/** A pin the page can't show, which can still be unpinned. */
+function BrokenPin({
+  pin,
+  onUnpin,
+}: {
+  pin: Pin;
+  onUnpin: (pin: Pin) => void;
+}) {
+  return (
+    <li className="flex items-start justify-between gap-3 rounded-xl border bg-card p-4 text-sm text-muted-foreground shadow-sm">
+      <span className="flex items-start gap-2">
+        <CircleAlert
+          className="mt-0.5 size-4 shrink-0 text-destructive"
+          aria-hidden
+        />
+        This pinned chart can't be shown.
+      </span>
+      <Button
+        variant="outline"
+        size="sm"
+        aria-label={`Unpin ${pin.chart.title}`}
+        onClick={() => {
+          onUnpin(pin);
+        }}
+      >
+        Unpin
       </Button>
     </li>
   );

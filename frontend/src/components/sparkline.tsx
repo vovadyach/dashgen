@@ -24,8 +24,11 @@ export function Sparkline({ chart, series, drawing = 0 }: Props) {
   const values = sideBySide
     ? chart.series.flatMap((s) => s.points.map((point) => point.y))
     : series.points.map((point) => point.y);
-  const low = sideBySide ? 0 : Math.min(...values);
-  const high = Math.max(...values);
+  // Loops, not Math.min(...values): too many arguments in one call throws.
+  const low = sideBySide
+    ? 0
+    : values.reduce((a, b) => Math.min(a, b), Infinity);
+  const high = values.reduce((a, b) => Math.max(a, b), -Infinity);
   // From the bottom up. A flat series sits in the middle.
   const y = (value: number) =>
     high === low

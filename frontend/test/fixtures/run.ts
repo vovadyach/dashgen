@@ -1,4 +1,9 @@
-import type { Chart, RunEvent } from "@dashgen/contracts";
+import {
+  type Chart,
+  MAX_POINTS,
+  MAX_SERIES,
+  type RunEvent,
+} from "@dashgen/contracts";
 
 export const QUESTION = "Show errors for payments-service this week";
 export const RUN_ID = "019a3b2c-5d00-7000-8000-000000000001";
@@ -58,6 +63,29 @@ export const CHART: Chart = {
       ],
     },
   ],
+};
+
+/** Each hour of 30 days, the longest span a chart covers. */
+export const HOURS = Array.from({ length: MAX_POINTS }, (_, i) =>
+  new Date(Date.UTC(2026, 9, 1, i)).toISOString(),
+);
+
+/**
+ * Ten services by the hour over 30 days, each number different, so it
+ * can't pack into a link short enough to open.
+ */
+export const TOO_LARGE_FOR_A_LINK: Chart = {
+  type: "line",
+  title: "Latency for ten services, by the hour",
+  unit: "ms",
+  x: "hour",
+  series: Array.from({ length: MAX_SERIES }, (_, s) => ({
+    name: `service-${String(s + 1)}`,
+    points: HOURS.map((x, i) => ({
+      x,
+      y: ((i * 7919 + s * 104_729) % 100_003) / 7,
+    })),
+  })),
 };
 
 export const CHART_OUTCOME = {

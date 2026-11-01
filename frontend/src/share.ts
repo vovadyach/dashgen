@@ -13,10 +13,18 @@ const MAX_JSON = 1_000_000;
 /** Whether an address's hash, like `location.hash`, is a share link. */
 export const isChartLink = (hash: string) => hash.startsWith(PREFIX);
 
-/** A link to this page that opens `chart`, with no run. */
-export async function chartLink(chart: Chart): Promise<string> {
-  const packed = await pack(JSON.stringify(chart));
-  return `${location.origin}${location.pathname}${PREFIX}${toBase64Url(packed)}`;
+/**
+ * A link to this page that opens `chart`, with no run, or undefined when the
+ * link would be too long to open: it's held to the same limits as a link
+ * that's opened. A chart from a link packed tighter than this page packs
+ * could otherwise come back as one that doesn't open.
+ */
+export async function chartLink(chart: Chart): Promise<string | undefined> {
+  const json = JSON.stringify(chart);
+  if (json.length > MAX_JSON) return undefined;
+  const hash = `${PREFIX}${toBase64Url(await pack(json))}`;
+  if (hash.length > MAX_LINK) return undefined;
+  return `${location.origin}${location.pathname}${hash}`;
 }
 
 /**

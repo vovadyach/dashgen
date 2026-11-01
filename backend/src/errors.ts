@@ -1,10 +1,7 @@
 import type { ApiErrorCode, ErrorBody } from "@dashgen/contracts";
 
-/** A bug in DashGen, as visitors see it: in a 500, or as a run's last event. */
-export const INTERNAL_ERROR = {
-  code: "internal_error",
-  message: "Something went wrong.",
-} as const;
+// Shared with the page, which shows the same words for a bug it finds itself.
+export { INTERNAL_ERROR } from "@dashgen/contracts";
 
 export function errorBody(code: ApiErrorCode, message: string): ErrorBody {
   return { error: { code, message } };

@@ -1,6 +1,13 @@
 import { type Chart, EXAMPLE_QUESTIONS } from "@dashgen/contracts";
 import { onlineManager } from "@tanstack/react-query";
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { Ref } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,8 +22,10 @@ import {
   SECOND_RUN_ID,
   STEPS,
   TIMEOUT,
+  TOO_LARGE_FOR_A_LINK,
 } from "./fixtures/run.ts";
 import { FakeEventSource, lastStream } from "./helpers/event-source.ts";
+import { linkTo } from "./helpers/link.ts";
 import {
   answerAsk,
   ask,
@@ -104,7 +113,8 @@ describe("the page", () => {
       stream.send(CHART_OUTCOME);
     });
     const toggle = screen.getByRole("button", { name: "Data table" });
-    expect(screen.queryByRole("table")).toBeNull();
+    // Not built at all until it's opened, so typing stays quick.
+    expect(document.querySelector("table")).toBeNull();
     await user.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     screen.getByRole("columnheader", { name: "Day (UTC)" });
@@ -280,6 +290,16 @@ describe("the page", () => {
     screen.getByText("Looked up the services and metrics");
     screen.getByText("Stopped.");
     expect(document.activeElement).toBe(screen.getByLabelText("Your question"));
+  });
+
+  it("leaves the question running when Esc cancels typing with an input method", async () => {
+    started();
+    await ask(renderPage());
+    const stream = await waitFor(lastStream);
+    // Japanese or Chinese input: Esc cancels the characters being composed.
+    fireEvent.keyDown(window, { key: "Escape", isComposing: true });
+    expect(stream.readyState).not.toBe(FakeEventSource.CLOSED);
+    screen.getByRole("button", { name: "Stop" });
   });
 
   it("stops a question with Esc too, wherever the focus is", async () => {
@@ -589,18 +609,26 @@ describe("a chart's pin, link and download", () => {
     vi.restoreAllMocks();
   });
 
-  /** Asks the question, and gets the chart. */
-  async function chartPage() {
+  /** Asks the question, and gets `chart`. */
+  async function chartPage(chart = CHART) {
     const fetch = started();
     const user = renderPage();
     await ask(user);
     const stream = await waitFor(lastStream);
     act(() => {
-      stream.send(CHART_OUTCOME);
+      stream.send({ ...CHART_OUTCOME, chart });
     });
     await screen.findByText("line chart");
     return { user, fetch };
   }
+
+  /** Saves a pin of CHART in the browser, as an earlier visit would have. */
+  const pinEarlier = () => {
+    localStorage.setItem(
+      "pins",
+      JSON.stringify([{ chart: CHART, pinnedAt: "2026-10-31T10:00:00.000Z" }]),
+    );
+  };
 
   const watchlist = () =>
     screen.queryByRole("region", { name: "Your watchlist" });
@@ -651,14 +679,126 @@ describe("a chart's pin, link and download", () => {
     await user.click(screen.getByRole("button", { name: "Pin" }));
     const pinned = screen.getByRole("region", { name: "Your watchlist" });
     within(pinned).getByText(
-      "Your browser isn't saving pins, so these last only until you leave the page.",
+      "Your browser isn't saving pins, so your changes last only until you leave the page.",
     );
     expect(screen.queryByText(/Saved in this browser only/)).toBeNull();
   });
 
+  it("keeps saying the pins won't last when the browser can't save the last one's unpinning", async () => {
+    pinEarlier();
+    // The browser reads its storage, but can't write to it, as when it's full.
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException(
+        "The quota has been exceeded.",
+        "QuotaExceededError",
+      );
+    });
+    const user = renderPage();
+    await user.click(
+      screen.getByRole("button", { name: `Unpin ${CHART.title}` }),
+    );
+    const section = screen.getByRole("region", { name: "Your watchlist" });
+    within(section).getByText(
+      "Your browser isn't saving pins, so your changes last only until you leave the page.",
+    );
+    expect(within(section).queryByRole("listitem")).toBeNull();
+  });
+
+  const copyButton = async () => {
+    const copy = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Copy link",
+    });
+    // The link is made as the chart shows, and the button waits for it.
+    await waitFor(() => {
+      expect(copy.disabled).toBe(false);
+    });
+    return copy;
+  };
+
+  it("copies the link within the click itself, as Safari and iOS require", async () => {
+    await chartPage();
+    const copy = await copyButton();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText");
+    fireEvent.click(copy);
+    // Called before the click handler returned, with nothing awaited first.
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/#chart="));
+    await screen.findByText("Link copied.");
+  });
+
+  it("says when a chart is too large to share as a link", async () => {
+    await chartPage(TOO_LARGE_FOR_A_LINK);
+    const writeText = vi.spyOn(navigator.clipboard, "writeText");
+    fireEvent.click(await copyButton());
+    await screen.findByText("This chart is too large to share as a link.");
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("says when the browser can't make a link, not that the chart is too large", async () => {
+    // As in a browser without the compression links use.
+    vi.stubGlobal("CompressionStream", undefined);
+    await chartPage();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText");
+    fireEvent.click(await copyButton());
+    await screen.findByText("Couldn't make a link to this chart.");
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("says when the link can't be copied", async () => {
+    await chartPage();
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(
+      new DOMException("Write permission denied.", "NotAllowedError"),
+    );
+    fireEvent.click(await copyButton());
+    await screen.findByText("Couldn't copy the link.");
+  });
+
+  it("keeps saying a chart came from a link after it's pinned, and opened again", async () => {
+    history.replaceState(null, "", await linkTo(CHART));
+    const user = renderPage();
+    await screen.findByText(
+      /Opened from a link, which carries its own numbers\./,
+    );
+    await user.click(screen.getByRole("button", { name: "Pin" }));
+
+    // A reload, which opens the pin.
+    cleanup();
+    const reloaded = renderPage();
+    await reloaded.click(
+      screen.getByRole("button", { name: `Open ${CHART.title}` }),
+    );
+    await screen.findByText(
+      /Pinned .+, from a link, which carries its own numbers\./,
+    );
+  });
+
+  it("keeps saying a chart came from a link while the next question runs, and after it's stopped", async () => {
+    started();
+    history.replaceState(null, "", await linkTo(CHART));
+    const user = renderPage();
+    const note = /Opened from a link, which carries its own numbers\./;
+    await screen.findByText(note);
+
+    await ask(user);
+    await waitFor(lastStream);
+    screen.getByText(note);
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+    screen.getByText(note);
+  });
+
+  it("opens a link pasted while a question runs, which stops watching the question", async () => {
+    started();
+    await ask(renderPage());
+    const stream = await waitFor(lastStream);
+    location.hash = new URL(await linkTo(CHART)).hash;
+    await screen.findByText(
+      /Opened from a link, which carries its own numbers\./,
+    );
+    expect(stream.readyState).toBe(FakeEventSource.CLOSED);
+  });
+
   it("copies a link that opens the chart on a new page, with no run", async () => {
     const { user, fetch } = await chartPage();
-    await user.click(screen.getByRole("button", { name: "Copy link" }));
+    await user.click(await copyButton());
     await screen.findByText("Link copied.");
     const link = await navigator.clipboard.readText();
     expect(link.startsWith(`${location.origin}/#chart=`)).toBe(true);
@@ -688,10 +828,7 @@ describe("a chart's pin, link and download", () => {
   });
 
   it("draws a pinned chart's mini chart again when the pointer comes onto its card", async () => {
-    localStorage.setItem(
-      "pins",
-      JSON.stringify([{ chart: CHART, pinnedAt: "2026-10-31T10:00:00.000Z" }]),
-    );
+    pinEarlier();
     const user = renderPage();
     const card = screen.getByRole("button", { name: `Open ${CHART.title}` });
     // New elements, so their animation starts over.

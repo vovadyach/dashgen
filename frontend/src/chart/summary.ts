@@ -37,7 +37,7 @@ export function headline(chart: Chart): Headline {
   if (!first) throw new Error("A chart needs a series");
   if (chart.x === "category") {
     const points = chart.series.flatMap((series) => series.points);
-    const top = points.reduce((a, b) => (b.y > a.y ? b : a));
+    const top = highest(points, (point) => point.y);
     const total = sum(points);
     // A pie of counts is about shares, like the ring on its card. Averages
     // don't add up to a whole, so their pie keeps the plain highest.
@@ -58,7 +58,7 @@ export function headline(chart: Chart): Headline {
     series,
     size: summarize(series, chart.unit),
   }));
-  const top = sizes.reduce((a, b) => (b.size > a.size ? b : a));
+  const top = highest(sizes, (item) => item.size);
   return {
     value: formatValue(top.size, chart.unit),
     label:

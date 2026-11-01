@@ -45,3 +45,15 @@ export const formatTick = (value: number, unit: string): string =>
 
 const withUnit = (number: string, unit: string) =>
   unit === "count" ? number : `${number} ${unit}`;
+
+/**
+ * The chart's x values, each once, in order: days and hours by time, so one
+ * a series lacks still sits in its place, and services as they come.
+ */
+export function xValuesOf(chart: Chart): string[] {
+  const xs = [
+    ...new Set(chart.series.flatMap((s) => s.points.map((p) => p.x))),
+  ];
+  // ISO times sort by time as strings.
+  return chart.x === "category" ? xs : xs.sort();
+}

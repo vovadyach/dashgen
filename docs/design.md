@@ -520,7 +520,7 @@ Each event's data is one `RunEvent` from `@dashgen/contracts`, as JSON:
 
 - `outcome` is `chart`, `clarify` (with `message` and `choices`) or `decline` (with `message` and `examples`).
 - `x` says what the x values are: `hour` or `day` timestamps for a chart over time, so the page can label the axis, or `category` when each point is a service.
-- The schema is `Chart` in `@dashgen/contracts`, and the backend validates every chart against it before sending it.
+- The schema is `Chart` in `@dashgen/contracts`, and the backend validates every chart against it before sending it. It caps a chart at what a run can make: 10 series, one per query, of up to 720 points, an hour's each over 30 days. The page parses charts from share links and pins with it too, so a crafted one can't be larger, or carry an hour or day that isn't a real ISO time.
 - A point marked `"partial": true` is a day with fewer than 24 hours of data, in a daily chart: usually today so far, or a gap in the data. The frontend draws it lighter, and dashes the line into and out of it, so it doesn't read as a drop.
 - A chart carries its own numbers, so charts pinned in the browser still draw while the backend is offline.
 

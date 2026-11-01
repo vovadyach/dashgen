@@ -3,7 +3,10 @@ import { ChartNoAxesCombined, CircleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Answer, preloadChart } from "./components/answer.tsx";
-import { QuestionBox } from "./components/question-box.tsx";
+import {
+  QuestionBox,
+  type QuestionBoxHandle,
+} from "./components/question-box.tsx";
 import { Steps } from "./components/steps.tsx";
 import { ThemeToggle } from "./components/theme-toggle.tsx";
 import { Tips } from "./components/tips.tsx";
@@ -15,22 +18,20 @@ import { chartFromLink, isChartLink } from "./share.ts";
 export function App() {
   const { run, ask, stop, open } = useRun();
   const pins = usePins();
-  const [question, setQuestion] = useState("");
   // A share link the page opened but couldn't read, which it says so about
   // until the visitor moves on.
   const [badLink, setBadLink] = useState(false);
-  const box = useRef<HTMLTextAreaElement>(null);
+  const box = useRef<QuestionBoxHandle>(null);
   const busy = run.status === "asking" || run.status === "streaming";
 
   // A clicked choice or example goes into the box too, so the box always
   // shows what was asked. The button clicked goes away with its card, so
   // focus moves to the box, or keyboard users would be left nowhere.
   const askQuestion = (next: string) => {
-    setQuestion(next);
+    box.current?.show(next);
     setBadLink(false);
     preloadChart();
     ask(next);
-    box.current?.focus();
   };
 
   const stopQuestion = useCallback(() => {
@@ -73,7 +74,9 @@ export function App() {
   useEffect(() => {
     if (!busy) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") stopQuestion();
+      // Not while an input method composes, as for Japanese or Chinese,
+      // where Esc cancels the composing instead.
+      if (event.key === "Escape" && !event.isComposing) stopQuestion();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -107,8 +110,6 @@ export function App() {
           <div className="mx-auto max-w-2xl">
             <QuestionBox
               ref={box}
-              question={question}
-              onChange={setQuestion}
               onAsk={askQuestion}
               onStop={stopQuestion}
               busy={busy}

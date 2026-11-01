@@ -51,7 +51,7 @@ describe("nextRun", () => {
     });
   });
 
-  it("opens a saved chart, which stays, dimmed, while the next question runs", () => {
+  it("opens a saved chart, which stays one, with where its numbers came from, while the next question runs", () => {
     const saved = {
       from: "pin",
       chart: CHART,
@@ -64,14 +64,20 @@ describe("nextRun", () => {
       status: "asking",
       askId: 1,
       question: QUESTION,
-      previous: CHART_OUTCOME,
+      previous: saved,
     });
   });
 
-  it("opens no saved chart while a question is on its way", () => {
+  it("opens a saved chart even over a question on its way, since the visitor chose it", () => {
     const saved = { from: "link", chart: CHART } as const;
-    expect(nextRun(asking, { type: "open", saved })).toBe(asking);
-    expect(nextRun(streaming, { type: "open", saved })).toBe(streaming);
+    expect(nextRun(asking, { type: "open", saved })).toEqual({
+      status: "opened",
+      saved,
+    });
+    expect(nextRun(streaming, { type: "open", saved })).toEqual({
+      status: "opened",
+      saved,
+    });
   });
 
   it("fails a question that couldn't start, with no steps", () => {

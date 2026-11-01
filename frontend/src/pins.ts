@@ -1,11 +1,16 @@
 import { Chart } from "@dashgen/contracts";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 /** A chart pinned in this browser, with its numbers, so it draws without the backend. */
 export interface Pin {
   chart: Chart;
   /** When it was pinned, as an ISO time: its numbers are from then. */
   pinnedAt: string;
+  /**
+   * It was opened from a share link, so its numbers are the link's, which
+   * anyone can write, not DashGen's. The page keeps saying so (ADR-0013).
+   */
+  fromLink?: true;
 }
 
 /** The `localStorage` key the pins live under. */
@@ -32,11 +37,16 @@ export function loadPins(): Pin[] {
 
 function readPin(entry: unknown): Pin | undefined {
   if (typeof entry !== "object" || entry === null) return undefined;
-  const { chart, pinnedAt } = entry as Record<string, unknown>;
+  const { chart, pinnedAt, fromLink } = entry as Record<string, unknown>;
   const parsed = Chart.safeParse(chart);
   if (!parsed.success || typeof pinnedAt !== "string") return undefined;
   if (Number.isNaN(Date.parse(pinnedAt))) return undefined;
-  return { chart: parsed.data, pinnedAt };
+  // Pinned before pins kept this, a chart counts as one of DashGen's.
+  return {
+    chart: parsed.data,
+    pinnedAt,
+    ...(fromLink === true && { fromLink }),
+  };
 }
 
 /** Saves the pins, and says whether the browser kept them. */
@@ -81,13 +91,27 @@ export function usePins() {
   };
   const others = (chart: Chart) =>
     pins.filter((pin) => !sameChart(pin.chart, chart));
+  // Each pin's chart as text, made once each time the pins change, not
+  // again for each chart on the page each time it redraws.
+  const pinned = useMemo(
+    () => new Set(pins.map((pin) => JSON.stringify(pin.chart))),
+    [pins],
+  );
+  const isPinned = useCallback(
+    (chart: Chart) => pinned.has(JSON.stringify(chart)),
+    [pinned],
+  );
 
   return {
     pins,
     stored,
-    isPinned: (chart: Chart) => pins.some((pin) => sameChart(pin.chart, chart)),
-    pin: (chart: Chart) => {
-      change([{ chart, pinnedAt: new Date().toISOString() }, ...others(chart)]);
+    isPinned,
+    pin: (chart: Chart, fromLink = false) => {
+      const pinnedAt = new Date().toISOString();
+      change([
+        { chart, pinnedAt, ...(fromLink && { fromLink: true as const }) },
+        ...others(chart),
+      ]);
     },
     unpin: (chart: Chart) => {
       change(others(chart));
