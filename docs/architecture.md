@@ -31,7 +31,7 @@ How a question will become a chart is drawn in [design.md](design.md#one-questio
 
 Every response carries an `x-request-id` header: a UUIDv7, which also appears in that request's log lines ([ADR-0009](decisions/0009-uuidv7-ids.md)). The exceptions are the few sent before a request is routed: 400 or 431 for a malformed or oversized header, and 503 while the server shuts down.
 
-**`GET /api/health`** returns `200 {"status":"ok"}`.
+**`GET /api/health`** returns `200 {"status":"ok"}`. It logs only warnings and errors, since load balancers call it all day.
 
 **`POST /api/ask`** takes `{"question": "..."}`, 1 to 300 characters after trimming, with no NUL character. It starts a run in the background and answers `202 {"runId": "..."}`, a UUIDv7.
 

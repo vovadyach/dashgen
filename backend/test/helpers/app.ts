@@ -15,8 +15,10 @@ import { decliningModel } from "./model.ts";
 export async function startApp(
   t: TestContext,
   runs: Partial<ReturnType<AppOptions["runs"]>> = {},
+  options: Omit<AppOptions, "runs"> = {},
 ) {
   const app = await buildApp(loadConfig(VALID_ENV), {
+    ...options,
     runs: () => ({
       model: decliningModel(),
       metrics: () => fakeMetrics(),

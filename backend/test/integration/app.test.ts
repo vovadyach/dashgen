@@ -114,6 +114,35 @@ describe("HTTP API", () => {
       assert.deepEqual(response.json(), { status: "ok" });
     });
 
+    it("leaves no log lines while it's well, since a load balancer calls it all day", async (t) => {
+      const lines: string[] = [];
+      const app = await startApp(
+        t,
+        {},
+        {
+          logger: true,
+          logStream: {
+            write: (line) => {
+              lines.push(line);
+            },
+          },
+        },
+      );
+
+      const before = lines.length;
+      await app.inject({ method: "GET", url: "/api/health" });
+      // No line at all, not even the one saying the request completed.
+      assert.equal(lines.length, before);
+      await app.inject({ method: "GET", url: "/api/nowhere" });
+
+      // Only the other request was logged.
+      const urls = lines.flatMap((line) => {
+        const { req } = JSON.parse(line) as { req?: { url: string } };
+        return req ? [req.url] : [];
+      });
+      assert.deepEqual(urls, ["/api/nowhere"]);
+    });
+
     it("isn't rate limited", async (t) => {
       const app = await startApp(t);
 

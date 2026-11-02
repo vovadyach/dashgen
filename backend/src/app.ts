@@ -25,6 +25,8 @@ import { createRunStore } from "./runs/index.ts";
 export interface AppOptions {
   /** JSON logs at `config.logLevel`, with an ID for each request. Off unless asked for, so tests stay quiet. */
   logger?: boolean;
+  /** Where those logs go instead of stdout, so a test can read them. */
+  logStream?: { write: (line: string) => void };
   /**
    * Makes what runs need, with the app's logger: Gemini and the database on
    * the server, fakes in tests. `close` runs when the app closes.
@@ -35,7 +37,13 @@ export interface AppOptions {
 /** Builds the backend from `config`, so each test can pass its own. Nothing else reads the environment. */
 export async function buildApp(config: Config, options: AppOptions) {
   const app = Fastify({
-    logger: options.logger === true ? { level: config.logLevel } : false,
+    logger:
+      options.logger === true
+        ? {
+            level: config.logLevel,
+            ...(options.logStream && { stream: options.logStream }),
+          }
+        : false,
     // A UUIDv7 per request, to find its log lines. A run gets its own ID, since
     // it outlives the request that starts it (ADR-0009).
     genReqId: () => randomUUIDv7(),
@@ -135,9 +143,12 @@ export async function buildApp(config: Config, options: AppOptions) {
   });
 
   // Every route is under /api, the paths CloudFront forwards unchanged (ADR-0003).
-  app.get("/api/health", { schema: { response: { 200: Health } } }, () => ({
-    status: "ok" as const,
-  }));
+  // Load balancers call it all day, so it logs only when something's wrong.
+  app.get(
+    "/api/health",
+    { logLevel: "warn", schema: { response: { 200: Health } } },
+    () => ({ status: "ok" as const }),
+  );
 
   const { close, ...runs } = options.runs(app.log);
   if (close) app.addHook("onClose", close);
