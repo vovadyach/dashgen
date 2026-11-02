@@ -4,13 +4,14 @@ import { after, before, describe, it } from "node:test";
 import { MetricsResult } from "@dashgen/contracts";
 import { and, eq, gte, lt, max } from "drizzle-orm";
 
+import { isRetryable } from "../../src/db.ts";
 import { createMetrics, MetricsError } from "../../src/metrics/index.ts";
 import { points } from "../../src/metrics/schema.ts";
 import { seedMetrics } from "../../src/metrics/seed.ts";
 import { DAY_MS } from "../../src/metrics/time.ts";
 import { NOW } from "../fixtures/metrics.ts";
-import { createTestDb, type TestDb } from "../helpers/db.ts";
-import { recordingLogger } from "../helpers/logger.ts";
+import { createTestDb, type TestDb, unreachableDb } from "../helpers/db.ts";
+import { type LogLine, recordingLogger } from "../helpers/logger.ts";
 
 let testDb: TestDb | undefined;
 
@@ -240,6 +241,56 @@ describe("metrics module", () => {
         expectedHours: 59,
         foundHours: 35,
       });
+    });
+  });
+
+  describe("when the database fails", () => {
+    const retries = (lines: LogLine[]) =>
+      lines.filter((line) => line.msg === "database call failed, retrying");
+
+    it("tries each read once more, then gives up", async () => {
+      const { log, lines } = recordingLogger();
+      const down = unreachableDb(log);
+      const failing = createMetrics(down, { log, retryDelayMs: () => 0 });
+      try {
+        await assert.rejects(failing.listServices(), (error) =>
+          isRetryable(error),
+        );
+        await assert.rejects(
+          failing.query({ service: "auth-service", metric: "errors" }),
+          (error) => isRetryable(error),
+        );
+      } finally {
+        await down.$client.end();
+      }
+      assert.equal(retries(lines).length, 2);
+    });
+
+    it("doesn't try a read again once the run is over", async () => {
+      const { log, lines } = recordingLogger();
+      const down = unreachableDb(log);
+      const ended = createMetrics(down, { log, signal: AbortSignal.abort() });
+      try {
+        await assert.rejects(ended.listServices(), (error) =>
+          isRetryable(error),
+        );
+      } finally {
+        await down.$client.end();
+      }
+      assert.deepEqual(retries(lines), []);
+    });
+
+    it("doesn't try a query the model got wrong again", async () => {
+      const { log, lines } = recordingLogger();
+
+      await assert.rejects(
+        createMetrics(db(), { log }).query({
+          service: "billing",
+          metric: "errors",
+        }),
+        MetricsError,
+      );
+      assert.deepEqual(retries(lines), []);
     });
   });
 });

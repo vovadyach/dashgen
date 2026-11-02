@@ -1,4 +1,5 @@
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { DrizzleQueryError } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -6,6 +7,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 
 import { consoleLogger, type Logger } from "./logger.ts";
+import { retryDelay } from "./shared/retry.ts";
 
 /** Drizzle over a pg pool. `db.$client.end()` closes the pool. */
 export type Db = NodePgDatabase & { $client: Pool };
@@ -65,6 +67,84 @@ export async function migrateDb(db: Db): Promise<void> {
   await migrate(db, {
     migrationsFolder: path.join(import.meta.dirname, "..", "drizzle"),
   });
+}
+
+// Codes of failures that can pass. Postgres's (SQLSTATE): a statement over its
+// time, a server out of connections, and one that's stopping or starting.
+// Node's: a network that failed.
+const RETRYABLE_CODES = new Set([
+  "57014",
+  "53300",
+  "57P01",
+  "57P02",
+  "57P03",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "EPIPE",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "EAI_AGAIN",
+]);
+// Postgres's class of codes for a lost connection.
+const CONNECTION_CLASS = "08";
+// pg's own timeouts and lost connections, which come with no code.
+const RETRYABLE_MESSAGES = new Set([
+  "timeout exceeded when trying to connect",
+  "Connection terminated due to connection timeout",
+  "Connection terminated unexpectedly",
+  "Query read timeout",
+]);
+
+/**
+ * Whether trying again could fix a failed database call: the connection
+ * failed, the server was busy, stopping or starting, or the call ran out of
+ * time. Anything else, like a wrong password or a missing table, fails the
+ * same way again.
+ */
+export function isRetryable(error: unknown): boolean {
+  // Drizzle wraps what the driver throws.
+  const cause = error instanceof DrizzleQueryError ? error.cause : error;
+  if (!(cause instanceof Error)) return false;
+  const code = "code" in cause ? cause.code : undefined;
+  if (typeof code !== "string") return RETRYABLE_MESSAGES.has(cause.message);
+  return RETRYABLE_CODES.has(code) || code.startsWith(CONNECTION_CLASS);
+}
+
+export interface RetryOptions {
+  log?: Logger;
+  /** The wait before the second try, so tests can skip it. */
+  retryDelayMs?: () => number;
+  /** Aborts when the caller stops waiting, like a run at its deadline. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Runs `call`, and once more after a short random wait if it failed in a way
+ * that trying again could fix (docs/design.md, when things go wrong). Only for
+ * a call that's safe to repeat, like a read. Once `signal` aborts, the wait
+ * ends, and there's no second try.
+ */
+export async function retryOnce<T>(
+  call: () => Promise<T>,
+  {
+    log = consoleLogger(),
+    retryDelayMs = retryDelay,
+    signal,
+  }: RetryOptions = {},
+): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    if (!isRetryable(error) || signal?.aborted) throw error;
+    log.warn(
+      { err: withoutQueryValues(error) },
+      "database call failed, retrying",
+    );
+  }
+  await sleep(retryDelayMs(), undefined, { signal });
+  signal?.throwIfAborted();
+  return call();
 }
 
 /**

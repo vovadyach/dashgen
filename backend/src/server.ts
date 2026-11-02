@@ -18,8 +18,9 @@ const app = await buildApp(config, {
         apiKey: config.geminiApiKey.reveal(),
         model: config.geminiModel,
       }),
-      metrics: (now, runLog) => createMetrics(db, { now, log: runLog }),
-      save: (run) => saveRun(db, run),
+      metrics: (now, runLog, deadline) =>
+        createMetrics(db, { now, log: runLog, signal: deadline }),
+      save: (run, runLog) => saveRun(db, run, { log: runLog }),
       close: () => db.$client.end(),
     };
   },
