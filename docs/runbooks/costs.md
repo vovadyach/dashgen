@@ -22,7 +22,7 @@ Do it once, by hand: the cap is in your Google account, not in this repo.
 - On the Free tier, Google bills nothing, so there's nothing to cap yet. Set the cap when you link a billing account, which moves the project to Tier 1.
 - Each tier also has Google's own monthly cap for the billing account: $250 at Tier 1. It's far above $20, so the project's cap stops spending first.
 - It needs the project's editor, owner or admin role.
-- Google's billing data runs about 10 minutes behind. The daily cap limits what gets past the spend cap in that time to one day's questions at most: $1.65 at the default 150.
+- Google's billing data runs about 10 minutes behind. The daily cap limits what gets past the spend cap in that time to two days' questions at most, when those minutes span midnight UTC: $3.30 at the default 150, or $6.60 at 300.
 - The cap stays on until you change it. Invoiced billing accounts can't set one.
 
 Google's [billing docs](https://ai.google.dev/gemini-api/docs/billing) have the details.
