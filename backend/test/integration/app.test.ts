@@ -208,7 +208,9 @@ describe("HTTP API", () => {
       const model = fakeModel([declineReply()]);
       const app = await startApp(t, {
         model,
+        // DAILY_CAP=300, as for a launch day.
         cap: {
+          limit: 300,
           reserve: () =>
             Promise.resolve({ reserved: false, retryAfter: 7_200 }),
         },
@@ -226,7 +228,7 @@ describe("HTTP API", () => {
         error: {
           code: "daily_cap",
           message:
-            "DashGen has answered its 150 questions for today. Ask again after midnight UTC.",
+            "DashGen has answered its 300 questions for today. Ask again after midnight UTC.",
         },
       });
       // A run would have asked the model by now.
@@ -239,6 +241,7 @@ describe("HTTP API", () => {
       const app = await startApp(t, {
         model,
         cap: {
+          limit: 150,
           reserve: () => Promise.reject(new Error("connect ECONNREFUSED")),
         },
       });
@@ -265,6 +268,7 @@ describe("HTTP API", () => {
       let reserved = 0;
       const app = await startApp(t, {
         cap: {
+          limit: 150,
           reserve: () => {
             reserved += 1;
             return Promise.resolve({ reserved: true });

@@ -89,6 +89,20 @@ describe("loadConfig", () => {
   });
 });
 
+describe("loadConfig's daily cap", () => {
+  it("defaults to 150 questions a day, and takes only a whole number above 0", () => {
+    assert.equal(loadConfig(VALID_ENV).dailyCap, 150);
+    assert.equal(loadConfig({ ...VALID_ENV, DAILY_CAP: "300" }).dailyCap, 300);
+    for (const typo of ["0", "-5", "1.5", "lots", ""]) {
+      assert.throws(
+        () => loadConfig({ ...VALID_ENV, DAILY_CAP: typo }),
+        /DAILY_CAP/,
+        typo,
+      );
+    }
+  });
+});
+
 describe("loadDynamoEndpoint", () => {
   it("defaults to DynamoDB Local on this machine, and rejects what isn't an HTTP address", () => {
     assert.equal(loadDynamoEndpoint({}), "http://localhost:8000");

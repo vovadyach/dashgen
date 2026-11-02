@@ -63,10 +63,10 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] The same for database errors: one retry, then `unavailable`
 - [x] [Daily cap](design.md#the-daily-cap) of 150 questions, counted in DynamoDB, with DynamoDB Local in Docker Compose ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md))
 - [x] A friendly message when the daily cap is hit
-- [ ] A $20 monthly spend cap on the Gemini project, noted in the runbook
+- [ ] A $20 monthly spend cap on the Gemini project, noted in the [runbook](runbooks/costs.md)
 - [x] Model name in config
 - [x] Tokens, cost and latency recorded for every run, with `GEMINI_MODEL` limited to models whose prices the backend knows
-- [ ] Cost per day and per question read from `runs`
+- [x] Cost per day and per question read from `runs`: `npm run cost`
 
 **Done when:** a vague question gets a clarifying question back, at the daily cap the backend stops calling Gemini, and every run's cost is recorded.
 

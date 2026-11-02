@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { formatCosts } from "../../src/runs/cost.ts";
 import { createRunStore } from "../../src/runs/live.ts";
 import { recordingLogger } from "../helpers/logger.ts";
 
@@ -81,5 +82,26 @@ describe("createRunStore", () => {
     const store = createRunStore<string>({ log: recordingLogger().log });
 
     assert.equal(store.get("r9"), undefined);
+  });
+});
+
+describe("formatCosts", () => {
+  it("lists each day as it comes, with its cost per question, and a total under them", () => {
+    assert.equal(
+      formatCosts([
+        { day: "2026-11-02", questions: 42, costUsd: 0.4637 },
+        { day: "2026-11-01", questions: 3, costUsd: 0.0129 },
+      ]),
+      [
+        "Day (UTC)    Questions      Cost   Per question",
+        "2026-11-02          42   $0.4637        $0.0110",
+        "2026-11-01           3   $0.0129        $0.0043",
+        "Total               45   $0.4766        $0.0106",
+      ].join("\n"),
+    );
+  });
+
+  it("says so when there are no runs yet", () => {
+    assert.equal(formatCosts([]), "No runs yet.");
   });
 });

@@ -5,7 +5,7 @@ import { after, before, describe, it } from "node:test";
 import { eq } from "drizzle-orm";
 
 import { isRetryable } from "../../src/db.ts";
-import { type NewRun, saveRun } from "../../src/runs/index.ts";
+import { costByDay, type NewRun, saveRun } from "../../src/runs/index.ts";
 import { runs } from "../../src/runs/schema.ts";
 import { QUESTION } from "../fixtures/agent.ts";
 import { createTestDb, type TestDb, unreachableDb } from "../helpers/db.ts";
@@ -113,5 +113,50 @@ describe("runs table", () => {
     // @ts-expect-error The run's ID is required.
     const run: NewRun = { ...finishedRun(), id: undefined };
     assert.equal(run.id, undefined);
+  });
+});
+
+describe("costByDay", () => {
+  it("adds up each UTC day's questions and cost, newest day first", async () => {
+    // Long ago, so the runs other tests save today stay out of it.
+    const ranAt = (createdAt: string, costUsd: string) => ({
+      ...finishedRun(),
+      createdAt: new Date(createdAt),
+      costUsd,
+    });
+    await db()
+      .insert(runs)
+      .values([
+        ranAt("2020-01-01T08:00:00Z", "0.004000"),
+        ranAt("2020-01-01T23:59:59Z", "0.006000"),
+        // A second later is the next day, in UTC.
+        ranAt("2020-01-02T00:00:00Z", "0.010000"),
+      ]);
+
+    const days = (await costByDay(db())).filter((day) =>
+      day.day.startsWith("2020-"),
+    );
+
+    assert.deepEqual(days, [
+      { day: "2020-01-02", questions: 1, costUsd: 0.01 },
+      { day: "2020-01-01", questions: 2, costUsd: 0.01 },
+    ]);
+  });
+
+  it("tries the read once more when the database can't be reached, then gives up", async () => {
+    const { log, lines } = recordingLogger();
+    const down = unreachableDb(log);
+    try {
+      await assert.rejects(
+        costByDay(down, { log, retryDelayMs: () => 0 }),
+        (error) => isRetryable(error),
+      );
+    } finally {
+      await down.$client.end();
+    }
+    assert.deepEqual(
+      lines.filter((line) => line.level === "warn").map((line) => line.msg),
+      ["database call failed, retrying"],
+    );
   });
 });

@@ -16,6 +16,7 @@
     "dev:frontend": "npm run dev --workspace frontend",
     "db:migrate": "npm run db:migrate --workspace backend",
     "db:seed": "npm run db:seed --workspace backend",
+    "cost": "npm run cost --workspace backend",
     "gemini:check": "npm run gemini:check --workspace backend --",
     "format": "prettier --write --ignore-unknown \"*.{js,json}\" \"{backend,frontend,packages/*}/{src,test}/**\" \"{backend,frontend,packages/*}/*.{js,json,ts,html}\" \".claude/hooks/*.{ts,json}\"",
     "format:check": "prettier --check --ignore-unknown \"*.{js,json}\" \"{backend,frontend,packages/*}/{src,test}/**\" \"{backend,frontend,packages/*}/*.{js,json,ts,html}\" \".claude/hooks/*.{ts,json}\"",
