@@ -586,6 +586,11 @@ describe("the page", () => {
   it.each([
     ["invalid_question", 422, "The question must be 1 to 300 characters."],
     ["rate_limited", 429, "Rate limit exceeded, try again later."],
+    [
+      "daily_cap",
+      503,
+      "DashGen has answered its 150 questions for today. Ask again after midnight UTC.",
+    ],
   ])(
     "offers no Try again after %s, which would fail the same way",
     async (code, status, message) => {

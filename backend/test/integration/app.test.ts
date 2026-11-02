@@ -203,6 +203,85 @@ describe("HTTP API", () => {
       // At $0.25 a million input tokens, and $1.50 a million output.
       assert.equal(run.costUsd, "0.001770");
     });
+
+    it("answers 503 with Retry-After once today's questions are used up, and starts no run", async (t) => {
+      const model = fakeModel([declineReply()]);
+      const app = await startApp(t, {
+        model,
+        cap: {
+          reserve: () =>
+            Promise.resolve({ reserved: false, retryAfter: 7_200 }),
+        },
+      });
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/ask",
+        payload: { question: QUESTION },
+      });
+
+      assert.equal(response.statusCode, 503);
+      assert.equal(response.headers["retry-after"], "7200");
+      assert.deepEqual(response.json(), {
+        error: {
+          code: "daily_cap",
+          message:
+            "DashGen has answered its 150 questions for today. Ask again after midnight UTC.",
+        },
+      });
+      // A run would have asked the model by now.
+      await sleep(20);
+      assert.equal(model.requests.length, 0);
+    });
+
+    it("answers 503, and calls no model, when today's count can't be checked", async (t) => {
+      const model = fakeModel([declineReply()]);
+      const app = await startApp(t, {
+        model,
+        cap: {
+          reserve: () => Promise.reject(new Error("connect ECONNREFUSED")),
+        },
+      });
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/ask",
+        payload: { question: QUESTION },
+      });
+
+      assert.equal(response.statusCode, 503);
+      assert.deepEqual(response.json(), {
+        error: {
+          code: "unavailable",
+          message:
+            "DashGen can't take questions right now. Try again in a moment.",
+        },
+      });
+      await sleep(20);
+      assert.equal(model.requests.length, 0);
+    });
+
+    it("takes one of today's questions for each run, and none for an invalid question", async (t) => {
+      let reserved = 0;
+      const app = await startApp(t, {
+        cap: {
+          reserve: () => {
+            reserved += 1;
+            return Promise.resolve({ reserved: true });
+          },
+        },
+      });
+
+      await ask(app);
+      const invalid = await app.inject({
+        method: "POST",
+        url: "/api/ask",
+        payload: { question: " " },
+      });
+
+      assert.equal(invalid.statusCode, 422);
+      assert.equal(reserved, 1);
+    });
   });
 
   describe("GET /api/runs/:id/events", () => {

@@ -1,5 +1,6 @@
-# Tests only: a throwaway Postgres on port 5433, with its data in memory.
-# scripts/check.sh starts it, and each test file creates its own database in it.
+# Tests only: a throwaway Postgres on port 5433 and DynamoDB Local on 8001,
+# with their data in memory. scripts/check.sh starts them, and each test file
+# creates its own database or table in them.
 # The password isn't a secret: it guards nothing but test data, reachable only
 # from this machine.
 name: dashgen-test
@@ -15,6 +16,21 @@ services:
       - /var/lib/postgresql
     healthcheck:
       test: ["CMD", "pg_isready", "--host=127.0.0.1", "--username=postgres"]
+      interval: 1s
+      timeout: 5s
+      retries: 30
+
+  # The daily cap's count, in DynamoDB Local. Each test file makes its own table.
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.2
+    # -sharedDb: one set of tables, whatever keys and region a client uses.
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    ports:
+      - "127.0.0.1:8001:8000"
+    healthcheck:
+      # Any HTTP answer, even DynamoDB's 400 for a request with no keys,
+      # means it's listening.
+      test: ["CMD", "curl", "--silent", "--output", "/dev/null", "http://localhost:8000"]
       interval: 1s
       timeout: 5s
       retries: 30

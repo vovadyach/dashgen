@@ -16,6 +16,7 @@ import {
   runAgent,
   type Usage,
 } from "../agent/index.ts";
+import { type DailyCap, DAILY_CAP, type Reservation } from "../cap/index.ts";
 import type { Price } from "../config.ts";
 import { withoutQueryValues } from "../db.ts";
 import { ApiError, INTERNAL_ERROR } from "../errors.ts";
@@ -23,10 +24,18 @@ import type { Logger } from "../logger.ts";
 import type { NewRun, RunStore } from "../runs/index.ts";
 import { RunParams, StreamedEvent } from "./types.ts";
 
-/** What runs need: Gemini and the database on the server, fakes in tests. */
+// What visitors read when their question can't start a run.
+const MESSAGES = {
+  capReached: `DashGen has answered its ${String(DAILY_CAP)} questions for today. Ask again after midnight UTC.`,
+  capDown: "DashGen can't take questions right now. Try again in a moment.",
+};
+
+/** What runs need: Gemini, the database and the daily cap on the server, fakes in tests. */
 export interface RunDeps extends Pick<RunOptions, "model" | "metrics"> {
   /** Saves a finished run to the runs table, logging with the run's own logger. */
   save: (run: NewRun, log: Logger) => Promise<void>;
+  /** Today's count of questions, checked before each run starts. */
+  cap: DailyCap;
 }
 
 export interface RunRoutesOptions extends RunDeps {
@@ -41,7 +50,7 @@ export interface RunRoutesOptions extends RunDeps {
  */
 export const runRoutes: FastifyPluginCallbackZod<RunRoutesOptions> = (
   app,
-  { store, price, model, metrics, save },
+  { store, price, model, metrics, save, cap },
   done,
 ) => {
   // Runs still going. Closing the app waits for them, so each is saved before
@@ -50,6 +59,20 @@ export const runRoutes: FastifyPluginCallbackZod<RunRoutesOptions> = (
   app.addHook("onClose", async () => {
     await Promise.all(running);
   });
+
+  /**
+   * Takes one of today's questions. When DynamoDB doesn't answer, the
+   * question gets a 503 and no run, so Gemini isn't called: a lost answer is
+   * cheaper than an unchecked bill (docs/design.md, the daily cap).
+   */
+  async function reserve(log: Logger): Promise<Reservation> {
+    try {
+      return await cap.reserve();
+    } catch (err) {
+      log.error({ err }, "daily cap unavailable");
+      throw new ApiError(503, "unavailable", MESSAGES.capDown);
+    }
+  }
 
   /** Runs the agent in the background: its events go to the store, and the result to the runs table. */
   async function run(id: string, question: string, log: Logger) {
@@ -87,10 +110,22 @@ export const runRoutes: FastifyPluginCallbackZod<RunRoutesOptions> = (
       schema: {
         summary: "Starts a run that answers the question",
         body: AskRequest,
-        response: { 202: AskResponse, 422: ErrorBody, 429: ErrorBody },
+        response: {
+          202: AskResponse,
+          422: ErrorBody,
+          429: ErrorBody,
+          503: ErrorBody.describe(
+            "Today's questions are used up (`daily_cap`, with `Retry-After`), or they can't be counted (`unavailable`).",
+          ),
+        },
       },
     },
-    (request, reply) => {
+    async (request, reply) => {
+      const reservation = await reserve(request.log);
+      if (!reservation.reserved) {
+        void reply.header("retry-after", String(reservation.retryAfter));
+        throw new ApiError(503, "daily_cap", MESSAGES.capReached);
+      }
       const runId = randomUUIDv7();
       store.start(runId);
       const going = run(
