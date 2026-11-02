@@ -5,8 +5,8 @@
 help:
 	@echo "DashGen — available commands:"
 	@echo "  make install    Install the packages for every TypeScript workspace"
-	@echo "  make db         Start Postgres in Docker (localhost:5432)"
-	@echo "  make dev        Start Postgres, the backend (:3000) and the page (:5173)"
+	@echo "  make db         Start Postgres (localhost:5432) and DynamoDB Local (:8000) in Docker"
+	@echo "  make dev        Start them, the backend (:3000) and the page (:5173)"
 	@echo "  make fmt        Format the TypeScript code"
 	@echo "  make check      Run every formatter, linter, type checker and test"
 	@echo "  make clean      Remove installed packages"
@@ -17,12 +17,12 @@ install:
 	npm ci
 
 db:
-	docker compose up --detach --wait postgres
+	docker compose up --detach --wait postgres dynamodb
 
 # The backend and the page together in this terminal, each restarting on
 # changes. Ctrl+C stops both, and so does either one stopping by itself;
-# Postgres keeps running. `kill 0` ends this recipe's whole process group,
-# make included, so make then reports "Terminated".
+# Postgres and DynamoDB Local keep running. `kill 0` ends this recipe's whole
+# process group, make included, so make then reports "Terminated".
 dev: db
 	@trap 'kill 0' EXIT; \
 	npm run dev & back=$$!; \

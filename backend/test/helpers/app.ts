@@ -9,7 +9,8 @@ import { decliningModel } from "./model.ts";
 /**
  * Builds the backend with test settings, and closes it when the test ends.
  * Runs get fakes unless the test passes its own: a model that declines every
- * question, a save that keeps nothing, and no database to close.
+ * question, a save that keeps nothing, a daily cap that's never reached, and
+ * no database to close.
  */
 export async function startApp(
   t: TestContext,
@@ -20,6 +21,7 @@ export async function startApp(
       model: decliningModel(),
       metrics: () => fakeMetrics(),
       save: () => Promise.resolve(),
+      cap: { reserve: () => Promise.resolve({ reserved: true }) },
       ...runs,
     }),
   });

@@ -61,8 +61,8 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] `clarify` with clickable choices when the question is vague, and `decline` with example questions when it's off-topic
 - [x] Gemini errors classified as retryable or not; a retryable one gets one retry, after a short random wait
 - [x] The same for database errors: one retry, then `unavailable`
-- [ ] [Daily cap](design.md#the-daily-cap) of 150 questions, counted in DynamoDB, with DynamoDB Local in Docker Compose
-- [ ] A friendly message when the daily cap is hit, with a link to the demo video
+- [x] [Daily cap](design.md#the-daily-cap) of 150 questions, counted in DynamoDB, with DynamoDB Local in Docker Compose ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md))
+- [x] A friendly message when the daily cap is hit
 - [ ] A $20 monthly spend cap on the Gemini project, noted in the runbook
 - [x] Model name in config
 - [x] Tokens, cost and latency recorded for every run, with `GEMINI_MODEL` limited to models whose prices the backend knows
@@ -80,6 +80,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] No database backups: every deploy reseeds the data, and the `runs` history starts over
 - [ ] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
 - [ ] VPC with public and private subnets, a NAT gateway, and a gateway endpoint for DynamoDB
+- [ ] The daily cap's table in the always-on stack, with TTL on `expires_at`, reached with the task's role instead of DynamoDB Local's fake keys ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md))
 - [x] The backend's routes under `/api` (`/api/ask`, `/api/runs/:id/events`, `/api/health`), moved in step 3 so the page calls the same paths locally
 - [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding the `Last-Event-ID` header
 - [ ] A CloudFront Function and key-value store that send `/api/*` to the running session, or answer 503 `{"status": "offline"}` between sessions, and a `make down` that drains the API before `terraform destroy`
@@ -133,6 +134,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 - [ ] Full stack redeployed
 - [ ] Demo video
+- [ ] The daily cap's message links to the demo video
 - [ ] README for engineers: architecture, real numbers (eval accuracy, cost per question, latency) and a "One thing I got wrong" section
 - [ ] Stack torn down
 

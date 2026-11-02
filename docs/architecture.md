@@ -9,7 +9,8 @@ Browser ──▶ Frontend ──── /api ──▶ Backend ─────�
            (React page,            (Fastify)                (dashgen database: services, metrics, points, runs)
             Vite on :5173)           ├── agent ───────────▶ Gemini
                                      ├── metrics module ──▶ read-only queries
-                                     └── runs module ─────▶ one row per finished run
+                                     ├── runs module ─────▶ one row per finished run
+                                     └── cap module ──────▶ DynamoDB Local (today's count of questions)
 ```
 
 - **Frontend** (`frontend/`): the React page. It has a question box with example questions to click, the agent's steps as they stream in, and the chart, which AG Charts draws ([ADR-0012](decisions/0012-shadcn-and-ag-charts.md)), with a data table under it. Stop, or Esc, stops watching a question; the run still finishes and is saved. A chart can be pinned to the watchlist, saved in the browser with its numbers; copied as a link that carries the chart ([ADR-0013](decisions/0013-share-links-carry-the-chart.md)); or downloaded as a PNG. Pins and links open with no call to the backend. Locally, Vite's dev server forwards `/api` to the backend, the paths CloudFront will forward on AWS.
@@ -17,7 +18,9 @@ Browser ──▶ Frontend ──── /api ──▶ Backend ─────�
 - **The `metrics` module** (`backend/src/metrics/`): `listServices()` and `query()` over the seeded data. The agent's tools call it.
 - **The `agent` module** (`backend/src/agent/`): the [five tools](design.md#the-agents-tools), the Gemini adapter, and `runAgent`, the loop that answers a question with them within [its limits](design.md#the-daily-cap) ([ADR-0010](decisions/0010-agent-loop.md)). `POST /api/ask` runs it for each question. `npm run gemini:check` tries the adapter with two real requests.
 - **The `runs` module** (`backend/src/runs/`): each run's events in memory, for its stream, and `saveRun()`, which keeps each finished run in the `runs` table, with its cost.
+- **The `cap` module** (`backend/src/cap/`): the [daily cap](design.md#the-daily-cap). `POST /api/ask` takes one of today's 150 questions with one conditional write to DynamoDB before it starts a run ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md)).
 - **Postgres** runs in Docker Compose (`make db`), with one `dashgen` database and user. The tables come from Drizzle migrations, and the data from the seed.
+- **DynamoDB Local** runs in Docker Compose too (`make db`, port 8000), in memory, so a restart starts the count over. The backend makes its table when it starts. Its client uses fake keys, so it can't reach a real AWS account.
 
 How a question will become a chart is drawn in [design.md](design.md#one-question-step-by-step).
 
@@ -35,6 +38,8 @@ Every response carries an `x-request-id` header: a UUIDv7, which also appears in
 |---|---|---|
 | 422 | `invalid_question` | `question` is missing, blank, over 300 characters, or has a NUL character |
 | 429 | `rate_limited` | an IP's 11th request in a minute, counted from its first, with `Retry-After` |
+| 503 | `daily_cap` | today's 150 questions are used up, with `Retry-After`: the seconds until midnight UTC |
+| 503 | `unavailable` | DynamoDB can't count the question, so no run starts |
 | 400 | `bad_request` | the body isn't valid JSON, or Fastify rejects the request |
 | 404 | `not_found` | an unknown route |
 | 500 | `internal_error` | an unexpected failure |
@@ -59,18 +64,19 @@ The tables are in [design.md](design.md#the-metrics-tables), and the module's re
 | `npm run db:seed` | Replaces the sample data with 30 days of hourly points ending this hour, in one transaction |
 | `npm run db:generate --workspace backend -- --name <change>` | After a schema change: writes the next SQL migration, to commit with it. Never `npx drizzle-kit`, which reads `backend/.env` |
 
-Database tests run against a separate throwaway Postgres on port 5433 (`compose.test.yaml`), which `make check` starts. Each test file creates its own database there and drops it afterwards. To use another Postgres, 18 or later since the migrations use its `uuidv7()`, set `TEST_DATABASE_URL` in the shell to its admin URL.
+Database tests run against a separate throwaway Postgres on port 5433, and DynamoDB Local on 8001 (`compose.test.yaml`), which `make check` starts. Each test file creates its own database or table there and drops it afterwards. To use another Postgres, 18 or later since the migrations use its `uuidv7()`, set `TEST_DATABASE_URL` in the shell to its admin URL, and `TEST_DYNAMODB_ENDPOINT` for another DynamoDB Local.
 
 ## Configuration
 
 | Where | Settings |
 |---|---|
-| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed` and `gemini:check` | `GEMINI_API_KEY`, `GEMINI_MODEL` (`gemini-3.1-flash-lite`, the default, or `gemini-3.5-flash-lite`: the models DashGen has prices for), `ALLOWED_ORIGINS`, `DATABASE_URL`, `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
+| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed` and `gemini:check` | `GEMINI_API_KEY`, `GEMINI_MODEL` (`gemini-3.1-flash-lite`, the default, or `gemini-3.5-flash-lite`: the models DashGen has prices for), `ALLOWED_ORIGINS`, `DATABASE_URL`, `DYNAMODB_ENDPOINT` (`http://localhost:8000`, the default), `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
 | `.env` at the root (from `.env.example`), read by Docker Compose | `POSTGRES_PASSWORD`, `DASHGEN_DB_PASSWORD` |
 
 ## Known limits
 
 - **Run events live in memory,** so a restart loses them, and their streams answer 404 `run_not_found`. The runs themselves are saved in the `runs` table: closing the backend waits for the ones in progress.
-- **The rate limit is per process,** in memory, so a restart resets it. Step 4's [daily cap](design.md#the-daily-cap) is shared.
+- **The rate limit is per process,** in memory, so a restart resets it. The [daily cap](design.md#the-daily-cap) is shared.
+- **The daily cap counts in DynamoDB Local,** which keeps its data in memory. The real table, on AWS, comes in step 5.
 - **Behind a load balancer,** every request would come from its IP. Step 5 takes the visitor's IP from CloudFront instead ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
 - **Incidents in the seed move with the day it runs,** so "this week" always has one to find. The rest of an hour's value is the same whichever day the seed runs.

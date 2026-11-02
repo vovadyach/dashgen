@@ -243,8 +243,11 @@ sequenceDiagram
         B-->>F: HTTP 429, rate_limited
     end
     B->>C: reserve one of today's questions
-    break the cap is reached, or DynamoDB can't answer (fail closed)
-        B-->>F: HTTP 503, daily_cap, and Gemini is never called
+    break the cap is reached
+        B-->>F: HTTP 503, daily_cap, with Retry-After, and Gemini is never called
+    end
+    break DynamoDB can't answer (fail closed)
+        B-->>F: HTTP 503, unavailable, and Gemini is never called
     end
     B-->>F: runId
     F->>B: GET /api/runs/:runId/events: from here the stream is open, with HTTP 200
@@ -415,25 +418,30 @@ At the prices of `gemini-3.1-flash-lite` ($0.25 per million input tokens and $1.
 
 **The cap is 150 questions a day,** so Gemini costs at most about $1.60 a day. A month with ten session days comes to about $16, which leaves room for AWS's ~$5 within the $25 budget. A busier day gets the cap's message instead of charts.
 
-**The count lives in the always-on stack.** `make down` destroys the session's database, so a count kept in Postgres would start over with every session, and two sessions on one day would get two days' worth. Instead, a DynamoDB table holds one item per UTC day, and one conditional write reserves a question:
+**The count lives in the always-on stack.** `make down` destroys the session's database, so a count kept in Postgres would start over with every session, and two sessions on one day would get two days' worth. Instead, a DynamoDB table holds one item per UTC day, and one conditional write reserves a question ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md), `backend/src/cap/`):
 
 ```ts
-await dynamo.send(
-  new UpdateCommand({
-    TableName: tableName,
-    Key: { day: "2026-10-27" }, // today, in UTC
+await client.send(
+  new UpdateItemCommand({
+    TableName: "dashgen-daily-cap",
+    Key: { day: { S: "2026-10-27" } }, // today, in UTC
     UpdateExpression: "ADD used :one SET expires_at = :expires",
     ConditionExpression: "attribute_not_exists(used) OR used < :cap",
-    ExpressionAttributeValues: { ":one": 1, ":cap": 150, ":expires": aMonthFromNow },
+    ExpressionAttributeValues: {
+      ":one": { N: "1" },
+      ":cap": { N: "150" },
+      ":expires": { N: String(aMonthFromNow) }, // in seconds
+    },
   }),
 );
 ```
 
-The day's first question creates the item, and later ones add 1 only while it's under the cap. DynamoDB checks the condition and makes the change as one step, so two requests can't both take the last question, and every backend task shares the count. A failed condition means the cap is reached. DynamoDB deletes old days by itself some time after `expires_at`.
+The day's first question creates the item, and later ones add 1 only while it's under the cap. DynamoDB checks the condition and makes the change as one step, so two requests can't both take the last question, and every backend task shares the count. A failed condition means the cap is reached: the question gets "DashGen has answered its 150 questions for today. Ask again after midnight UTC.", with `Retry-After` in seconds until then. With TTL on for `expires_at`, DynamoDB deletes old days by itself some time after it.
 
-- **Fail closed:** if DynamoDB doesn't answer, Gemini isn't called. A lost answer is cheaper than an unchecked bill.
+- **Fail closed:** if DynamoDB doesn't answer, the question gets a 503 `unavailable`, and Gemini isn't called. A lost answer is cheaper than an unchecked bill.
 - **A reservation is never given back,** even when the run fails, because a failed run may already have spent tokens.
-- **The same code runs everywhere:** locally, DynamoDB Local runs in Docker Compose. On AWS the table costs a fraction of a cent a month.
+- **The write gets no retry,** because it adds 1: a second try after a lost reply would count one question twice. A lost reply refuses the question instead, and its place is lost for the day. Each try gives up after 2 seconds, however far its reply has come.
+- **The same code runs everywhere:** locally, DynamoDB Local runs in Docker Compose, in memory, so the backend makes its table when it starts. On AWS the table costs a fraction of a cent a month.
 
 **Gemini's own spend cap is the last line.** The Gemini project gets a $20 monthly spend cap in AI Studio. It also covers what the app's cap can't see, like evals or a bug in the cap itself. Google's billing data can lag about 10 minutes, so it isn't exact.
 
@@ -530,9 +538,9 @@ Every error carries our own code and a message that's safe to show visitors. Whe
 |---|---|---|
 | `invalid_question` | `POST /api/ask` fails, HTTP 422 | missing, empty, over 300 characters, or with a NUL character, which Postgres can't store |
 | `rate_limited` | `POST /api/ask` fails, HTTP 429 | the 11th question in a minute from one IP |
-| `daily_cap` | `POST /api/ask` fails, HTTP 503 | the day's questions are used up |
+| `daily_cap` | `POST /api/ask` fails, HTTP 503, with `Retry-After` | the day's questions are used up |
 | `agent_failed` | `error` event in the stream; HTTP stays 200 | no chart, clarifying question or refusal within the [run's limits](#the-daily-cap) |
-| `unavailable` | `error` event in the stream | the database or Gemini fails, after one retry if retrying can help |
+| `unavailable` | `error` event in the stream, or `POST /api/ask` fails with HTTP 503 | the database or Gemini fails, after one retry if retrying can help. Before a run, DynamoDB can't count the question |
 | `timeout` | `error` event in the stream | the run took over 25 seconds |
 | `internal_error` | HTTP 500, or the stream's `error` event | a bug in DashGen. A run it ends is still saved, with its steps and tokens so far |
 | `run_not_found` | the stream fails, HTTP 404 | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page says the answer was interrupted and offers to ask again |

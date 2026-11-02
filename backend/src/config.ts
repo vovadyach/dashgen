@@ -126,6 +126,20 @@ export function loadDatabaseUrl(env: NodeJS.ProcessEnv = process.env): Secret {
   return new Secret(parseEnv(DatabaseEnv, env).DATABASE_URL);
 }
 
+const DynamoEnv = z.object({
+  // DynamoDB Local, which `make db` starts.
+  DYNAMODB_ENDPOINT: z
+    .url({ protocol: /^https?$/, hostname: /.+/ })
+    .default("http://localhost:8000"),
+});
+
+/** Reads `DYNAMODB_ENDPOINT`, where the daily cap keeps its count. */
+export function loadDynamoEndpoint(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return parseEnv(DynamoEnv, env).DYNAMODB_ENDPOINT;
+}
+
 const LogLevelEnv = z.object({ LOG_LEVEL: z.enum(LOG_LEVELS).default("info") });
 
 /** Reads `LOG_LEVEL` alone, for scripts that don't need the backend's other settings. */

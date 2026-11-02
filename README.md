@@ -61,8 +61,9 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 
 | Part | Tech | Today |
 |---|---|---|
-| Backend (`backend/`) | Node.js 24, Fastify, TypeScript, Zod | Takes a question, runs the agent, streams its steps over SSE and saves the run, with a per-IP rate limit ([API](docs/architecture.md#backend-api)) |
+| Backend (`backend/`) | Node.js 24, Fastify, TypeScript, Zod | Takes a question, runs the agent, streams its steps over SSE and saves the run, with a per-IP rate limit and a daily cap of 150 questions ([API](docs/architecture.md#backend-api)) |
 | Database | Postgres 18, Docker Compose | Runs locally: one `dashgen` database, with tables from Drizzle migrations |
+| Daily cap | DynamoDB Local, Docker Compose | Runs locally: today's count of questions ([why DynamoDB](docs/decisions/0014-daily-cap-in-dynamodb.md)) |
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
 | Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools), the Gemini adapter and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md)) |
 | Frontend (`frontend/`) | React, TypeScript, Vite, Tailwind, shadcn/ui, AG Charts, TanStack Query | Runs locally: the question box, the steps as they stream in, and the chart, with a data table, in light and dark themes. Charts can be pinned to a watchlist, shared as a link, or downloaded as a PNG |
@@ -70,11 +71,12 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 
 ## Running locally
 
-You'll need Node.js 24.16+, and Docker for Postgres.
+You'll need Node.js 24.16+, and Docker for Postgres and DynamoDB Local.
 
 ```bash
 make install                           # install every TypeScript package
 cp backend/.env.example backend/.env   # asking a question needs a real GEMINI_API_KEY, and Postgres (below)
+make db                                # Postgres and DynamoDB Local, which the backend needs to start
 npm run dev                            # the backend on :3000
 npm run dev:frontend                   # the page on :5173, in a second terminal
 ```
@@ -83,22 +85,22 @@ Open http://localhost:5173 to ask a question, or http://localhost:3000/docs to t
 
 With a real `GEMINI_API_KEY` in `backend/.env` (free from [Google AI Studio](https://aistudio.google.com)), `npm run gemini:check` sends Gemini two test requests and prints its replies, to show the key and the model work. `npm run gemini:check -- --json` also prints each reply's JSON, exactly as Gemini sent it.
 
-Postgres runs in Docker (Docker Desktop or [OrbStack](https://orbstack.dev)):
+Postgres and DynamoDB Local run in Docker (Docker Desktop or [OrbStack](https://orbstack.dev)):
 
 ```bash
 cp .env.example .env   # then replace each placeholder with a password
-make db                # Postgres on localhost:5432
+make db                # Postgres on localhost:5432, DynamoDB Local on :8000
 npm run db:migrate     # create the tables (set DATABASE_URL in backend/.env first)
 npm run db:seed        # 30 days of hourly sample data, ending this hour
 ```
 
-Once Postgres is set up, `make dev` runs everything in one terminal: Postgres, the backend and the page. Ctrl+C stops the backend and the page, and Postgres keeps running.
+Once Postgres is set up, `make dev` runs everything in one terminal: Postgres, DynamoDB Local, the backend and the page. Ctrl+C stops the backend and the page, and the two databases keep running. DynamoDB Local keeps the daily cap's count in memory, so restarting it starts the count over, and the backend makes its table again when it starts.
 
-`docker compose down` stops it, and `docker compose down --volumes` also deletes its data. Postgres runs `postgres/init.sh`, which creates the users and the database, only the first time it starts, while its volume is empty. So after changing the passwords in `.env` or the init script, recreate the volume: run `docker compose down --volumes`, then `make db`. Local data is disposable, because the seed recreates it.
+`docker compose down` stops them, and `docker compose down --volumes` also deletes Postgres's data. Postgres runs `postgres/init.sh`, which creates the users and the database, only the first time it starts, while its volume is empty. So after changing the passwords in `.env` or the init script, recreate the volume: run `docker compose down --volumes`, then `make db`. Local data is disposable, because the seed recreates it.
 
 > **Upgrading from the two-database setup** (`metrics` and `gateway`): `make db` still reports healthy, but the `dashgen` database doesn't exist. Replace the two old passwords in `.env` with `DASHGEN_DB_PASSWORD`, then recreate the volume as above.
 
-Run every formatter, linter, type checker and test with `make check`, and fix formatting with `make fmt`. Docker must be running: database tests use a throwaway Postgres on port 5433, which `make check` starts. GitHub Actions runs the same checks on every pull request and every push to `main`.
+Run every formatter, linter, type checker and test with `make check`, and fix formatting with `make fmt`. Docker must be running: database tests use a throwaway Postgres on port 5433 and DynamoDB Local on 8001, which `make check` starts. GitHub Actions runs the same checks on every pull request and every push to `main`.
 
 ## Repo layout
 
@@ -145,6 +147,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [11. REST and SSE between the React app and the backend](docs/decisions/0011-rest-and-sse.md)
 - [12. shadcn/ui and AG Charts for the page](docs/decisions/0012-shadcn-and-ag-charts.md)
 - [13. Share links carry the chart](docs/decisions/0013-share-links-carry-the-chart.md)
+- [14. The daily cap counts in DynamoDB](docs/decisions/0014-daily-cap-in-dynamodb.md)
 
 ## License
 

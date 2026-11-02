@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { inspect } from "node:util";
 
-import { loadConfig, loadGeminiSettings } from "../../src/config.ts";
+import {
+  loadConfig,
+  loadDynamoEndpoint,
+  loadGeminiSettings,
+} from "../../src/config.ts";
 import { VALID_ENV } from "../fixtures/config.ts";
 
 describe("loadConfig", () => {
@@ -82,6 +86,20 @@ describe("loadConfig", () => {
         /Use gemini-3\.1-flash-lite or gemini-3\.5-flash-lite[\s\S]*at GEMINI_MODEL/,
       );
     }
+  });
+});
+
+describe("loadDynamoEndpoint", () => {
+  it("defaults to DynamoDB Local on this machine, and rejects what isn't an HTTP address", () => {
+    assert.equal(loadDynamoEndpoint({}), "http://localhost:8000");
+    assert.equal(
+      loadDynamoEndpoint({ DYNAMODB_ENDPOINT: "http://dynamodb:8000" }),
+      "http://dynamodb:8000",
+    );
+    assert.throws(
+      () => loadDynamoEndpoint({ DYNAMODB_ENDPOINT: "localhost:8000" }),
+      /DYNAMODB_ENDPOINT/,
+    );
   });
 });
 

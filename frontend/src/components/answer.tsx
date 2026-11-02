@@ -513,6 +513,7 @@ function Choices({
 const NO_RETRY: ReadonlySet<string> = new Set([
   "invalid_question",
   "rate_limited",
+  "daily_cap",
 ] satisfies ApiErrorCode[]);
 
 function Failed({

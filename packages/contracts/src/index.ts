@@ -54,6 +54,8 @@ export const ApiErrorCode = z.enum([
   "invalid_question",
   "not_found",
   "rate_limited",
+  "daily_cap",
+  "unavailable",
   "run_not_found",
   "internal_error",
 ]);
