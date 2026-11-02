@@ -103,6 +103,26 @@ describe("loadConfig's daily cap", () => {
   });
 });
 
+describe("loadConfig's address", () => {
+  it("listens on localhost:3000 by default, and takes a port only from 1 to 65535", () => {
+    const { host, port } = loadConfig(VALID_ENV);
+    assert.deepEqual([host, port], ["localhost", 3000]);
+    const container = loadConfig({
+      ...VALID_ENV,
+      HOST: "0.0.0.0",
+      PORT: "8080",
+    });
+    assert.deepEqual([container.host, container.port], ["0.0.0.0", 8080]);
+    for (const typo of ["0", "70000", "http", ""]) {
+      assert.throws(
+        () => loadConfig({ ...VALID_ENV, PORT: typo }),
+        /PORT/,
+        typo,
+      );
+    }
+  });
+});
+
 describe("loadDynamoEndpoint", () => {
   it("defaults to DynamoDB Local on this machine, and rejects what isn't an HTTP address", () => {
     assert.equal(loadDynamoEndpoint({}), "http://localhost:8000");

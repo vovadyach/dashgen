@@ -1,0 +1,11 @@
+# What the backend's image may take from the repo, and nothing else: no .env
+# file, node_modules, tests or docs can reach it, whatever gets added later.
+*
+!package.json
+!package-lock.json
+!backend/package.json
+!backend/src
+!backend/drizzle
+!frontend/package.json
+!packages/contracts/package.json
+!packages/contracts/src

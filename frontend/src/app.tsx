@@ -1,8 +1,9 @@
 import { SAMPLE_SERVICES } from "@dashgen/contracts";
-import { ChartNoAxesCombined, CircleAlert } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Answer, preloadChart } from "./components/answer.tsx";
+import { Logo } from "./components/logo.tsx";
 import {
   QuestionBox,
   type QuestionBoxHandle,
@@ -88,7 +89,7 @@ export function App() {
     <div className="min-h-dvh">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
         <p className="flex items-center gap-2 font-semibold tracking-tight">
-          <ChartNoAxesCombined className="size-5 text-primary" aria-hidden />
+          <Logo className="size-5 text-primary" />
           DashGen
         </p>
         <ThemeToggle />

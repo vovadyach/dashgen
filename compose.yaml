@@ -1,6 +1,14 @@
 # Local development. `make db` starts Postgres and DynamoDB Local. The
 # passwords come from .env, which `cp .env.example .env` creates.
+# `docker compose up` also runs the backend in its container, as AWS will.
 name: dashgen
+
+# The backend's image, from backend/Dockerfile, for the two services that use it.
+x-backend-image: &backend-image
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  image: dashgen-backend
 
 services:
   postgres:
@@ -41,6 +49,46 @@ services:
       interval: 1s
       timeout: 5s
       retries: 30
+
+  # Applies the migrations and the seed, then stops: on AWS, a one-off task
+  # will do the same before the backend starts (step 5).
+  migrate:
+    <<: *backend-image
+    command: ["sh", "-c", "node src/scripts/migrate.ts && node src/scripts/seed.ts"]
+    environment:
+      DATABASE_URL: postgres://dashgen:${DASHGEN_DB_PASSWORD:?copy .env.example to .env}@postgres:5432/dashgen
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The backend in its container, on :3000 like `npm run dev`, so stop that
+  # first. Its settings come from backend/.env, with the addresses changed to
+  # the other containers'. HOST and PORT stay the image's, whatever
+  # backend/.env sets for `npm run dev`, so the port below and the health
+  # check always reach it.
+  backend:
+    <<: *backend-image
+    env_file: backend/.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_URL: postgres://dashgen:${DASHGEN_DB_PASSWORD:?copy .env.example to .env}@postgres:5432/dashgen
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      dynamodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      # Every second while it starts, then every 30 seconds.
+      start_period: 30s
+      start_interval: 1s
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   postgres-data:
