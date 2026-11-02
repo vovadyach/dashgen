@@ -16,7 +16,7 @@ import {
   runAgent,
   type Usage,
 } from "../agent/index.ts";
-import { type DailyCap, DAILY_CAP, type Reservation } from "../cap/index.ts";
+import type { DailyCap, Reservation } from "../cap/index.ts";
 import type { Price } from "../config.ts";
 import { withoutQueryValues } from "../db.ts";
 import { ApiError, INTERNAL_ERROR } from "../errors.ts";
@@ -26,7 +26,8 @@ import { RunParams, StreamedEvent } from "./types.ts";
 
 // What visitors read when their question can't start a run.
 const MESSAGES = {
-  capReached: `DashGen has answered its ${String(DAILY_CAP)} questions for today. Ask again after midnight UTC.`,
+  capReached: (limit: number) =>
+    `DashGen has answered its ${String(limit)} questions for today. Ask again after midnight UTC.`,
   capDown: "DashGen can't take questions right now. Try again in a moment.",
 };
 
@@ -124,7 +125,7 @@ export const runRoutes: FastifyPluginCallbackZod<RunRoutesOptions> = (
       const reservation = await reserve(request.log);
       if (!reservation.reserved) {
         void reply.header("retry-after", String(reservation.retryAfter));
-        throw new ApiError(503, "daily_cap", MESSAGES.capReached);
+        throw new ApiError(503, "daily_cap", MESSAGES.capReached(cap.limit));
       }
       const runId = randomUUIDv7();
       store.start(runId);

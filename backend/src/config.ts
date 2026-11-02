@@ -29,6 +29,9 @@ export class Secret {
   }
 }
 
+/** Questions a day, for every visitor together, unless DAILY_CAP says otherwise (docs/design.md, the daily cap). */
+export const DEFAULT_DAILY_CAP = 150;
+
 /** Dollars per million tokens. */
 export interface Price {
   input: number;
@@ -63,6 +66,8 @@ const Env = z.object({
     )
     .pipe(z.array(z.string()).min(1)),
   LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
+  // A whole number above 0, so a typo can't switch the cap off.
+  DAILY_CAP: z.coerce.number().int().min(1).default(DEFAULT_DAILY_CAP),
 });
 
 /** Backend settings, read from environment variables. */
@@ -74,6 +79,8 @@ export interface Config {
   allowedOrigins: string[];
   // debug adds every SQL statement; info suits AWS.
   logLevel: LogLevel;
+  /** Questions a day, for every visitor together. */
+  dailyCap: number;
 }
 
 /** Parses `env` with `schema`, and throws an error naming every missing or invalid variable. */
@@ -92,16 +99,20 @@ function parseEnv<T extends z.ZodType>(
 
 /** Reads the backend's settings from `env`. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const { GEMINI_API_KEY, GEMINI_MODEL, ALLOWED_ORIGINS, LOG_LEVEL } = parseEnv(
-    Env,
-    env,
-  );
+  const {
+    GEMINI_API_KEY,
+    GEMINI_MODEL,
+    ALLOWED_ORIGINS,
+    LOG_LEVEL,
+    DAILY_CAP,
+  } = parseEnv(Env, env);
   return {
     geminiApiKey: new Secret(GEMINI_API_KEY),
     geminiModel: GEMINI_MODEL,
     geminiPrice: GEMINI_PRICES[GEMINI_MODEL],
     allowedOrigins: ALLOWED_ORIGINS,
     logLevel: LOG_LEVEL,
+    dailyCap: DAILY_CAP,
   };
 }
 

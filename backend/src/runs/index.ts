@@ -1,6 +1,7 @@
 import { type Db, type RetryOptions, retryOnce } from "../db.ts";
 import { runs } from "./schema.ts";
 
+export { costByDay, type DayCost, formatCosts } from "./cost.ts";
 export { createRunStore, type RunStore } from "./live.ts";
 
 /**

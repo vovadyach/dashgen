@@ -21,7 +21,7 @@ export async function startApp(
       model: decliningModel(),
       metrics: () => fakeMetrics(),
       save: () => Promise.resolve(),
-      cap: { reserve: () => Promise.resolve({ reserved: true }) },
+      cap: { limit: 150, reserve: () => Promise.resolve({ reserved: true }) },
       ...runs,
     }),
   });

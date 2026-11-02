@@ -416,7 +416,7 @@ The cap keeps a runaway day from becoming a runaway bill. That takes two things:
 
 At the prices of `gemini-3.1-flash-lite` ($0.25 per million input tokens and $1.50 per million output, in October 2026), that's about $0.006 of input and $0.005 of output, about $0.011 a question. The model is the `GEMINI_MODEL` setting, limited to models whose prices the backend knows, since it saves each run's cost: `gemini-3.5-flash-lite`, at $0.30 and $2.50, would make it $0.015.
 
-**The cap is 150 questions a day,** so Gemini costs at most about $1.60 a day. A month with ten session days comes to about $16, which leaves room for AWS's ~$5 within the $25 budget. A busier day gets the cap's message instead of charts.
+**The cap is 150 questions a day** by default, so Gemini costs at most about $1.60 a day. The `DAILY_CAP` setting changes it, as for a launch day ([runbook](runbooks/costs.md)). A month with ten session days comes to about $16, which leaves room for AWS's ~$5 within the $25 budget. A busier day gets the cap's message instead of charts.
 
 **The count lives in the always-on stack.** `make down` destroys the session's database, so a count kept in Postgres would start over with every session, and two sessions on one day would get two days' worth. Instead, a DynamoDB table holds one item per UTC day, and one conditional write reserves a question ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md), `backend/src/cap/`):
 
@@ -443,7 +443,7 @@ The day's first question creates the item, and later ones add 1 only while it's 
 - **The write gets no retry,** because it adds 1: a second try after a lost reply would count one question twice. A lost reply refuses the question instead, and its place is lost for the day. Each try gives up after 2 seconds, however far its reply has come.
 - **The same code runs everywhere:** locally, DynamoDB Local runs in Docker Compose, in memory, so the backend makes its table when it starts. On AWS the table costs a fraction of a cent a month.
 
-**Gemini's own spend cap is the last line.** The Gemini project gets a $20 monthly spend cap in AI Studio. It also covers what the app's cap can't see, like evals or a bug in the cap itself. Google's billing data can lag about 10 minutes, so it isn't exact.
+**Gemini's own spend cap is the last line.** The Gemini project gets a $20 monthly spend cap in AI Studio ([how](runbooks/costs.md)). It also covers what the app's cap can't see, like evals or a bug in the cap itself. Google's billing data can lag about 10 minutes, so it isn't exact.
 
 ### The metrics module
 

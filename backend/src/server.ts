@@ -37,7 +37,7 @@ const app = await buildApp(config, {
       metrics: (now, runLog, deadline) =>
         createMetrics(db, { now, log: runLog, signal: deadline }),
       save: (run, runLog) => saveRun(db, run, { log: runLog }),
-      cap: createDailyCap(dynamo),
+      cap: createDailyCap(dynamo, { limit: config.dailyCap }),
       close: async () => {
         await db.$client.end();
         dynamo.destroy();

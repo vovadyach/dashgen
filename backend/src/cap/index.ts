@@ -6,10 +6,8 @@ import {
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
 
+import { DEFAULT_DAILY_CAP } from "../config.ts";
 import { requestDeadline } from "../dynamo.ts";
-
-/** Questions a day, for every visitor together (docs/design.md, the daily cap). */
-export const DAILY_CAP = 150;
 
 /** The daily cap's table: an item per UTC day, with the questions it used. */
 export const CAP_TABLE = "dashgen-daily-cap";
@@ -27,6 +25,8 @@ export type Reservation =
 
 /** The daily cap: today's count of questions, kept outside the session's database. */
 export interface DailyCap {
+  /** Questions a day, for every visitor together. */
+  readonly limit: number;
   /**
    * Takes one of today's questions, before any work starts. It's never given
    * back, even when the run fails, since a failed run may already have spent
@@ -48,11 +48,12 @@ export function createDailyCap(
   client: DynamoDBClient,
   {
     table = CAP_TABLE,
-    limit = DAILY_CAP,
+    limit = DEFAULT_DAILY_CAP,
     now = () => new Date(),
   }: DailyCapOptions = {},
 ): DailyCap {
   return {
+    limit,
     async reserve() {
       const time = now();
       const seconds = Math.floor(time.getTime() / 1_000);
