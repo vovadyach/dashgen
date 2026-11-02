@@ -6,7 +6,7 @@ import {
 import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import type { Db } from "../db.ts";
+import { type Db, retryOnce } from "../db.ts";
 import { consoleLogger, type Logger } from "../logger.ts";
 import { metrics, points, services } from "./schema.ts";
 import { DAY_MS, HOUR_MS, startOfDay, startOfHour } from "./time.ts";
@@ -31,11 +31,20 @@ export interface MetricsOptions {
   /** The clock, so tests can fix it. */
   now?: () => Date;
   log?: Logger;
+  /** The wait before a read's second try, so tests can skip it. */
+  retryDelayMs?: () => number;
+  /** Aborts at the run's deadline: then a read gets no second try. */
+  signal?: AbortSignal;
 }
 
 export function createMetrics(
   db: Db,
-  { now = () => new Date(), log = consoleLogger() }: MetricsOptions = {},
+  {
+    now = () => new Date(),
+    log = consoleLogger(),
+    retryDelayMs,
+    signal,
+  }: MetricsOptions = {},
 ): Metrics {
   async function listServices(): Promise<ServiceCatalog> {
     const [serviceRows, metricRows] = await Promise.all([
@@ -175,5 +184,13 @@ export function createMetrics(
     };
   }
 
-  return { listServices, query };
+  // Reads are safe to repeat, so one that failed in a way trying again could
+  // fix gets one more try. A query the model got wrong fails at once.
+  const retried = <T>(read: () => Promise<T>) =>
+    retryOnce(read, { log, retryDelayMs, signal });
+
+  return {
+    listServices: () => retried(listServices),
+    query: (input) => retried(() => query(input)),
+  };
 }

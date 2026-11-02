@@ -12,6 +12,7 @@ import { withoutQueryValues } from "../db.ts";
 import { INTERNAL_ERROR } from "../errors.ts";
 import { consoleLogger, type Logger } from "../logger.ts";
 import type { Metrics } from "../metrics/index.ts";
+import { retryDelay } from "../shared/retry.ts";
 import { ModelError, ToolError } from "./errors.ts";
 import { instructions } from "./instructions.ts";
 import { createTools } from "./tools.ts";
@@ -56,10 +57,10 @@ export interface RunOptions {
   model: Model;
   /**
    * Makes this run's metrics module with the clock it's given (the run's
-   * start, fixed, so every query covers the same window, even seconds apart)
-   * and the run's logger.
+   * start, fixed, so every query covers the same window, even seconds apart),
+   * the run's logger, and its deadline, so a read's retry ends with the run.
    */
-  metrics: (now: () => Date, log: Logger) => Metrics;
+  metrics: (now: () => Date, log: Logger, deadline: AbortSignal) => Metrics;
   log?: Logger;
   /** Gets each event as it happens: a step per tool call, then how the run ended. */
   onEvent?: (event: RunEvent) => void;
@@ -70,9 +71,6 @@ export interface RunOptions {
   /** The wait before retrying a request, so tests can skip it. */
   retryDelayMs?: () => number;
 }
-
-/** Short and random, so retries from many runs don't all land at once. */
-const randomDelay = () => 500 + Math.random() * 1_000;
 
 /** About 4 characters a token: only to estimate the next request before Gemini counts it. */
 const estimateTokens = (value: unknown) =>
@@ -101,13 +99,13 @@ export async function runAgent(
     onEvent,
     now = () => new Date(),
     timeoutMs = RUN_LIMITS.ms,
-    retryDelayMs = randomDelay,
+    retryDelayMs = retryDelay,
   }: RunOptions,
 ): Promise<RunResult> {
   const started = performance.now();
   const startedAt = now();
-  const tools = createTools(metrics(() => startedAt, log));
   const signal = AbortSignal.timeout(timeoutMs);
+  const tools = createTools(metrics(() => startedAt, log, signal));
   // A function, so TypeScript doesn't assume it stays as it was last checked.
   const timeUp = () => signal.aborted;
   // Rejects at the deadline, so a tool call that never returns, like a query to
@@ -255,7 +253,8 @@ export async function runAgent(
             ms: msSince(calledAt),
           });
           if (late) return timedOut();
-          // Not the model's mistake, so most likely the database.
+          // Not the model's mistake, so most likely the database, which the
+          // metrics module already tried a second time.
           return fail("unavailable", MESSAGES.metricsDown, {
             err: withoutQueryValues(error),
             tool: call.name,

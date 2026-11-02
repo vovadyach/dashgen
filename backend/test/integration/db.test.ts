@@ -3,9 +3,9 @@ import { after, before, describe, it } from "node:test";
 
 import { eq, sql } from "drizzle-orm";
 
-import { withoutQueryValues } from "../../src/db.ts";
+import { isRetryable, withoutQueryValues } from "../../src/db.ts";
 import { services } from "../../src/metrics/schema.ts";
-import { createTestDb, type TestDb } from "../helpers/db.ts";
+import { createTestDb, type TestDb, unreachableDb } from "../helpers/db.ts";
 import { recordingLogger } from "../helpers/logger.ts";
 
 const { log, lines } = recordingLogger();
@@ -71,8 +71,12 @@ describe("database", () => {
     await client.query("set statement_timeout = 0");
     const started = performance.now();
     try {
-      await assert.rejects(client.query("select pg_sleep(5)"), {
-        message: "Query read timeout",
+      await assert.rejects(client.query("select pg_sleep(5)"), (error) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, "Query read timeout");
+        // A server that stops answering can come back.
+        assert.equal(isRetryable(error), true);
+        return true;
       });
     } finally {
       // Not back to the pool: the sleep still runs on this connection.
@@ -80,5 +84,41 @@ describe("database", () => {
     }
     // The 2-second statement timeout, plus a second.
     assert.ok(performance.now() - started < 4_000);
+  });
+
+  it("marks real failures that can pass as worth one more try, but not one that can't", async () => {
+    const failure = async (call: Promise<unknown>) => {
+      try {
+        await call;
+      } catch (error) {
+        return error;
+      }
+      return assert.fail("The call should have failed.");
+    };
+
+    // A statement over its time.
+    const slow = await failure(
+      db().transaction(async (tx) => {
+        await tx.execute(sql`set local statement_timeout = 20`);
+        await tx.execute(sql`select pg_sleep(1)`);
+      }),
+    );
+    // The server ending the connection, as when it stops.
+    const ended = await failure(
+      db().execute(sql`select pg_terminate_backend(pg_backend_pid())`),
+    );
+    // A server that isn't there.
+    const down = unreachableDb(log);
+    const refused = await failure(down.execute(sql`select 1`));
+    await down.$client.end();
+    // A query that fails the same way each time.
+    const missing = await failure(
+      db().execute(sql`select * from missing_table`),
+    );
+
+    assert.deepEqual(
+      [slow, ended, refused, missing].map((error) => isRetryable(error)),
+      [true, true, true, false],
+    );
   });
 });

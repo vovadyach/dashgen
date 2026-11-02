@@ -16,6 +16,17 @@ export interface TestDb {
   drop: () => Promise<void>;
 }
 
+/**
+ * A database that refuses every connection, as when Postgres is down: nothing
+ * listens on port 1. Close it with `db.$client.end()`.
+ */
+export function unreachableDb(log?: Logger): Db {
+  return createDb(
+    "postgres://dashgen:unused@127.0.0.1:1/dashgen",
+    log ? { log } : {},
+  );
+}
+
 /** Creates a fresh, migrated database for one test file. Call `drop()` after its tests. */
 export async function createTestDb(log?: Logger): Promise<TestDb> {
   // A random name, so test files running in parallel never share a database.

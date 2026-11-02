@@ -25,8 +25,8 @@ import { RunParams, StreamedEvent } from "./types.ts";
 
 /** What runs need: Gemini and the database on the server, fakes in tests. */
 export interface RunDeps extends Pick<RunOptions, "model" | "metrics"> {
-  /** Saves a finished run to the runs table. */
-  save: (run: NewRun) => Promise<void>;
+  /** Saves a finished run to the runs table, logging with the run's own logger. */
+  save: (run: NewRun, log: Logger) => Promise<void>;
 }
 
 export interface RunRoutesOptions extends RunDeps {
@@ -74,7 +74,7 @@ export const runRoutes: FastifyPluginCallbackZod<RunRoutesOptions> = (
     }
     store.end(id);
     try {
-      await save(toRow(id, question, result, price));
+      await save(toRow(id, question, result, price), log);
     } catch (err) {
       log.error({ err: withoutQueryValues(err) }, "run not saved");
     }

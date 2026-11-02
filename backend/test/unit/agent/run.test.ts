@@ -365,6 +365,20 @@ describe("runAgent", () => {
       assert.equal(errorOf(result).code, "timeout");
       assert.deepEqual(stepLines(events), ["list_services: timed out"]);
     });
+
+    it("gives the metrics module its deadline, so a read's retry ends with the run", async () => {
+      const deadlines: AbortSignal[] = [];
+      const { result } = await ask([reply(["list_services"])], {
+        timeoutMs: 20,
+        metrics: (_now, _log, deadline) => {
+          deadlines.push(deadline);
+          return stalledMetrics();
+        },
+      });
+
+      assert.equal(errorOf(result).code, "timeout");
+      assert.equal(deadlines[0]?.aborted, true);
+    });
   });
 
   describe("unexpected errors", () => {
