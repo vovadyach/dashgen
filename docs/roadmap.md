@@ -72,8 +72,8 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 ## 5. Docker and AWS
 
-- [ ] Dockerfile for the backend, and Docker Compose that starts Postgres and DynamoDB Local, runs the migrations and seed, then starts the backend
-- [ ] `HOST` and `PORT` settings, so the backend listens inside a container
+- [x] Dockerfile for the backend, and Docker Compose that starts Postgres and DynamoDB Local, runs the migrations and seed, then starts the backend
+- [x] `HOST` and `PORT` settings, so the backend listens inside a container
 - [ ] AWS account with MFA and budget alerts at $10, $25 and $50
 - [ ] All infrastructure defined in Terraform: the always-on and session stacks from the [AWS design](design.md#on-aws)
 - [ ] `terraform destroy` finishes cleanly: secrets deleted with no recovery window, RDS without a final snapshot, ECR repositories deleted with their images

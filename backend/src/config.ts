@@ -68,6 +68,10 @@ const Env = z.object({
   LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
   // A whole number above 0, so a typo can't switch the cap off.
   DAILY_CAP: z.coerce.number().int().min(1).default(DEFAULT_DAILY_CAP),
+  // Where the backend listens. In a container, localhost is the container's
+  // own, so the Dockerfile sets 0.0.0.0.
+  HOST: z.string().min(1).default("localhost"),
+  PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
 });
 
 /** Backend settings, read from environment variables. */
@@ -81,6 +85,9 @@ export interface Config {
   logLevel: LogLevel;
   /** Questions a day, for every visitor together. */
   dailyCap: number;
+  /** The address and port the backend listens on. */
+  host: string;
+  port: number;
 }
 
 /** Parses `env` with `schema`, and throws an error naming every missing or invalid variable. */
@@ -105,6 +112,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ALLOWED_ORIGINS,
     LOG_LEVEL,
     DAILY_CAP,
+    HOST,
+    PORT,
   } = parseEnv(Env, env);
   return {
     geminiApiKey: new Secret(GEMINI_API_KEY),
@@ -113,6 +122,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     allowedOrigins: ALLOWED_ORIGINS,
     logLevel: LOG_LEVEL,
     dailyCap: DAILY_CAP,
+    host: HOST,
+    port: PORT,
   };
 }
 

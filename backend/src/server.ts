@@ -45,7 +45,7 @@ const app = await buildApp(config, {
     };
   },
 });
-await app.listen({ port: 3000 });
+await app.listen({ host: config.host, port: config.port });
 
 // ECS sends SIGTERM before it stops a task, and Ctrl+C sends SIGINT. Closing
 // lets requests in flight finish, while new ones get a 503.

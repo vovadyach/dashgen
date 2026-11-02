@@ -96,6 +96,8 @@ npm run db:seed        # 30 days of hourly sample data, ending this hour
 
 `npm run cost` prints each day's questions and what they cost, from the `runs` table. The [costs runbook](docs/runbooks/costs.md) has it, and how to set Gemini's spend cap.
 
+To run the backend the way AWS will, in its container, use `docker compose up`: it starts the databases, applies the migrations and the seed, then starts the backend on :3000. Stop `npm run dev` first, since both use port 3000.
+
 Once Postgres is set up, `make dev` runs everything in one terminal: Postgres, DynamoDB Local, the backend and the page. Ctrl+C stops the backend and the page, and the two databases keep running. DynamoDB Local keeps the daily cap's count in memory, so restarting it starts the count over, and the backend makes its table again when it starts.
 
 `docker compose down` stops them, and `docker compose down --volumes` also deletes Postgres's data. Postgres runs `postgres/init.sh`, which creates the users and the database, only the first time it starts, while its volume is empty. So after changing the passwords in `.env` or the init script, recreate the volume: run `docker compose down --volumes`, then `make db`. Local data is disposable, because the seed recreates it.

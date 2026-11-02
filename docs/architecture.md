@@ -20,6 +20,7 @@ Browser ──▶ Frontend ──── /api ──▶ Backend ─────�
 - **The `runs` module** (`backend/src/runs/`): each run's events in memory, for its stream, and `saveRun()`, which keeps each finished run in the `runs` table, with its cost.
 - **The `cap` module** (`backend/src/cap/`): the [daily cap](design.md#the-daily-cap). `POST /api/ask` takes one of today's 150 questions with one conditional write to DynamoDB before it starts a run ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md)).
 - **Postgres** runs in Docker Compose (`make db`), with one `dashgen` database and user. The tables come from Drizzle migrations, and the data from the seed.
+- **The backend's image** (`backend/Dockerfile`): Node 24 on Alpine, with only the production packages, run by the unprivileged `node` user. `.dockerignore` lists all it may take from the repo, so no `.env` file can reach it. `docker compose up` builds it, runs the migrations and the seed in a one-off `migrate` container, then starts the backend on :3000, as ECS will in step 5.
 - **DynamoDB Local** runs in Docker Compose too (`make db`, port 8000), in memory, so a restart starts the count over. The backend makes its table when it starts. Its client uses fake keys, so it can't reach a real AWS account.
 
 How a question will become a chart is drawn in [design.md](design.md#one-question-step-by-step).
@@ -71,7 +72,7 @@ Database tests run against a separate throwaway Postgres on port 5433, and Dynam
 
 | Where | Settings |
 |---|---|
-| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed` and `gemini:check` | `GEMINI_API_KEY`, `GEMINI_MODEL` (`gemini-3.1-flash-lite`, the default, or `gemini-3.5-flash-lite`: the models DashGen has prices for), `ALLOWED_ORIGINS`, `DATABASE_URL`, `DYNAMODB_ENDPOINT` (`http://localhost:8000`, the default), `DAILY_CAP` (150 questions a day by default), `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
+| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed` and `gemini:check` | `GEMINI_API_KEY`, `GEMINI_MODEL` (`gemini-3.1-flash-lite`, the default, or `gemini-3.5-flash-lite`: the models DashGen has prices for), `ALLOWED_ORIGINS`, `DATABASE_URL`, `DYNAMODB_ENDPOINT` (`http://localhost:8000`, the default), `DAILY_CAP` (150 questions a day by default), `HOST` and `PORT` (`localhost` and `3000` by default; the image sets `HOST=0.0.0.0`), `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
 | `.env` at the root (from `.env.example`), read by Docker Compose | `POSTGRES_PASSWORD`, `DASHGEN_DB_PASSWORD` |
 
 ## Known limits
