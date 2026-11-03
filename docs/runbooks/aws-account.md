@@ -52,7 +52,7 @@ As the admin user: **Budgets**, then **Create budget**, then **Customize (advanc
 | Amount | $50, for all AWS services |
 | Alerts, on actual costs, by email | 20% ($10), 50% ($25), 100% ($50) |
 
-Budgets send alerts. They don't stop spending. This one also earns one of the 5 credit tasks. Terraform takes it over with `terraform import`.
+Budgets send alerts. They don't stop spending. This one also earns one of the 5 credit tasks. From step 6 on, Terraform manages it.
 
 ## 5. The AWS CLI
 
@@ -69,3 +69,33 @@ aws sts get-caller-identity
 ```
 
 Its `Arn` ends with `user/<your-user-name>` when the CLI works.
+
+## 6. Terraform takes over
+
+`infra/account` is the Terraform stack for the account itself. It manages step 4's budget, and adds a filter that leaves out credits, so the alerts also fire while credits pay the bill. It stays on: never run `terraform destroy` there.
+
+With Terraform 1.17 or newer, signed in with `aws login`, in `infra/account`:
+
+1. `cp terraform.tfvars.example terraform.tfvars`, then put your alert email in it. Git ignores it.
+2. The first time only, if step 4's budget exists: save this as `import.tf`, so Terraform takes the budget over instead of trying to create it again.
+
+   ```hcl
+   data "aws_caller_identity" "current" {}
+
+   import {
+     to = aws_budgets_budget.monthly_total
+     id = "${data.aws_caller_identity.current.account_id}:monthly-total"
+   }
+   ```
+
+3. Plan, read the plan, then apply exactly that plan:
+
+   ```
+   terraform init
+   terraform plan -out=tfplan
+   terraform apply tfplan
+   ```
+
+4. Delete `import.tf` and `tfplan`. `terraform plan` then says "No changes".
+
+For now, the state is in `infra/account/terraform.tfstate`, on your machine only. Git ignores it, since it holds the email and the account ID. Don't delete it. If it's lost, the budget stays in AWS: do step 2 again to import it.
