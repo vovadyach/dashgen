@@ -71,8 +71,8 @@ export function createDailyCap(
             ExpressionAttributeValues: {
               ":one": { N: "1" },
               ":cap": { N: String(limit) },
-              // With TTL on for expires_at, as step 5's Terraform will set
-              // it, DynamoDB deletes the day's item some time after this.
+              // On AWS, TTL is on for expires_at (infra/aws/always-on), so
+              // DynamoDB deletes the day's item some time after this.
               ":expires": { N: String(seconds + 30 * DAY_SECONDS) },
             },
           }),

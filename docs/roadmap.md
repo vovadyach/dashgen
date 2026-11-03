@@ -6,7 +6,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - Every step ships with its tests.
 - **Product first:** a thin slice from question to chart works early (step 3), and every later step makes it safer, deployed, measured or nicer. The guardrails come before the first deploy, because the deployed demo is public.
 - The AWS backend runs only while it's being worked on, and `terraform destroy` removes it after each session. Only a small stack stays on, so the link and the page keep working in between ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
-- `make` runs repo-wide and infrastructure commands (`make check`, `make db`, and later `make up` and `make down`). npm scripts run the TypeScript packages.
+- `make` runs repo-wide and infrastructure commands (`make check`, `make db`, and later `make aws-up` and `make aws-down`). npm scripts run the TypeScript packages.
 
 ## 1. Foundation
 
@@ -75,17 +75,18 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] Dockerfile for the backend, and Docker Compose that starts Postgres and DynamoDB Local, runs the migrations and seed, then starts the backend
 - [x] `HOST` and `PORT` settings, so the backend listens inside a container
 - [x] AWS account with MFA and budget alerts at $10, $25 and $50 ([runbook](runbooks/aws-account.md))
-- [x] Terraform's first stack, `infra/account`: the budget, imported from the console ([runbook](runbooks/aws-account.md#6-terraform-takes-over))
-- [x] Terraform's state in S3: a versioned bucket in `infra/account`, locked with a lock file ([runbook](runbooks/aws-account.md#6-terraform-takes-over))
+- [x] Terraform's first stack, `infra/aws/account`: the budget, imported from the console ([runbook](runbooks/aws-account.md#6-terraform-takes-over))
+- [x] Terraform's state in S3: a versioned bucket in `infra/aws/account`, locked with a lock file ([runbook](runbooks/aws-account.md#6-terraform-takes-over))
 - [ ] All infrastructure defined in Terraform: the always-on and session stacks from the [AWS design](design.md#on-aws)
 - [ ] `terraform destroy` finishes cleanly: secrets deleted with no recovery window, RDS without a final snapshot, ECR repositories deleted with their images
 - [ ] No database backups: every deploy reseeds the data, and the `runs` history starts over
 - [ ] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
 - [ ] VPC with public and private subnets, a NAT gateway, and a gateway endpoint for DynamoDB
-- [ ] The daily cap's table in the always-on stack, with TTL on `expires_at`, reached with the task's role instead of DynamoDB Local's fake keys ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md))
+- [x] The daily cap's table in the always-on stack, with TTL on `expires_at` ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md), [runbook](runbooks/deploy.md#the-always-on-stack))
+- [ ] The backend reaches that table with the task's role instead of DynamoDB Local's fake keys
 - [x] The backend's routes under `/api` (`/api/ask`, `/api/runs/:id/events`, `/api/health`), moved in step 3 so the page calls the same paths locally
 - [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding the `Last-Event-ID` header
-- [ ] A CloudFront Function and key-value store that send `/api/*` to the running session, or answer 503 `{"status": "offline"}` between sessions, and a `make down` that drains the API before `terraform destroy`
+- [ ] A CloudFront Function and key-value store that send `/api/*` to the running session, or answer 503 `{"status": "offline"}` between sessions, and a `make aws-down` that drains the API before `terraform destroy`
 - [ ] The backend on ECS Fargate behind a load balancer that accepts only our CloudFront: exactly one task, since the rate limit and run events live in its memory, and deploys that stop the old task first
 - [ ] When a reconnecting stream gets CloudFront's own error, like a passing 502, the page tries once more before saying the answer was interrupted, which would invite a second, paid run
 - [ ] Postgres on RDS (db.t4g.micro) in private subnets, with migrations and the seed run as a one-off ECS task
@@ -94,13 +95,13 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] GitHub Actions builds the image and deploys it, signing in to AWS with OIDC instead of stored keys
 - [ ] The React app deployed to the always-on S3 bucket behind CloudFront, with an offline banner when `/api/health` doesn't answer within 3 seconds
 - [ ] Rate limiting keyed on the visitor's IP from `CloudFront-Viewer-Address`, with a test that a forged `X-Forwarded-For` doesn't change it
-- [ ] Deploy runbook: `docs/runbooks/deploy.md`
+- [ ] Deploy runbook: [`docs/runbooks/deploy.md`](runbooks/deploy.md)
 
 **Done when:**
 
 - `docker compose up` runs everything locally.
 - `terraform apply` builds the stack from nothing, GitHub Actions deploys to it, and `terraform destroy` removes everything except the small stack that stays.
-- Through CloudFront, the example question works with its steps streaming, and after `make down` the page shows the offline banner.
+- Through CloudFront, the example question works with its steps streaming, and after `make aws-down` the page shows the offline banner.
 - A request sent straight to the load balancer, skipping CloudFront, doesn't reach the backend.
 
 ## 6. Evals

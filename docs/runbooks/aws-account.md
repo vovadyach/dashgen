@@ -72,9 +72,9 @@ Its `Arn` ends with `user/<your-user-name>` when the CLI works.
 
 ## 6. Terraform takes over
 
-`infra/account` is the Terraform stack for the account itself. It manages step 4's budget, and adds a filter that leaves out credits, so the alerts also fire while credits pay the bill. It also makes the S3 bucket that holds every stack's Terraform state. It stays on: never run `terraform destroy` there.
+`infra/aws/account` is the Terraform stack for the account itself. It manages step 4's budget, and adds a filter that leaves out credits, so the alerts also fire while credits pay the bill. It also makes the S3 bucket that holds every stack's Terraform state. It stays on: never run `terraform destroy` there.
 
-With Terraform 1.17 or newer, signed in with `aws login`, in `infra/account`, first make the 2 files that git ignores:
+With Terraform 1.17 or newer, signed in with `aws login`, in `infra/aws/account`, first make the 2 files that git ignores:
 
 - `cp terraform.tfvars.example terraform.tfvars`, then put your alert email in it.
 - `cp ../backend.hcl.example ../backend.hcl`, then put your account ID in it.
