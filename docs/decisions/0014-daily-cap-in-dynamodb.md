@@ -7,7 +7,7 @@
 
 The demo is public once it's deployed (step 5), and every question costs Gemini money. The [daily cap](../design.md#the-daily-cap) stops at 150 questions a day, for every visitor together. Its count has three needs:
 
-- **It outlives each session.** `make down` destroys the session stack after every work session, the database included.
+- **It outlives each session.** `make aws-down` destroys the session stack after every work session, the database included.
 - **It's atomic,** so two requests can't both take the last question.
 - **It costs almost nothing while idle,** within the ~$5 a month AWS gets.
 

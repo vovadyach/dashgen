@@ -335,7 +335,7 @@ flowchart TB
 - **Migrations run first.** A one-off ECS task runs Drizzle's migrations and the seed before the backend starts.
 - **`/api/*` in CloudFront** caches nothing and forwards the `Last-Event-ID` header, so a reconnecting stream resumes where it stopped. ADR-0003's settings already let SSE through.
 - **One NAT gateway, in one AZ,** because there's no uptime requirement, and it's already the biggest line on the hourly bill.
-- **Three stacks:** the always-on one in the diagram costs a few cents a month, and the session stack holds everything else. `make down` drains the API before destroying it, and neither `make up` nor `make down` changes CloudFront's settings. The third, `infra/account`, holds what belongs to the AWS account rather than to DashGen, like the budget alerts and the S3 bucket for every stack's Terraform state, and stays on too.
+- **Three stacks:** the always-on one in the diagram costs a few cents a month, and the session stack holds everything else. `make aws-down` drains the API before destroying it, and neither `make aws-up` nor `make aws-down` changes CloudFront's settings. The third, `infra/aws/account`, holds what belongs to the AWS account rather than to DashGen, like the budget alerts and the S3 bucket for every stack's Terraform state, and stays on too.
 - **No keys anywhere:** secrets come from Secrets Manager when a task starts, and GitHub Actions signs in with OIDC.
 
 ## 4. Data and APIs
@@ -417,7 +417,7 @@ At the prices of `gemini-3.1-flash-lite` ($0.25 per million input tokens and $1.
 
 **The cap is 150 questions a day** by default, so Gemini costs at most about $1.60 a day. The `DAILY_CAP` setting changes it, as for a launch day ([runbook](runbooks/costs.md)). A month with ten session days comes to about $16, which leaves room for AWS's ~$5 within the $25 budget. A busier day gets the cap's message instead of charts.
 
-**The count lives in the always-on stack.** `make down` destroys the session's database, so a count kept in Postgres would start over with every session, and two sessions on one day would get two days' worth. Instead, a DynamoDB table holds one item per UTC day, and one conditional write reserves a question ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md), `backend/src/cap/`):
+**The count lives in the always-on stack.** `make aws-down` destroys the session's database, so a count kept in Postgres would start over with every session, and two sessions on one day would get two days' worth. Instead, a DynamoDB table holds one item per UTC day, and one conditional write reserves a question ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md), `backend/src/cap/`):
 
 ```ts
 await client.send(

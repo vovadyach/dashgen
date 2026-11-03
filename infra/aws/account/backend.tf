@@ -1,6 +1,6 @@
 # Where this stack keeps its state: in the bucket from state.tf. A backend can't
 # use variables, so the bucket's name, which holds the account ID, comes from
-# infra/backend.hcl, which git ignores (see infra/backend.hcl.example).
+# infra/aws/backend.hcl, which git ignores (see infra/aws/backend.hcl.example).
 terraform {
   backend "s3" {
     key    = "account/terraform.tfstate"

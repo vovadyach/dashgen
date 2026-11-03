@@ -10,7 +10,7 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 - `packages/contracts/`: Zod schemas shared between packages, imported as `@dashgen/contracts`. The root `package.json` makes `backend`, `frontend` and `packages/*` one npm workspace, with the shared tools and settings ([ADR-0004](docs/decisions/0004-npm-workspaces.md)).
 - `frontend/`: the React page, built with Vite. See `frontend/AGENTS.md`.
 - `compose.yaml` and `postgres/`: Postgres and DynamoDB Local in Docker for local development. Postgres has one `dashgen` database and user, and DynamoDB Local holds the daily cap's count, in memory.
-- `infra/account/`: Terraform for the AWS account itself, like the budget alerts ([runbook](docs/runbooks/aws-account.md#6-terraform-takes-over)).
+- `infra/aws/`: Terraform, a folder per stack. `account/` is for the AWS account itself, like the budget alerts and the state bucket ([runbook](docs/runbooks/aws-account.md#6-terraform-takes-over)), and `always-on/` for the parts of DashGen that stay on between sessions, like the daily cap's table ([runbook](docs/runbooks/deploy.md#the-always-on-stack)).
 - `docs/architecture.md`: what runs today, and its API. Update it whenever an API changes.
 - `docs/design.md`: the target design, with requirements, estimates and diagrams. Update it when a design choice changes.
 - `docs/roadmap.md`: the nine steps. Tick an item when it's done.
@@ -43,4 +43,4 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 - All infrastructure is Terraform; nothing is changed only in the console.
 - GitHub Actions reaches AWS through OIDC. No AWS keys in GitHub.
 - Never create an AWS Organization or Control Tower: that ends the Free plan and its credits.
-- Run `terraform destroy` on the session stack at the end of every AWS work session. Never on `infra/account`, which stays.
+- Run `terraform destroy` on the session stack at the end of every AWS work session. Never on `infra/aws/account` or `infra/aws/always-on`, which stay.
