@@ -72,16 +72,21 @@ Its `Arn` ends with `user/<your-user-name>` when the CLI works.
 
 ## 6. Terraform takes over
 
-`infra/account` is the Terraform stack for the account itself. It manages step 4's budget, and adds a filter that leaves out credits, so the alerts also fire while credits pay the bill. It stays on: never run `terraform destroy` there.
+`infra/account` is the Terraform stack for the account itself. It manages step 4's budget, and adds a filter that leaves out credits, so the alerts also fire while credits pay the bill. It also makes the S3 bucket that holds every stack's Terraform state. It stays on: never run `terraform destroy` there.
 
-With Terraform 1.17 or newer, signed in with `aws login`, in `infra/account`:
+With Terraform 1.17 or newer, signed in with `aws login`, in `infra/account`, first make the 2 files that git ignores:
 
-1. `cp terraform.tfvars.example terraform.tfvars`, then put your alert email in it. Git ignores it.
-2. The first time only, if step 4's budget exists: save this as `import.tf`, so Terraform takes the budget over instead of trying to create it again.
+- `cp terraform.tfvars.example terraform.tfvars`, then put your alert email in it.
+- `cp ../backend.hcl.example ../backend.hcl`, then put your account ID in it.
+
+### The first time
+
+The state bucket doesn't exist yet. So the state starts on your machine, and moves into the bucket once Terraform has made it.
+
+1. Set the S3 backend aside: `mv backend.tf backend.tf.off`. Terraform reads only `.tf` files.
+2. If step 4's budget exists, save this as `import.tf`, so Terraform takes the budget over instead of trying to create it again:
 
    ```hcl
-   data "aws_caller_identity" "current" {}
-
    import {
      to = aws_budgets_budget.monthly_total
      id = "${data.aws_caller_identity.current.account_id}:monthly-total"
@@ -96,6 +101,25 @@ With Terraform 1.17 or newer, signed in with `aws login`, in `infra/account`:
    terraform apply tfplan
    ```
 
-4. Delete `import.tf` and `tfplan`. `terraform plan` then says "No changes".
+4. Put the backend back, and move the state into the bucket. Answer `yes` when `init` asks to copy it:
 
-For now, the state is in `infra/account/terraform.tfstate`, on your machine only. Git ignores it, since it holds the email and the account ID. Don't delete it. If it's lost, the budget stays in AWS: do step 2 again to import it.
+   ```
+   mv backend.tf.off backend.tf
+   terraform init -migrate-state -backend-config=../backend.hcl
+   terraform plan
+   ```
+
+5. Once the plan says "No changes", delete `import.tf`, `tfplan`, `terraform.tfstate` and `terraform.tfstate.backup`.
+
+### Any other time
+
+On a new machine, or after deleting `.terraform/`:
+
+```
+terraform init -backend-config=../backend.hcl
+terraform plan
+```
+
+The plan says "No changes". Every `terraform init` needs `-backend-config=../backend.hcl`: a backend can't use variables, and the bucket's name holds the account ID.
+
+The state is in the bucket, at `account/terraform.tfstate`. S3 keeps every earlier version of it, so a broken state can be rolled back.

@@ -1,0 +1,3 @@
+# Copy this file to backend.hcl, which git ignores, and put in your account ID.
+# Each stack reads it on init: terraform init -backend-config=../backend.hcl
+bucket = "terraform-state-<account-id>"

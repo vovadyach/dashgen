@@ -32,5 +32,7 @@ Thumbs.db
 # Variables' values, like an email address: only the example is committed.
 *.tfvars
 !*.tfvars.example
+# The state bucket's name, which holds the account ID: only the example is committed.
+backend.hcl
 # Saved plans (terraform plan -out=tfplan): they hold variables' values and state.
 tfplan
