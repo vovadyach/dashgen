@@ -80,5 +80,6 @@ Database tests run against a separate throwaway Postgres on port 5433, and Dynam
 - **Run events live in memory,** so a restart loses them, and their streams answer 404 `run_not_found`. The runs themselves are saved in the `runs` table: closing the backend waits for the ones in progress.
 - **The rate limit is per process,** in memory, so a restart resets it. The [daily cap](design.md#the-daily-cap) is shared.
 - **The daily cap counts in DynamoDB Local,** which keeps its data in memory. The table on AWS exists already (`infra/aws/always-on`), and the backend switches to it when it runs there, in step 5.
+- **The page is on AWS, but the API isn't yet.** CloudFront serves the build from S3 ([runbook](runbooks/deploy.md#the-page)), but it has no `/api/*` until step 5, so a question asked there gets CloudFront's own 403.
 - **Behind a load balancer,** every request would come from its IP. Step 5 takes the visitor's IP from CloudFront instead ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
 - **Incidents in the seed move with the day it runs,** so "this week" always has one to find. The rest of an hour's value is the same whichever day the seed runs.

@@ -67,7 +67,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
 | Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools), the Gemini adapter and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md)) |
 | Frontend (`frontend/`) | React, TypeScript, Vite, Tailwind, shadcn/ui, AG Charts, TanStack Query | Runs locally: the question box, the steps as they stream in, and the chart, with a data table, in light and dark themes. Charts can be pinned to a watchlist, shared as a link, or downloaded as a PNG |
-| Hosting | AWS, Terraform | Under way (step 5): the budget alerts, Terraform's state in S3 and the daily cap's table ([roadmap](docs/roadmap.md#5-docker-and-aws)) |
+| Hosting | AWS, Terraform | Under way (step 5): the budget alerts, Terraform's state in S3, the daily cap's table and the page on CloudFront ([roadmap](docs/roadmap.md#5-docker-and-aws)) |
 
 ## Running locally
 

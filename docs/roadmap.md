@@ -85,6 +85,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] The daily cap's table in the always-on stack, with TTL on `expires_at` ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md), [runbook](runbooks/deploy.md#the-always-on-stack))
 - [ ] The backend reaches that table with the task's role instead of DynamoDB Local's fake keys
 - [x] The backend's routes under `/api` (`/api/ask`, `/api/runs/:id/events`, `/api/health`), moved in step 3 so the page calls the same paths locally
+- [x] CloudFront in the always-on stack, serving the React app from a private S3 bucket that only our distribution can read ([runbook](runbooks/deploy.md#the-page))
 - [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding the `Last-Event-ID` header
 - [ ] A CloudFront Function and key-value store that send `/api/*` to the running session, or answer 503 `{"status": "offline"}` between sessions, and a `make aws-down` that drains the API before `terraform destroy`
 - [ ] The backend on ECS Fargate behind a load balancer that accepts only our CloudFront: exactly one task, since the rate limit and run events live in its memory, and deploys that stop the old task first
@@ -92,8 +93,8 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] Postgres on RDS (db.t4g.micro) in private subnets, with migrations and the seed run as a one-off ECS task
 - [ ] Database password and the Gemini key in AWS Secrets Manager, passed to the container by ECS
 - [ ] Structured JSON logs with a request ID, collected in CloudWatch
-- [ ] GitHub Actions builds the image and deploys it, signing in to AWS with OIDC instead of stored keys
-- [ ] The React app deployed to the always-on S3 bucket behind CloudFront, with an offline banner when `/api/health` doesn't answer within 3 seconds
+- [ ] GitHub Actions builds the image and deploys it, and uploads the page's build, signing in to AWS with OIDC instead of stored keys
+- [ ] The page's offline banner, when `/api/health` doesn't answer within 3 seconds
 - [ ] Rate limiting keyed on the visitor's IP from `CloudFront-Viewer-Address`, with a test that a forged `X-Forwarded-For` doesn't change it
 - [ ] Deploy runbook: [`docs/runbooks/deploy.md`](runbooks/deploy.md)
 
