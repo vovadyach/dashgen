@@ -334,6 +334,7 @@ flowchart TB
 - **Scaling out later** means moving both to shared storage first: the rate limit counters to DynamoDB, which already holds the daily cap, and the run events to Postgres or Redis. Only then does auto scaling make sense. Full high availability would also need Multi-AZ RDS, which doubles the database's cost. None of it is worth it without an uptime promise.
 - **Migrations run first.** A one-off ECS task runs Drizzle's migrations and the seed before the backend starts.
 - **`/api/*` in CloudFront** caches nothing and forwards the `Last-Event-ID` header, so a reconnecting stream resumes where it stopped. ADR-0003's settings already let SSE through.
+- **The page's files in CloudFront:** the hashed files in `assets/` are cached for a year, and `index.html` is checked on every visit, so a deploy needs no invalidation ([runbook](runbooks/deploy.md#the-page)).
 - **One NAT gateway, in one AZ,** because there's no uptime requirement, and it's already the biggest line on the hourly bill.
 - **Three stacks:** the always-on one in the diagram costs a few cents a month, and the session stack holds everything else. `make aws-down` drains the API before destroying it, and neither `make aws-up` nor `make aws-down` changes CloudFront's settings. The third, `infra/aws/account`, holds what belongs to the AWS account rather than to DashGen, like the budget alerts and the S3 bucket for every stack's Terraform state, and stays on too.
 - **No keys anywhere:** secrets come from Secrets Manager when a task starts, and GitHub Actions signs in with OIDC.
