@@ -30,8 +30,10 @@ import {
   answerAsk,
   ask,
   askButton,
+  errorPage,
   renderPage,
   started,
+  stubAsk,
   stubTheBrowser,
 } from "./helpers/page.tsx";
 
@@ -486,16 +488,13 @@ describe("the page", () => {
   it("follows only the current question, when the one before was stopped before its run started", async () => {
     // Each POST /api/ask answers only when the test says so.
     const replies: ((runId: string) => void)[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        () =>
-          new Promise<Response>((resolve) => {
-            replies.push((runId) => {
-              resolve(Response.json({ runId }, { status: 202 }));
-            });
-          }),
-      ),
+    stubAsk(
+      () =>
+        new Promise<Response>((resolve) => {
+          replies.push((runId) => {
+            resolve(Response.json({ runId }, { status: 202 }));
+          });
+        }),
     );
     const user = renderPage();
     await ask(user);
@@ -602,8 +601,9 @@ describe("the page", () => {
   );
 
   it("fails at once when the browser says it's offline, instead of holding the question to send later", async () => {
-    const fetch = vi.fn(() => Promise.reject(new TypeError("Failed to fetch")));
-    vi.stubGlobal("fetch", fetch);
+    const fetch = stubAsk(() =>
+      Promise.reject(new TypeError("Failed to fetch")),
+    );
     onlineManager.setOnline(false);
     try {
       await ask(renderPage());
@@ -617,10 +617,7 @@ describe("the page", () => {
   });
 
   it("says it can't reach DashGen when the request itself fails, and offers Try again", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
-    );
+    stubAsk(() => Promise.reject(new TypeError("Failed to fetch")));
     await ask(renderPage());
     await screen.findByText(
       "Can't reach DashGen. Check your connection, and try again.",
@@ -628,10 +625,13 @@ describe("the page", () => {
     screen.getByRole("button", { name: "Try again" });
   });
 
-  it("says DashGen isn't answering when the reply isn't the API's", async () => {
-    answerAsk(503, { status: "offline" });
+  it("says DashGen isn't answering when the reply isn't the API's, like CloudFront's own 502 page", async () => {
+    stubAsk(() => Promise.resolve(errorPage(502)));
     await ask(renderPage());
     await screen.findByText("DashGen isn't answering. Try again in a moment.");
+    // Only CloudFront's offline 503 turns the page offline: a 502 can pass.
+    expect(screen.queryByText("The live demo is offline.")).toBeNull();
+    screen.getByRole("button", { name: "Try again" });
   });
 });
 

@@ -1,6 +1,9 @@
 // From shadcn/ui (MIT): https://ui.shadcn.com/docs/components/button
 // Without its asChild option, which nothing here uses, so radix-ui isn't
 // needed. A component that needs Radix brings in just its own package.
+// The default variant's look is ours: a light sheen and shadow, a lift on
+// hover, and a quiet grey when disabled, where shadcn's fades the blue to
+// half, which reads as broken.
 
 import { cva, type VariantProps } from "class-variance-authority";
 import type { ComponentProps } from "react";
@@ -13,7 +16,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
+          "bg-primary bg-linear-to-b from-white/12 to-transparent text-primary-foreground shadow-sm inset-shadow-xs shadow-primary/25 inset-shadow-white/25 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/30 motion-safe:hover:-translate-y-px motion-safe:active:translate-y-0 disabled:bg-foreground/8 disabled:bg-none disabled:text-foreground/40 disabled:opacity-100 disabled:shadow-none disabled:inset-shadow-none",
         outline:
           "border bg-card shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input",
         secondary:

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Answer, preloadChart } from "./components/answer.tsx";
 import { Logo } from "./components/logo.tsx";
+import { OfflineBanner } from "./components/offline-banner.tsx";
 import {
   QuestionBox,
   type QuestionBoxHandle,
@@ -12,6 +13,7 @@ import { Steps } from "./components/steps.tsx";
 import { ThemeToggle } from "./components/theme-toggle.tsx";
 import { Tips } from "./components/tips.tsx";
 import { Watchlist } from "./components/watchlist.tsx";
+import { useOffline } from "./health.ts";
 import { type Pin, usePins } from "./pins.ts";
 import { useRun } from "./run.ts";
 import { chartFromLink, isChartLink } from "./share.ts";
@@ -19,6 +21,9 @@ import { chartFromLink, isChartLink } from "./share.ts";
 export function App() {
   const { run, ask, stop, open } = useRun();
   const pins = usePins();
+  // While DashGen is offline, nothing on the page can ask a question. Pins
+  // and links still open, since their charts carry their own numbers.
+  const offline = useOffline();
   // A share link the page opened but couldn't read, which it says so about
   // until the visitor moves on.
   const [badLink, setBadLink] = useState(false);
@@ -87,6 +92,7 @@ export function App() {
 
   return (
     <div className="min-h-dvh">
+      <OfflineBanner offline={offline} />
       <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
         <p className="flex items-center gap-2 font-semibold tracking-tight">
           <Logo className="size-5 text-primary" />
@@ -114,11 +120,12 @@ export function App() {
               onAsk={askQuestion}
               onStop={stopQuestion}
               busy={busy}
+              offline={offline}
             />
           </div>
           {/* Wider than the box, so the examples fit on one row. */}
           <div className="mx-auto max-w-3xl">
-            <Tips onAsk={askQuestion} busy={busy} />
+            <Tips onAsk={askQuestion} busy={busy} offline={offline} />
           </div>
         </div>
         {badLink && (
@@ -144,7 +151,12 @@ export function App() {
           <div className="grid items-start gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] lg:[&>:only-child]:col-span-2">
             <Steps run={run} />
             <div className="order-first min-w-0 lg:order-none">
-              <Answer run={run} onAsk={askQuestion} pins={pins} />
+              <Answer
+                run={run}
+                onAsk={askQuestion}
+                pins={pins}
+                offline={offline}
+              />
             </div>
           </div>
         )}

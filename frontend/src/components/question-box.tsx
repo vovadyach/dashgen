@@ -24,9 +24,11 @@ interface Props {
   onStop: () => void;
   /** A question is on its way, so the button stops it instead. */
   busy: boolean;
+  /** DashGen is offline, so the box is off. Stop still works. */
+  offline: boolean;
 }
 
-export function QuestionBox({ ref, onAsk, onStop, busy }: Props) {
+export function QuestionBox({ ref, onAsk, onStop, busy, offline }: Props) {
   // The text lives here, not in the page, so typing redraws only the box,
   // not the chart, the steps and the watchlist with it.
   const [question, setQuestion] = useState("");
@@ -71,7 +73,7 @@ export function QuestionBox({ ref, onAsk, onStop, busy }: Props) {
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        if (trimmed !== "" && !busy) onAsk(trimmed);
+        if (trimmed !== "" && !busy && !offline) onAsk(trimmed);
       }}
       className="flex items-end gap-2"
     >
@@ -98,20 +100,23 @@ export function QuestionBox({ ref, onAsk, onStop, busy }: Props) {
           }
         }}
         maxLength={QUESTION_MAX_LENGTH}
+        disabled={offline}
         placeholder="Show errors for payments-service this week"
         autoComplete="off"
         className="max-h-40 min-h-11 resize-none py-2.5 md:text-base"
       />
       {/* Separate keys, so React swaps the element: reused, the Stop button
           would turn into Ask while its own click is still running, and the
-          browser would then submit the form, asking the question again. */}
+          browser would then submit the form, asking the question again.
+          Both are as tall as the box with one line in it, 46 px, so their
+          tops line up with it. */}
       {busy ? (
         <Button
           key="stop"
           type="button"
           variant="outline"
           size="lg"
-          className="h-11"
+          className="h-11.5"
           onClick={onStop}
           title="Stop (Esc)"
           aria-keyshortcuts="Escape"
@@ -124,10 +129,14 @@ export function QuestionBox({ ref, onAsk, onStop, busy }: Props) {
           key="ask"
           type="submit"
           size="lg"
-          disabled={trimmed === ""}
-          className="h-11"
+          disabled={trimmed === "" || offline}
+          className="group h-11.5"
         >
-          <ArrowUp aria-hidden />
+          {/* The arrow nudges up on hover, as if sending. */}
+          <ArrowUp
+            aria-hidden
+            className="motion-safe:transition-transform motion-safe:group-hover:-translate-y-0.5"
+          />
           Ask
         </Button>
       )}

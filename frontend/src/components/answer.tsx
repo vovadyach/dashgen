@@ -46,12 +46,21 @@ interface Props {
   run: Exclude<Run, { status: "idle" }>;
   onAsk: (question: string) => void;
   pins: Pins;
+  /** DashGen is offline, so nothing here can ask: not the choices, nor Try again. */
+  offline: boolean;
 }
 
 /** What the question got: the chart, a question back, a refusal, or an error. */
-export function Answer({ run, onAsk, pins }: Props) {
+export function Answer({ run, onAsk, pins, offline }: Props) {
   if (run.status === "opened") {
-    return <ShownCard shown={run.saved} onAsk={onAsk} pins={pins} />;
+    return (
+      <ShownCard
+        shown={run.saved}
+        onAsk={onAsk}
+        pins={pins}
+        offline={offline}
+      />
+    );
   }
   if (run.status === "failed") {
     // The error comes first. The answer before it stays below, labeled so
@@ -63,13 +72,19 @@ export function Answer({ run, onAsk, pins }: Props) {
           onRetry={() => {
             onAsk(run.question);
           }}
+          offline={offline}
         />
         {run.previous && (
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">
               Your last answer
             </p>
-            <ShownCard shown={run.previous} onAsk={onAsk} pins={pins} />
+            <ShownCard
+              shown={run.previous}
+              onAsk={onAsk}
+              pins={pins}
+              offline={offline}
+            />
           </div>
         )}
       </div>
@@ -91,7 +106,7 @@ export function Answer({ run, onAsk, pins }: Props) {
           working && "min-h-48 opacity-40",
         )}
       >
-        <ShownCard shown={shown} onAsk={onAsk} pins={pins} />
+        <ShownCard shown={shown} onAsk={onAsk} pins={pins} offline={offline} />
       </div>
       {working && <WaitingOver />}
     </div>
@@ -103,15 +118,17 @@ function ShownCard({
   shown,
   onAsk,
   pins,
+  offline,
 }: {
   shown: Shown;
   onAsk: (question: string) => void;
   pins: Pins;
+  offline: boolean;
 }) {
   return "from" in shown ? (
     <GuardedChartCard chart={shown.chart} saved={shown} pins={pins} />
   ) : (
-    <Outcome answer={shown} onAsk={onAsk} pins={pins} />
+    <Outcome answer={shown} onAsk={onAsk} pins={pins} offline={offline} />
   );
 }
 
@@ -119,10 +136,12 @@ function Outcome({
   answer,
   onAsk,
   pins,
+  offline,
 }: {
   answer: RunAnswer;
   onAsk: (question: string) => void;
   pins: Pins;
+  offline: boolean;
 }) {
   switch (answer.outcome) {
     case "chart":
@@ -134,6 +153,7 @@ function Outcome({
           message={answer.message}
           questions={answer.choices}
           onAsk={onAsk}
+          offline={offline}
         />
       );
     case "decline":
@@ -144,6 +164,7 @@ function Outcome({
           questions={answer.examples}
           hint="Try one of these:"
           onAsk={onAsk}
+          offline={offline}
         />
       );
   }
@@ -472,12 +493,14 @@ function Choices({
   questions,
   hint,
   onAsk,
+  offline,
 }: {
   icon: ReactNode;
   message: string;
   questions: string[];
   hint?: string;
   onAsk: (question: string) => void;
+  offline: boolean;
 }) {
   return (
     <Card className="motion-safe:animate-in motion-safe:fade-in">
@@ -495,6 +518,7 @@ function Choices({
                 key={index}
                 variant="outline"
                 className="h-auto py-2 text-left whitespace-normal"
+                disabled={offline}
                 onClick={() => {
                   onAsk(question);
                 }}
@@ -519,9 +543,11 @@ const NO_RETRY: ReadonlySet<string> = new Set([
 function Failed({
   failure,
   onRetry,
+  offline,
 }: {
   failure: Failure;
   onRetry: () => void;
+  offline: boolean;
 }) {
   const retry = !NO_RETRY.has(failure.code);
   return (
@@ -538,7 +564,7 @@ function Failed({
       </CardHeader>
       {retry && (
         <CardContent>
-          <Button variant="outline" onClick={onRetry}>
+          <Button variant="outline" onClick={onRetry} disabled={offline}>
             <RotateCcw aria-hidden />
             Try again
           </Button>

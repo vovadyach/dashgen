@@ -81,6 +81,16 @@ export const Health = z.object({
 export type Health = z.infer<typeof Health>;
 
 /**
+ * What CloudFront answers, with a 503, to every `/api/*` request between
+ * sessions, when no backend runs (ADR-0003). The page shows its offline
+ * banner.
+ */
+export const Offline = z.object({
+  status: z.literal("offline"),
+});
+export type Offline = z.infer<typeof Offline>;
+
+/**
  * The body of the backend's `POST /api/ask`: a question of 1 to 300 characters,
  * after trimming, with no NUL character, which Postgres can't store.
  */
