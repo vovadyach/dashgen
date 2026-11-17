@@ -20,7 +20,18 @@ A change to the distribution takes a few minutes to apply, because Terraform wai
 
 ## The page
 
-The page is Vite's build of `frontend/`, in a private bucket that only our CloudFront distribution can read. `terraform -chdir=infra/aws/always-on output -raw url` prints its address. To deploy it, from the repo root:
+The page is Vite's build of `frontend/`, in a private bucket that only our CloudFront distribution can read. `terraform -chdir=infra/aws/always-on output -raw url` prints its address.
+
+**GitHub Actions deploys it** after every push to `main`, once the checks pass: the `deploy-page` job in `.github/workflows/ci.yml` runs the commands below. It signs in with OIDC (`infra/aws/always-on/github.tf`): GitHub gives each run a short-lived token, and AWS trades it for the `dashgen-page-deploy` role. Only a run on `main` of this repo can take that role, and it can only list the bucket and upload to it. No AWS keys are stored in GitHub.
+
+The job needs two repository secrets, set once, after `terraform apply` in `infra/aws/always-on` has made the role, and before the job's first run. They're secrets, not variables, because both hold the account ID, and GitHub hides secrets in its logs, which are public here:
+
+```
+gh secret set AWS_PAGE_DEPLOY_ROLE_ARN --body "$(terraform -chdir=infra/aws/always-on output -raw page_deploy_role_arn)"
+gh secret set AWS_SITE_BUCKET --body "$(terraform -chdir=infra/aws/always-on output -raw site_bucket)"
+```
+
+To deploy by hand, as when the job fails, from the repo root:
 
 ```
 npm run build --workspace frontend &&

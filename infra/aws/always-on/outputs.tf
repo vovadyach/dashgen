@@ -3,6 +3,11 @@ output "site_bucket" {
   value       = aws_s3_bucket.site.bucket
 }
 
+output "page_deploy_role_arn" {
+  description = "The role GitHub Actions takes to upload the page, for its AWS_PAGE_DEPLOY_ROLE_ARN secret."
+  value       = aws_iam_role.page_deploy.arn
+}
+
 output "distribution_id" {
   description = "The CloudFront distribution's ID, for cache invalidations."
   value       = aws_cloudfront_distribution.front_door.id

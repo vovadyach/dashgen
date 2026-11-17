@@ -67,7 +67,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
 | Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools), the Gemini adapter and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md)) |
 | Frontend (`frontend/`) | React, TypeScript, Vite, Tailwind, shadcn/ui, AG Charts, TanStack Query | Runs locally: the question box, the steps as they stream in, and the chart, with a data table, in light and dark themes. Charts can be pinned to a watchlist, shared as a link, or downloaded as a PNG |
-| Hosting | AWS, Terraform | Under way (step 5): the budget alerts, Terraform's state in S3, the daily cap's table, and the page on CloudFront with the function in front of `/api/*` ([roadmap](docs/roadmap.md#5-docker-and-aws)) |
+| Hosting | AWS, Terraform | Under way (step 5): the budget alerts, Terraform's state in S3, the daily cap's table, and the page on CloudFront with the function in front of `/api/*`, which GitHub Actions deploys after each merge to `main` ([roadmap](docs/roadmap.md#5-docker-and-aws)) |
 
 ## Running locally
 
@@ -104,14 +104,14 @@ Once Postgres is set up, `make dev` runs everything in one terminal: Postgres, D
 
 > **Upgrading from the two-database setup** (`metrics` and `gateway`): `make db` still reports healthy, but the `dashgen` database doesn't exist. Replace the two old passwords in `.env` with `DASHGEN_DB_PASSWORD`, then recreate the volume as above.
 
-Run every formatter, linter, type checker and test with `make check`, and fix formatting with `make fmt`. Docker must be running: database tests use a throwaway Postgres on port 5433 and DynamoDB Local on 8001, which `make check` starts. GitHub Actions runs the same checks on every pull request and every push to `main`.
+Run every formatter, linter, type checker and test with `make check`, and fix formatting with `make fmt`. Docker must be running: database tests use a throwaway Postgres on port 5433 and DynamoDB Local on 8001, which `make check` starts. GitHub Actions runs the same checks on every pull request and every push to `main`, and after a push to `main` it deploys the page.
 
 ## Repo layout
 
 ```
 dashgen/
 ├── .claude/       # Claude Code settings, hooks and skills
-├── .github/       # CI workflow: runs scripts/check.sh
+├── .github/       # CI workflow: runs scripts/check.sh, then deploys the page from main
 ├── docs/          # architecture, design, roadmap, runbooks and decision records
 ├── frontend/      # the React page, built with Vite
 ├── backend/       # the Node.js + Fastify backend, in TypeScript

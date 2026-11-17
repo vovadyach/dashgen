@@ -85,7 +85,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 
 The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes before CloudFront sends questions to the backend, since anyone can ask from then on.
 
-- [ ] GitHub Actions uploads the page's build on every merge to `main`, signing in to AWS with OIDC instead of stored keys
+- [x] GitHub Actions uploads the page's build on every merge to `main`, signing in to AWS with OIDC instead of stored keys ([runbook](runbooks/deploy.md#the-page))
 - [ ] VPC with public and private subnets, a NAT gateway, and a gateway endpoint for DynamoDB
 - [ ] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
 - [ ] Postgres on RDS (db.t4g.micro) in private subnets, with migrations and the seed run as a one-off ECS task
