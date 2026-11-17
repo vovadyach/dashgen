@@ -21,10 +21,12 @@ interface Props {
   onAsk: (question: string) => void;
   /** A question is on its way, so another can't start yet. */
   busy: boolean;
+  /** DashGen is offline, so no question can start. */
+  offline: boolean;
 }
 
 /** Questions to click, and what the sample data covers, so a new visitor knows what to ask. */
-export function Tips({ onAsk, busy }: Props) {
+export function Tips({ onAsk, busy, offline }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-center gap-2">
@@ -36,7 +38,7 @@ export function Tips({ onAsk, busy }: Props) {
             size="sm"
             className="rounded-full"
             title={question}
-            disabled={busy}
+            disabled={busy || offline}
             onClick={() => {
               onAsk(question);
             }}

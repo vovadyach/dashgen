@@ -1,4 +1,4 @@
-import { AskResponse, ErrorBody } from "@dashgen/contracts";
+import { AskResponse, ErrorBody, Offline } from "@dashgen/contracts";
 
 /** A failed request: one of the API's error codes, and a message that's safe to show. */
 export class ApiError extends Error {
@@ -22,7 +22,7 @@ export async function ask(question: string): Promise<string> {
     });
   } catch {
     throw new ApiError(
-      "offline",
+      "unreachable",
       "Can't reach DashGen. Check your connection, and try again.",
     );
   }
@@ -30,10 +30,16 @@ export async function ask(question: string): Promise<string> {
   const started = AskResponse.safeParse(body);
   if (response.status === 202 && started.success) return started.data.runId;
   const failed = ErrorBody.safeParse(body);
-  throw failed.success
-    ? new ApiError(failed.data.error.code, failed.data.error.message)
-    : new ApiError(
-        "unavailable",
-        "DashGen isn't answering. Try again in a moment.",
-      );
+  if (failed.success) {
+    throw new ApiError(failed.data.error.code, failed.data.error.message);
+  }
+  // CloudFront's own answer between sessions (ADR-0003): no backend runs,
+  // so the page switches to its offline banner.
+  if (response.status === 503 && Offline.safeParse(body).success) {
+    throw new ApiError("offline", "The live demo went offline.");
+  }
+  throw new ApiError(
+    "unavailable",
+    "DashGen isn't answering. Try again in a moment.",
+  );
 }

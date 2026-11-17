@@ -1,8 +1,9 @@
 import { type Chart, INTERNAL_ERROR, RunEvent } from "@dashgen/contracts";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 
 import { ApiError, ask } from "./api.ts";
+import { markOffline } from "./health.ts";
 
 export type Step = Extract<RunEvent, { type: "step" }>;
 export type Answer = Extract<RunEvent, { type: "outcome" }>;
@@ -160,6 +161,7 @@ export function parseEvent(data: string): RunEvent {
 /** Asks questions, and follows each one's run through its stream to its answer. */
 export function useRun() {
   const [run, dispatch] = useReducer(nextRun, { status: "idle" });
+  const client = useQueryClient();
   // Each ask gets the next number, and its reply comes back with it. Every
   // reply arrives, even one to a question that was stopped and replaced
   // (TanStack Query runs these callbacks for every request), so the reducer
@@ -189,6 +191,15 @@ export function useRun() {
       dispatch({ type: "failed", askId, failure });
     },
   });
+
+  // CloudFront answered the question the page follows itself, so no session
+  // runs: the page switches to its offline banner. Only a failure the
+  // reducer took counts, so a late reply to a question that was stopped or
+  // replaced changes nothing here either.
+  const wentOffline = run.status === "failed" && run.failure.code === "offline";
+  useEffect(() => {
+    if (wentOffline) void markOffline(client);
+  }, [wentOffline, client]);
 
   const runId = run.status === "streaming" ? run.runId : undefined;
   const askId = run.status === "streaming" ? run.askId : undefined;

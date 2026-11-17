@@ -24,9 +24,11 @@ interface Props {
   onStop: () => void;
   /** A question is on its way, so the button stops it instead. */
   busy: boolean;
+  /** DashGen is offline, so the box is off. Stop still works. */
+  offline: boolean;
 }
 
-export function QuestionBox({ ref, onAsk, onStop, busy }: Props) {
+export function QuestionBox({ ref, onAsk, onStop, busy, offline }: Props) {
   // The text lives here, not in the page, so typing redraws only the box,
   // not the chart, the steps and the watchlist with it.
   const [question, setQuestion] = useState("");
@@ -71,7 +73,7 @@ export function QuestionBox({ ref, onAsk, onStop, busy }: Props) {
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        if (trimmed !== "" && !busy) onAsk(trimmed);
+        if (trimmed !== "" && !busy && !offline) onAsk(trimmed);
       }}
       className="flex items-end gap-2"
     >
@@ -98,6 +100,7 @@ export function QuestionBox({ ref, onAsk, onStop, busy }: Props) {
           }
         }}
         maxLength={QUESTION_MAX_LENGTH}
+        disabled={offline}
         placeholder="Show errors for payments-service this week"
         autoComplete="off"
         className="max-h-40 min-h-11 resize-none py-2.5 md:text-base"
@@ -124,7 +127,7 @@ export function QuestionBox({ ref, onAsk, onStop, busy }: Props) {
           key="ask"
           type="submit"
           size="lg"
-          disabled={trimmed === ""}
+          disabled={trimmed === "" || offline}
           className="h-11"
         >
           <ArrowUp aria-hidden />

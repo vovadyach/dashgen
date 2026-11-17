@@ -95,7 +95,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [ ] Database password and the Gemini key in AWS Secrets Manager, passed to the container by ECS
 - [ ] Structured JSON logs with a request ID, collected in CloudWatch
 - [ ] GitHub Actions builds the image and deploys it, and uploads the page's build, signing in to AWS with OIDC instead of stored keys
-- [ ] The page's offline banner, when `/api/health` doesn't answer within 3 seconds
+- [x] The page's offline banner, when `/api/health` doesn't answer within 3 seconds
 - [ ] Rate limiting keyed on the visitor's IP from `CloudFront-Viewer-Address`, with a test that a forged `X-Forwarded-For` doesn't change it
 - [ ] Deploy runbook: [`docs/runbooks/deploy.md`](runbooks/deploy.md)
 
