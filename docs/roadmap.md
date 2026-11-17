@@ -77,26 +77,30 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] AWS account with MFA and budget alerts at $10, $25 and $50 ([runbook](runbooks/aws-account.md))
 - [x] Terraform's first stack, `infra/aws/account`: the budget, imported from the console ([runbook](runbooks/aws-account.md#6-terraform-takes-over))
 - [x] Terraform's state in S3: a versioned bucket in `infra/aws/account`, locked with a lock file ([runbook](runbooks/aws-account.md#6-terraform-takes-over))
-- [ ] All infrastructure defined in Terraform: the always-on and session stacks from the [AWS design](design.md#on-aws)
-- [ ] `terraform destroy` finishes cleanly: secrets deleted with no recovery window, RDS without a final snapshot, ECR repositories deleted with their images
-- [ ] No database backups: every deploy reseeds the data, and the `runs` history starts over
-- [ ] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
-- [ ] VPC with public and private subnets, a NAT gateway, and a gateway endpoint for DynamoDB
 - [x] The daily cap's table in the always-on stack, with TTL on `expires_at` ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md), [runbook](runbooks/deploy.md#the-always-on-stack))
-- [ ] The backend reaches that table with the task's role instead of DynamoDB Local's fake keys
 - [x] The backend's routes under `/api` (`/api/ask`, `/api/runs/:id/events`, `/api/health`), moved in step 3 so the page calls the same paths locally
 - [x] CloudFront in the always-on stack, serving the React app from a private S3 bucket that only our distribution can read ([runbook](runbooks/deploy.md#the-page))
-- [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding the `Last-Event-ID` header
 - [x] A CloudFront Function and key-value store that send `/api/*` to the running session, or answer 503 `{"status": "offline"}` between sessions ([runbook](runbooks/deploy.md#the-apis-door))
-- [ ] `make aws-down`, which drains the API before `terraform destroy`: it deletes the store's entry, waits for 10 offline answers in a row, then 60 seconds more
-- [ ] The backend on ECS Fargate behind a load balancer that accepts only our CloudFront: exactly one task, since the rate limit and run events live in its memory, and deploys that stop the old task first
-- [ ] When a reconnecting stream gets CloudFront's own error, like a passing 502, the page tries once more before saying the answer was interrupted, which would invite a second, paid run
-- [ ] Postgres on RDS (db.t4g.micro) in private subnets, with migrations and the seed run as a one-off ECS task
-- [ ] Database password and the Gemini key in AWS Secrets Manager, passed to the container by ECS
-- [ ] Structured JSON logs with a request ID, collected in CloudWatch
-- [ ] GitHub Actions builds the image and deploys it, and uploads the page's build, signing in to AWS with OIDC instead of stored keys
 - [x] The page's offline banner, when `/api/health` doesn't answer within 3 seconds
+
+The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes before CloudFront sends questions to the backend, since anyone can ask from then on.
+
+- [ ] GitHub Actions uploads the page's build on every merge to `main`, signing in to AWS with OIDC instead of stored keys
+- [ ] VPC with public and private subnets, a NAT gateway, and a gateway endpoint for DynamoDB
+- [ ] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
+- [ ] Postgres on RDS (db.t4g.micro) in private subnets, with migrations and the seed run as a one-off ECS task
+- [ ] No database backups: every deploy reseeds the data, and the `runs` history starts over
+- [ ] Database password and the Gemini key in AWS Secrets Manager, passed to the container by ECS
+- [ ] The backend on ECS Fargate behind a load balancer that accepts only our CloudFront: exactly one task, since the rate limit and run events live in its memory, and deploys that stop the old task first
+- [ ] The backend reaches the daily cap's table with the task's role instead of DynamoDB Local's fake keys
+- [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding the `Last-Event-ID` header
 - [ ] Rate limiting keyed on the visitor's IP from `CloudFront-Viewer-Address`, with a test that a forged `X-Forwarded-For` doesn't change it
+- [ ] `make aws-down`, which drains the API before `terraform destroy`: it deletes the store's entry, waits for 10 offline answers in a row, then 60 seconds more
+- [ ] When a reconnecting stream gets CloudFront's own error, like a passing 502, the page tries once more before saying the answer was interrupted, which would invite a second, paid run
+- [ ] Structured JSON logs with a request ID, collected in CloudWatch
+- [ ] GitHub Actions builds the backend's image and deploys it to ECS, with the same OIDC sign-in
+- [ ] All infrastructure defined in Terraform: the always-on and session stacks from the [AWS design](design.md#on-aws)
+- [ ] `terraform destroy` finishes cleanly: secrets deleted with no recovery window, RDS without a final snapshot, ECR repositories deleted with their images
 - [ ] Deploy runbook: [`docs/runbooks/deploy.md`](runbooks/deploy.md)
 
 **Done when:**
