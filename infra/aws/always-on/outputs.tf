@@ -8,6 +8,11 @@ output "distribution_id" {
   value       = aws_cloudfront_distribution.front_door.id
 }
 
+output "session_store_arn" {
+  description = "The key-value store's ARN, for the session's entry."
+  value       = aws_cloudfront_key_value_store.session.arn
+}
+
 output "url" {
   description = "DashGen's public address."
   value       = "https://${aws_cloudfront_distribution.front_door.domain_name}"

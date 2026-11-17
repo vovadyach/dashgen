@@ -6,7 +6,7 @@ Every stack needs Terraform 1.17 or newer, `aws login`, and `infra/aws/backend.h
 
 ## The always-on stack
 
-`infra/aws/always-on` holds what stays on between sessions: CloudFront, the page's private S3 bucket, and the daily cap's DynamoDB table, with TTL on `expires_at`, for a few cents a month. It stays on: never run `terraform destroy` there. The distribution and the table have `prevent_destroy`, because a new distribution gets a new address, and a new table loses the day's count.
+`infra/aws/always-on` holds what stays on between sessions: CloudFront with the API's function and key-value store, the page's private S3 bucket, and the daily cap's DynamoDB table, with TTL on `expires_at`, for a few cents a month. It stays on: never run `terraform destroy` there. The distribution and the table have `prevent_destroy`, because a new distribution gets a new address, and a new table loses the day's count.
 
 In `infra/aws/always-on`:
 
@@ -38,4 +38,37 @@ An invalidation makes every edge location drop its copies, so the next requests 
 
 ```
 aws cloudfront create-invalidation --distribution-id "$(terraform -chdir=infra/aws/always-on output -raw distribution_id)" --paths "/*"
+```
+
+## The API's door
+
+CloudFront runs `infra/aws/always-on/functions/api.js` on every `/api/*` request ([ADR-0003](../decisions/0003-cloudfront-front-door.md)). It reads one entry, `session`, from the key-value store `dashgen-session`:
+
+| The entry | `/api/*` answers |
+|---|---|
+| None, between sessions | `503 {"status": "offline"}`, from the function itself, with `x-cache: FunctionGeneratedResponse from cloudfront` |
+| `{"loadBalancer": "…", "secret": "…"}` | What that load balancer answers. The function sends the secret as `x-origin-verify`, and drops a visitor's own copy. |
+| Not JSON | CloudFront's own 503 page, with `x-cache: FunctionExecutionError from cloudfront`. No request reaches an origin. |
+
+The session stack will write and delete the entry. Each server in an edge location gets a change on its own, so one answer proves only that one server has it. Observed once, at the Los Angeles edge on 2026-11-16, and not a limit AWS promises:
+
+- Checking `/api/health` every second, the first server had a change 22 to 28 seconds after the write.
+- Checking every 0.2 seconds, 10 answers in a row were offline 42 seconds after a delete.
+
+To turn the API off by hand, in `infra/aws/always-on`. Each write names the store's current ETag, and gets a new one. Requests can still reach the load balancer until every server has the change, so wait for 10 offline answers in a row, then 60 seconds more, before destroying it:
+
+```
+KVS=$(terraform output -raw session_store_arn)
+KE=$(aws cloudfront-keyvaluestore describe-key-value-store --kvs-arn "$KVS" --query ETag --output text)
+aws cloudfront-keyvaluestore delete-key --kvs-arn "$KVS" --if-match "$KE" --key session
+URL=$(terraform output -raw url)
+n=0; until (( n >= 10 )); do curl -s "$URL/api/health" | grep -q '"offline"' && n=$((n+1)) || n=0; sleep 0.2; done
+```
+
+To run the function on a made-up request, without sending a real one. The request in `functions/test-event.json` carries a forged `x-origin-verify`, which a forwarded request must no longer have. The test reads the store, but it doesn't check where the function sends the request:
+
+```
+ETAG=$(aws cloudfront describe-function --name dashgen-api --stage LIVE --query ETag --output text)
+aws cloudfront test-function --name dashgen-api --stage LIVE --if-match "$ETAG" \
+  --event-object fileb://functions/test-event.json --query 'TestResult.{Error: FunctionErrorMessage, Output: FunctionOutput}'
 ```
