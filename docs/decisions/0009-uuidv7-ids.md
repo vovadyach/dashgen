@@ -27,4 +27,4 @@ UUIDv7 everywhere: `randomUUIDv7()` for request IDs, and for run IDs, which the 
 - IDs sort by time, and each one says when it was made, which helps when reading logs.
 - An ID shows when its run started. Run IDs aren't secrets and that time isn't sensitive, so that's fine here. An ID that mustn't reveal its time would use v4.
 - Node's IDs are ordered only to the millisecond: two made in the same millisecond can sort either way, and Node's docs say the clock isn't guaranteed to only move forward. `created_at` keeps the exact order.
-- It needs Node 24.16 or later (`engines` in `package.json` says so) and Postgres 18, both locally and on RDS in step 5.
+- It needs a Node that has `randomUUIDv7()`: 26.1 or later, which `engines` in `package.json` asks for, or 24.16 or later on Node 24. Node 26.0 doesn't have it. And Postgres 18, both locally and on RDS in step 5.

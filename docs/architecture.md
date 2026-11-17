@@ -20,7 +20,7 @@ Browser ──▶ Frontend ──── /api ──▶ Backend ─────�
 - **The `runs` module** (`backend/src/runs/`): each run's events in memory, for its stream, and `saveRun()`, which keeps each finished run in the `runs` table, with its cost.
 - **The `cap` module** (`backend/src/cap/`): the [daily cap](design.md#the-daily-cap). `POST /api/ask` takes one of today's 150 questions with one conditional write to DynamoDB before it starts a run ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md)).
 - **Postgres** runs in Docker Compose (`make db`), with one `dashgen` database and user. The tables come from Drizzle migrations, and the data from the seed.
-- **The backend's image** (`backend/Dockerfile`): Node 24 on Alpine, with only the production packages, run by the unprivileged `node` user. `.dockerignore` lists all it may take from the repo, so no `.env` file can reach it. `docker compose up` builds it, runs the migrations and the seed in a one-off `migrate` container, then starts the backend on :3000, as ECS will in step 5.
+- **The backend's image** (`backend/Dockerfile`): Node 26 on Alpine, with only the production packages, run by the unprivileged `node` user. `.dockerignore` lists all it may take from the repo, so no `.env` file can reach it. `docker compose up` builds it, runs the migrations and the seed in a one-off `migrate` container, then starts the backend on :3000, as ECS will in step 5.
 - **DynamoDB Local** runs in Docker Compose too (`make db`, port 8000), in memory, so a restart starts the count over. The backend makes its table when it starts. Its client uses fake keys, so it can't reach a real AWS account.
 
 How a question will become a chart is drawn in [design.md](design.md#one-question-step-by-step).

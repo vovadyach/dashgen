@@ -1,7 +1,7 @@
 # DashGen
 
 [![CI](https://github.com/vovadyach/dashgen/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vovadyach/dashgen/actions/workflows/ci.yml)
-![Node.js](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-26-5FA04E?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 ![Fastify](https://img.shields.io/badge/Fastify-000000?logo=fastify&logoColor=white)
 
@@ -61,7 +61,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 
 | Part | Tech | Today |
 |---|---|---|
-| Backend (`backend/`) | Node.js 24, Fastify, TypeScript, Zod | Takes a question, runs the agent, streams its steps over SSE and saves the run, with a per-IP rate limit and a daily cap of 150 questions ([API](docs/architecture.md#backend-api)) |
+| Backend (`backend/`) | Node.js 26, Fastify, TypeScript, Zod | Takes a question, runs the agent, streams its steps over SSE and saves the run, with a per-IP rate limit and a daily cap of 150 questions ([API](docs/architecture.md#backend-api)) |
 | Database | Postgres 18, Docker Compose | Runs locally: one `dashgen` database, with tables from Drizzle migrations |
 | Daily cap | DynamoDB Local, Docker Compose | Runs locally: today's count of questions ([why DynamoDB](docs/decisions/0014-daily-cap-in-dynamodb.md)) |
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
@@ -71,7 +71,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 
 ## Running locally
 
-You'll need Node.js 24.16+, and Docker for Postgres and DynamoDB Local.
+You'll need Node.js 26.1+, and Docker for Postgres and DynamoDB Local.
 
 ```bash
 make install                           # install every TypeScript package

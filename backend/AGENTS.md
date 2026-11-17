@@ -1,6 +1,6 @@
 # Backend
 
-Node.js 24 + Fastify, in TypeScript. Takes a question, and the Gemini agent answers it with a chart.
+Node.js 26 + Fastify, in TypeScript. Takes a question, and the Gemini agent answers it with a chart.
 
 - Code in `src/`, tests in `test/`. Node runs the `.ts` files directly, so there's no build step: `tsc` only checks types.
 - Run it with `npm run dev` from the repo root: port 3000, restarts on changes, reads `backend/.env`. API docs at http://localhost:3000/docs.

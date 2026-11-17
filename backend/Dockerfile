@@ -5,7 +5,7 @@
 
 # Alpine keeps the image small. The backend's production packages are plain
 # JavaScript, so Alpine's musl instead of glibc makes no difference to them.
-FROM node:24.21.0-alpine3.24
+FROM node:26.13.1-alpine3.24
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ COPY packages/contracts/package.json packages/contracts/
 RUN npm ci --workspace backend --omit=dev --ignore-scripts --no-audit --no-fund \
   && npm cache clean --force
 
-# Then the code. Node 24 runs the .ts files as they are: there's no build step.
+# Then the code. Node 26 runs the .ts files as they are: there's no build step.
 COPY packages/contracts/src packages/contracts/src
 COPY backend/src backend/src
 COPY backend/drizzle backend/drizzle
