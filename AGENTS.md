@@ -10,7 +10,7 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 - `packages/contracts/`: Zod schemas shared between packages, imported as `@dashgen/contracts`. The root `package.json` makes `backend`, `frontend` and `packages/*` one npm workspace, with the shared tools and settings ([ADR-0004](docs/decisions/0004-npm-workspaces.md)).
 - `frontend/`: the React page, built with Vite. See `frontend/AGENTS.md`.
 - `compose.yaml` and `postgres/`: Postgres and DynamoDB Local in Docker for local development. Postgres has one `dashgen` database and user, and DynamoDB Local holds the daily cap's count, in memory.
-- `infra/aws/`: Terraform, a folder per stack. `account/` is for the AWS account itself, like the budget alerts and the state bucket ([runbook](docs/runbooks/aws-account.md#6-terraform-takes-over)), and `always-on/` for the parts of DashGen that stay on between sessions, like CloudFront and the daily cap's table ([runbook](docs/runbooks/deploy.md#the-always-on-stack)).
+- `infra/aws/`: Terraform, a folder per stack. `account/` is for the AWS account itself, like the budget alerts and the state bucket ([runbook](docs/runbooks/aws-account.md#6-terraform-takes-over)), `always-on/` for the parts of DashGen that stay on between sessions, like CloudFront and the daily cap's table ([runbook](docs/runbooks/deploy.md#the-always-on-stack)), and `session/` for what runs only during a work session, like the VPC ([runbook](docs/runbooks/deploy.md#the-session-stack)).
 - `docs/architecture.md`: what runs today, and its API. Update it whenever an API changes.
 - `docs/design.md`: the target design, with requirements, estimates and diagrams. Update it when a design choice changes.
 - `docs/roadmap.md`: the nine steps. Tick an item when it's done.
@@ -43,4 +43,5 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 - All infrastructure is Terraform; nothing is changed only in the console.
 - GitHub Actions reaches AWS through OIDC. No AWS keys in GitHub.
 - Never create an AWS Organization or Control Tower: that ends the Free plan and its credits.
-- Run `terraform destroy` on the session stack at the end of every AWS work session. Never on `infra/aws/account` or `infra/aws/always-on`, which stay.
+- End every AWS work session with `make aws-down`, which destroys only the session stack, `infra/aws/session`. Never run `terraform destroy` on `infra/aws/account` or `infra/aws/always-on`, which stay.
+- Before any `terraform apply`, check its plan for anything it would delete or replace, and tell the user. From the repo's root, `terraform -chdir=infra/aws/<stack> show -json tfplan | node scripts/plan-changes.js` prints only those.

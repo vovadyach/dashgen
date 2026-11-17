@@ -67,7 +67,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
 | Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools), the Gemini adapter and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md)) |
 | Frontend (`frontend/`) | React, TypeScript, Vite, Tailwind, shadcn/ui, AG Charts, TanStack Query | Runs locally: the question box, the steps as they stream in, and the chart, with a data table, in light and dark themes. Charts can be pinned to a watchlist, shared as a link, or downloaded as a PNG |
-| Hosting | AWS, Terraform | Under way (step 5): the budget alerts, Terraform's state in S3, the daily cap's table, and the page on CloudFront with the function in front of `/api/*`, which GitHub Actions deploys after each merge to `main` ([roadmap](docs/roadmap.md#5-docker-and-aws)) |
+| Hosting | AWS, Terraform | Under way (step 5): the budget alerts, Terraform's state in S3, the daily cap's table, and the page on CloudFront with the function in front of `/api/*`, which GitHub Actions deploys after each merge to `main`, and the session stack's network, up only during work sessions ([roadmap](docs/roadmap.md#5-docker-and-aws)) |
 
 ## Running locally
 
@@ -110,14 +110,15 @@ Run every formatter, linter, type checker and test with `make check`, and fix fo
 
 ```
 dashgen/
-├── .claude/       # Claude Code settings, hooks and skills
+├── .claude/       # Claude Code settings, hooks, skills and a subagent
 ├── .github/       # CI workflow: runs scripts/check.sh, then deploys the page from main
 ├── docs/          # architecture, design, roadmap, runbooks and decision records
 ├── frontend/      # the React page, built with Vite
+├── infra/aws/     # Terraform: the account, always-on and session stacks
 ├── backend/       # the Node.js + Fastify backend, in TypeScript
 ├── packages/      # shared TypeScript packages: contracts (API schemas)
 ├── postgres/      # init script: the `dashgen` database and user
-├── scripts/       # check.sh: every check in one command
+├── scripts/       # check.sh: every check in one command; plan-changes.js: what a Terraform plan deletes or replaces
 ├── AGENTS.md      # project rules for every coding agent
 ├── CLAUDE.md      # imports AGENTS.md, plus Claude Code's own bits
 ├── compose.yaml   # Postgres for local development
@@ -135,6 +136,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - `.claude/settings.json` stops Claude from committing or pushing, so every change is reviewed and committed by hand. It also keeps Claude's file tools, and shell commands like `cat`, away from `.env` files other than `.env.example`. A script that opens a file itself isn't covered; only Claude Code's [sandbox](https://code.claude.com/docs/en/sandboxing) blocks that.
 - Hooks, written in TypeScript and run by Node, format each TypeScript, JSON, CSS or HTML file Claude edits, and run `scripts/check.sh` when Claude finishes a turn that changed files. If a check fails, Claude is sent back to fix it, up to twice; after that it stops with a warning.
 - Skills: `/fix-issue <number>` works a GitHub issue through to passing checks, and `/adr` records a decision in `docs/decisions/`.
+- A subagent: `terraform-reviewer` reads a Terraform plan and reports only what it would delete or replace, before anything is applied.
 
 ## Decisions
 

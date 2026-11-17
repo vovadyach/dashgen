@@ -6,7 +6,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - Every step ships with its tests.
 - **Product first:** a thin slice from question to chart works early (step 3), and every later step makes it safer, deployed, measured or nicer. The guardrails come before the first deploy, because the deployed demo is public.
 - The AWS backend runs only while it's being worked on, and `terraform destroy` removes it after each session. Only a small stack stays on, so the link and the page keep working in between ([ADR-0003](decisions/0003-cloudfront-front-door.md)).
-- `make` runs repo-wide and infrastructure commands (`make check`, `make db`, and later `make aws-up` and `make aws-down`). npm scripts run the TypeScript packages.
+- `make` runs repo-wide and infrastructure commands (`make check`, `make db`, `make aws-up` and `make aws-down`). npm scripts run the TypeScript packages.
 
 ## 1. Foundation
 
@@ -86,8 +86,9 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes before CloudFront sends questions to the backend, since anyone can ask from then on.
 
 - [x] GitHub Actions uploads the page's build on every merge to `main`, signing in to AWS with OIDC instead of stored keys ([runbook](runbooks/deploy.md#the-page))
-- [ ] VPC with public and private subnets, a NAT gateway, and a gateway endpoint for DynamoDB
-- [ ] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
+- [x] VPC with public and private subnets, a NAT gateway, and a gateway endpoint for DynamoDB ([runbook](runbooks/deploy.md#the-session-stack))
+- [x] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
+- [x] `make aws-up` and `make aws-down`, which apply and destroy only the session stack, `infra/aws/session`, never the two that stay ([runbook](runbooks/deploy.md#the-session-stack))
 - [ ] Postgres on RDS (db.t4g.micro) in private subnets, with migrations and the seed run as a one-off ECS task
 - [ ] No database backups: every deploy reseeds the data, and the `runs` history starts over
 - [ ] Database password and the Gemini key in AWS Secrets Manager, passed to the container by ECS
