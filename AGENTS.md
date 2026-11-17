@@ -18,7 +18,7 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 
 ## Commands
 
-- `make check` runs every formatter, linter, type checker and test. Run it before you finish any change: it must pass, and CI (`.github/workflows/ci.yml`) runs it on every pull request.
+- `make check` runs every formatter, linter, type checker and test. Run it before you finish any change: it must pass, and CI (`.github/workflows/ci.yml`) runs it on every pull request. After a push to `main`, CI also deploys the page.
 - `make install` runs `npm ci` at the root, which installs every TypeScript workspace and the shared tools.
 - `make fmt` formats the TypeScript code.
 - `make dev` starts Postgres, DynamoDB Local, the backend and the page in one terminal, and Ctrl+C stops the backend and the page. To start one alone, `npm run dev` starts the backend on :3000, and `npm run dev:frontend` the page on :5173, which forwards `/api` to the backend. `make` is for repo-wide and infrastructure commands, npm scripts for the TypeScript packages.
