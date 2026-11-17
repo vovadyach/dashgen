@@ -87,7 +87,8 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] The backend's routes under `/api` (`/api/ask`, `/api/runs/:id/events`, `/api/health`), moved in step 3 so the page calls the same paths locally
 - [x] CloudFront in the always-on stack, serving the React app from a private S3 bucket that only our distribution can read ([runbook](runbooks/deploy.md#the-page))
 - [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding the `Last-Event-ID` header
-- [ ] A CloudFront Function and key-value store that send `/api/*` to the running session, or answer 503 `{"status": "offline"}` between sessions, and a `make aws-down` that drains the API before `terraform destroy`
+- [x] A CloudFront Function and key-value store that send `/api/*` to the running session, or answer 503 `{"status": "offline"}` between sessions ([runbook](runbooks/deploy.md#the-apis-door))
+- [ ] `make aws-down`, which drains the API before `terraform destroy`: it deletes the store's entry, waits for 10 offline answers in a row, then 60 seconds more
 - [ ] The backend on ECS Fargate behind a load balancer that accepts only our CloudFront: exactly one task, since the rate limit and run events live in its memory, and deploys that stop the old task first
 - [ ] When a reconnecting stream gets CloudFront's own error, like a passing 502, the page tries once more before saying the answer was interrupted, which would invite a second, paid run
 - [ ] Postgres on RDS (db.t4g.micro) in private subnets, with migrations and the seed run as a one-off ECS task
