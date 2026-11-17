@@ -83,3 +83,27 @@ ETAG=$(aws cloudfront describe-function --name dashgen-api --stage LIVE --query 
 aws cloudfront test-function --name dashgen-api --stage LIVE --if-match "$ETAG" \
   --event-object fileb://functions/test-event.json --query 'TestResult.{Error: FunctionErrorMessage, Output: FunctionOutput}'
 ```
+
+## The session stack
+
+`infra/aws/session` holds what runs on AWS only while DashGen is being worked on, and costs money by the hour. So far it's the network ([design](../design.md#on-aws)):
+
+- A VPC, `10.0.0.0/16`, with a public and a private subnet in each of two availability zones: us-east-1a and us-east-1b in this account. The zone `use1-az3` is left out, since Fargate doesn't run there.
+- One NAT gateway, in the first zone, which the private subnets use to reach the internet.
+- A gateway endpoint for DynamoDB, so the daily cap's requests skip the NAT gateway, for free.
+- The VPC's default security group, with its rules removed, so anything that forgets to pick a group gets no traffic.
+
+While it's up, it costs about $0.05 an hour: $0.045 for the NAT gateway, and $0.005 for its public IP. The rest is free. Left up for a month, it would cost about $36.
+
+From the repo root, signed in with `aws login`:
+
+```
+make aws-up      # shows the plan, and builds it once you answer yes
+make aws-down    # shows what goes, and destroys it once you answer yes
+```
+
+- **End every work session with `make aws-down`.**
+- **Both touch only this stack.** `infra/aws/account` and `infra/aws/always-on` stay up, and nothing in the Makefile destroys them.
+- **Both run `terraform init` first,** so they work on a new machine too, once `infra/aws/backend.hcl` exists. The state is at `session/terraform.tfstate`, beside the other two stacks'.
+- **The first `make aws-up` adds 16 resources.** The NAT gateway takes a minute or two to come up, and as long again to go.
+- **Before applying a change to any stack,** check the plan for anything it would delete or replace. From the repo's root, `terraform -chdir=infra/aws/<stack> show -json tfplan | node scripts/plan-changes.js` prints only those, and the plan's summary. In Claude Code, the `terraform-reviewer` subagent runs it for you (`.claude/agents/terraform-reviewer.md`).
