@@ -107,14 +107,16 @@ export function QuestionBox({ ref, onAsk, onStop, busy, offline }: Props) {
       />
       {/* Separate keys, so React swaps the element: reused, the Stop button
           would turn into Ask while its own click is still running, and the
-          browser would then submit the form, asking the question again. */}
+          browser would then submit the form, asking the question again.
+          Both are as tall as the box with one line in it, 46 px, so their
+          tops line up with it. */}
       {busy ? (
         <Button
           key="stop"
           type="button"
           variant="outline"
           size="lg"
-          className="h-11"
+          className="h-11.5"
           onClick={onStop}
           title="Stop (Esc)"
           aria-keyshortcuts="Escape"
@@ -128,9 +130,13 @@ export function QuestionBox({ ref, onAsk, onStop, busy, offline }: Props) {
           type="submit"
           size="lg"
           disabled={trimmed === "" || offline}
-          className="h-11"
+          className="group h-11.5"
         >
-          <ArrowUp aria-hidden />
+          {/* The arrow nudges up on hover, as if sending. */}
+          <ArrowUp
+            aria-hidden
+            className="motion-safe:transition-transform motion-safe:group-hover:-translate-y-0.5"
+          />
           Ask
         </Button>
       )}
