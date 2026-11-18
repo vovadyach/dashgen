@@ -3,8 +3,8 @@
 # IPs AWS hands out. AWS gives every new group a rule that lets everything
 # out; Terraform removes it, so a group allows only the rules written here.
 
-# The backend's task joins this group once it runs on ECS. Until then the
-# group is empty, and its one rule says where the backend may go: Postgres.
+# The backend's tasks join this group, the migrations task first. Its rules
+# say where they may go: Postgres, and HTTPS.
 resource "aws_security_group" "backend" {
   name        = "dashgen-backend"
   description = "DashGen backend"
@@ -32,6 +32,18 @@ resource "aws_vpc_security_group_egress_rule" "backend_to_database" {
   from_port                    = 5432
   to_port                      = 5432
   description                  = "Postgres"
+}
+
+# HTTPS, through the NAT gateway or a gateway endpoint: ECR for the image,
+# Secrets Manager, CloudWatch Logs, DynamoDB, and later Gemini. DNS needs no
+# rule, since a group never filters the VPC's own DNS server.
+resource "aws_vpc_security_group_egress_rule" "backend_to_https" {
+  security_group_id = aws_security_group.backend.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  description       = "HTTPS"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "database_from_backend" {

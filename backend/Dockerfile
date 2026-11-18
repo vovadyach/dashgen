@@ -25,6 +25,10 @@ COPY packages/contracts/src packages/contracts/src
 COPY backend/src backend/src
 COPY backend/drizzle backend/drizzle
 
+# RDS's certificates for us-east-1, so that on AWS the backend checks the
+# database's certificate (DATABASE_URL's sslrootcert, infra/aws/session/ecs.tf).
+COPY backend/certs backend/certs
+
 # In a container, localhost is the container's own, so the backend listens on
 # every address, for requests from outside it.
 ENV HOST=0.0.0.0 PORT=3000

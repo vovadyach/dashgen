@@ -127,6 +127,17 @@ resource "aws_vpc_endpoint" "dynamodb" {
   tags = { Name = "dashgen-dynamodb" }
 }
 
+# S3, through another free gateway endpoint. ECR keeps images' layers in S3,
+# so pulling the backend's image skips the NAT gateway's $0.045 a GB.
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${data.aws_region.current.region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id]
+
+  tags = { Name = "dashgen-s3" }
+}
+
 # The VPC's default security group, emptied of its rules: anything that
 # forgets to pick a group of its own gets no traffic at all.
 resource "aws_default_security_group" "default" {
