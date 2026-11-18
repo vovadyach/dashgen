@@ -154,6 +154,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [12. shadcn/ui and AG Charts for the page](docs/decisions/0012-shadcn-and-ag-charts.md)
 - [13. Share links carry the chart](docs/decisions/0013-share-links-carry-the-chart.md)
 - [14. The daily cap counts in DynamoDB](docs/decisions/0014-daily-cap-in-dynamodb.md)
+- [15. The backend signs in to RDS as its admin user](docs/decisions/0015-backend-as-rds-admin.md)
 
 ## License
 

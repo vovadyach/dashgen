@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 
 import { eq, sql } from "drizzle-orm";
 
-import { isRetryable, withoutQueryValues } from "../../src/db.ts";
+import { createDb, isRetryable, withoutQueryValues } from "../../src/db.ts";
 import { services } from "../../src/metrics/schema.ts";
 import { createTestDb, type TestDb, unreachableDb } from "../helpers/db.ts";
 import { recordingLogger } from "../helpers/logger.ts";
@@ -120,5 +120,36 @@ describe("database", () => {
       [slow, ended, refused, missing].map((error) => isRetryable(error)),
       [true, true, true, false],
     );
+  });
+
+  it("signs in with PGPASSWORD when the URL has no password, as on AWS", async () => {
+    // On AWS, DATABASE_URL has no password: ECS passes RDS's as PGPASSWORD,
+    // which node-postgres reads itself (ADR-0015).
+    assert.ok(testDb);
+    const url = new URL(testDb.url);
+    const password = decodeURIComponent(url.password);
+    url.password = "";
+    const saved = process.env.PGPASSWORD;
+    const signedIn = createDb(url.toString(), { log });
+    try {
+      // A wrong one fails, so the password can only come from PGPASSWORD.
+      process.env.PGPASSWORD = "wrong";
+      await assert.rejects(signedIn.$client.query("select 1"), {
+        code: "28P01", // invalid_password
+      });
+
+      process.env.PGPASSWORD = password;
+      const { rows } = await signedIn.$client.query<{ current_user: string }>(
+        "select current_user",
+      );
+      assert.equal(rows[0]?.current_user, decodeURIComponent(url.username));
+    } finally {
+      await signedIn.$client.end();
+      if (saved === undefined) {
+        delete process.env.PGPASSWORD;
+      } else {
+        process.env.PGPASSWORD = saved;
+      }
+    }
   });
 });

@@ -37,11 +37,12 @@ resource "aws_db_instance" "main" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.database.id]
 
-  # The database and its admin user are both called dashgen. RDS makes the
-  # password and keeps it in a Secrets Manager secret of its own, so it's
-  # never in Terraform's state or in the repo, and deletes the secret with
-  # the instance. RDS's default settings accept only TLS connections
-  # (rds.force_ssl), so the backend must connect with TLS.
+  # The database and its admin user are both called dashgen, and the backend
+  # signs in as that user (ADR-0015). RDS makes the password and keeps it in a
+  # Secrets Manager secret of its own, so it's never in Terraform's state or
+  # in the repo, and deletes the secret with the instance. RDS's default
+  # settings accept only TLS connections (rds.force_ssl), so the backend must
+  # connect with TLS.
   db_name                     = "dashgen"
   username                    = "dashgen"
   manage_master_user_password = true
