@@ -146,10 +146,11 @@ export function createAwsDynamo(region: string): DynamoDBClient {
  *
  * The signal ends the request itself, even a reply that stalls after its
  * headers, where the client's own requestTimeout stops counting. But it can't
- * end the credential lookup before it, which on ECS asks the task's metadata
- * endpoint, with timeouts and retries of its own. So the deadline also races
- * the whole send, and a request whose credentials come late finds the signal
- * already fired, and never goes out.
+ * end the credential lookup before it, which on ECS asks the task's credential
+ * endpoint (`ecsCredentials`): one try, of up to 1 second, and after a
+ * failure, another at the next request. So the deadline also races the whole
+ * send, and a request whose credentials come late finds the signal already
+ * fired, and never goes out.
  */
 export async function withDeadline<T>(
   send: (signal: AbortSignal) => Promise<T>,
