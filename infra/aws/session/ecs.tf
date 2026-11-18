@@ -1,6 +1,7 @@
-# ECS runs the backend's image on Fargate (docs/design.md#on-aws). So far it
-# runs one task: the migrations and the seed, which make aws-migrate starts,
-# and which stops when it's done. The cluster itself is free.
+# ECS runs the backend's image on Fargate (docs/design.md#on-aws), for two
+# jobs: the migrations and the seed here, a one-off task that make aws-migrate
+# starts, and the backend itself, a service (service.tf). The cluster itself is
+# free.
 
 resource "aws_ecs_cluster" "main" {
   name = "dashgen"
@@ -60,8 +61,8 @@ resource "aws_ecs_task_definition" "migrate" {
   }])
 }
 
-# What else the execution role (secrets.tf) needs to start the task: pull the
-# image from this repository, and write to the task's log group.
+# What else the execution role (secrets.tf) needs to start the tasks: pull the
+# image from this repository, and write to the tasks' log groups.
 resource "aws_iam_role_policy" "task_execution_image_and_logs" {
   name = "pull-the-image-and-write-logs"
   role = aws_iam_role.task_execution.id
@@ -85,9 +86,12 @@ resource "aws_iam_role_policy" "task_execution_image_and_logs" {
         Resource = aws_ecr_repository.backend.arn
       },
       {
-        Effect   = "Allow"
-        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "${aws_cloudwatch_log_group.migrate.arn}:*"
+        Effect = "Allow"
+        Action = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = [
+          "${aws_cloudwatch_log_group.migrate.arn}:*",
+          "${aws_cloudwatch_log_group.backend.arn}:*",
+        ]
       },
     ]
   })

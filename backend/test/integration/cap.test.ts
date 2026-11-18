@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { type AddressInfo, connect, createServer, type Socket } from "node:net";
 import { after, before, describe, it } from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
 
-import { GetItemCommand } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
 
 import { createCapTable, createDailyCap } from "../../src/cap/index.ts";
 import { createDynamo } from "../../src/dynamo.ts";
@@ -174,6 +175,42 @@ describe("daily cap", () => {
       } finally {
         client.destroy();
         stalling.close();
+      }
+    },
+  );
+
+  it(
+    "gives up within 2 seconds when the credentials are slow to come, as they can be on ECS, and never sends the write",
+    { timeout: 10_000 },
+    async () => {
+      // On ECS, the SDK first asks the task's metadata endpoint for
+      // credentials. Here they come after 4 seconds, and the fake DynamoDB
+      // counts every connection to it.
+      let connections = 0;
+      const counting = await fakeDynamo((socket) => {
+        connections += 1;
+        socket.destroy();
+      });
+      const slow = new DynamoDBClient({
+        endpoint: counting.endpoint,
+        region: "local",
+        maxAttempts: 1,
+        credentials: () =>
+          sleep(4_000).then(() => ({
+            accessKeyId: "local",
+            secretAccessKey: "local",
+          })),
+      });
+      const started = performance.now();
+      try {
+        await assert.rejects(createDailyCap(slow).reserve());
+        assert.ok(performance.now() - started < 3_000);
+        // Once the credentials have come, the write still hasn't gone out.
+        await sleep(2_500);
+        assert.equal(connections, 0);
+      } finally {
+        slow.destroy();
+        counting.close();
       }
     },
   );

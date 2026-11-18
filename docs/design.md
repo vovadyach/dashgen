@@ -443,7 +443,7 @@ The day's first question creates the item, and later ones add 1 only while it's 
 - **Fail closed:** if DynamoDB doesn't answer, the question gets a 503 `unavailable`, and Gemini isn't called. A lost answer is cheaper than an unchecked bill.
 - **A reservation is never given back,** even when the run fails, because a failed run may already have spent tokens.
 - **The write gets no retry,** because it adds 1: a second try after a lost reply would count one question twice. A lost reply refuses the question instead, and its place is lost for the day. Each try gives up after 2 seconds, however far its reply has come.
-- **The same code runs everywhere:** locally, DynamoDB Local runs in Docker Compose, in memory, so the backend makes its table when it starts. On AWS the table costs a fraction of a cent a month.
+- **The same code runs everywhere, with one setting apart.** Locally, DynamoDB Local runs in Docker Compose, in memory, so the backend makes its table when it starts. On AWS, the table is in the always-on stack, and the task definition's `DYNAMODB_REGION` sends the backend there, with its task's role, which may only write to it. Each attempt to reserve a question is one billed write, refused ones too, so the bill follows the attempts, not the 150 answered: about a cent for each ten thousand attempts, and the per-IP rate limit slows them down.
 
 **Gemini's own spend cap is the last line.** The Gemini project gets a $20 monthly spend cap in AI Studio ([how](runbooks/costs.md)). It also covers what the app's cap can't see, like evals or a bug in the cap itself. Google's billing data can lag about 10 minutes, so it isn't exact.
 

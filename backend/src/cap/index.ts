@@ -7,7 +7,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 
 import { DEFAULT_DAILY_CAP } from "../config.ts";
-import { requestDeadline } from "../dynamo.ts";
+import { withDeadline } from "../dynamo.ts";
 
 /** The daily cap's table: an item per UTC day, with the questions it used. */
 export const CAP_TABLE = "dashgen-daily-cap";
@@ -62,21 +62,23 @@ export function createDailyCap(
         // and later ones add 1 only while it's under the cap. DynamoDB checks
         // and writes in one step, so two requests can't both take the last
         // question.
-        await client.send(
-          new UpdateItemCommand({
-            TableName: table,
-            Key: { day: { S: time.toISOString().slice(0, 10) } },
-            UpdateExpression: "ADD used :one SET expires_at = :expires",
-            ConditionExpression: "attribute_not_exists(used) OR used < :cap",
-            ExpressionAttributeValues: {
-              ":one": { N: "1" },
-              ":cap": { N: String(limit) },
-              // On AWS, TTL is on for expires_at (infra/aws/always-on), so
-              // DynamoDB deletes the day's item some time after this.
-              ":expires": { N: String(seconds + 30 * DAY_SECONDS) },
-            },
-          }),
-          { abortSignal: requestDeadline() },
+        await withDeadline((abortSignal) =>
+          client.send(
+            new UpdateItemCommand({
+              TableName: table,
+              Key: { day: { S: time.toISOString().slice(0, 10) } },
+              UpdateExpression: "ADD used :one SET expires_at = :expires",
+              ConditionExpression: "attribute_not_exists(used) OR used < :cap",
+              ExpressionAttributeValues: {
+                ":one": { N: "1" },
+                ":cap": { N: String(limit) },
+                // On AWS, TTL is on for expires_at (infra/aws/always-on), so
+                // DynamoDB deletes the day's item some time after this.
+                ":expires": { N: String(seconds + 30 * DAY_SECONDS) },
+              },
+            }),
+            { abortSignal },
+          ),
         );
         return { reserved: true };
       } catch (error) {
@@ -96,14 +98,16 @@ export async function createCapTable(
   table = CAP_TABLE,
 ): Promise<void> {
   try {
-    await client.send(
-      new CreateTableCommand({
-        TableName: table,
-        AttributeDefinitions: [{ AttributeName: "day", AttributeType: "S" }],
-        KeySchema: [{ AttributeName: "day", KeyType: "HASH" }],
-        BillingMode: "PAY_PER_REQUEST",
-      }),
-      { abortSignal: requestDeadline() },
+    await withDeadline((abortSignal) =>
+      client.send(
+        new CreateTableCommand({
+          TableName: table,
+          AttributeDefinitions: [{ AttributeName: "day", AttributeType: "S" }],
+          KeySchema: [{ AttributeName: "day", KeyType: "HASH" }],
+          BillingMode: "PAY_PER_REQUEST",
+        }),
+        { abortSignal },
+      ),
     );
   } catch (error) {
     if (!(error instanceof ResourceInUseException)) throw error;

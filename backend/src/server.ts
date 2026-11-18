@@ -1,27 +1,33 @@
 import { createGeminiModel } from "./agent/index.ts";
 import { buildApp } from "./app.ts";
 import { createCapTable, createDailyCap } from "./cap/index.ts";
-import { loadConfig, loadDatabaseUrl, loadDynamoEndpoint } from "./config.ts";
+import { loadConfig, loadDatabaseUrl, loadDynamoTarget } from "./config.ts";
 import { createDb } from "./db.ts";
-import { createDynamo } from "./dynamo.ts";
+import { createAwsDynamo, createDynamo } from "./dynamo.ts";
 import { createMetrics } from "./metrics/index.ts";
 import { saveRun } from "./runs/index.ts";
 
 const config = loadConfig();
 const databaseUrl = loadDatabaseUrl();
-const dynamoEndpoint = loadDynamoEndpoint();
+const dynamoTarget = loadDynamoTarget();
+
+const dynamo =
+  "region" in dynamoTarget
+    ? createAwsDynamo(dynamoTarget.region)
+    : createDynamo(dynamoTarget.endpoint);
 
 // DynamoDB Local keeps its tables in memory, so after each restart the backend
-// makes the daily cap's table again before it takes questions. On AWS,
-// Terraform will make it (step 5).
-const dynamo = createDynamo(dynamoEndpoint);
-try {
-  await createCapTable(dynamo);
-} catch (error) {
-  throw new Error(
-    `DynamoDB Local isn't answering at ${dynamoEndpoint}. Start it with \`make db\`.`,
-    { cause: error },
-  );
+// makes the daily cap's table again before it takes questions. On AWS, the
+// table is in the always-on stack, and the task's role may only write to it.
+if ("endpoint" in dynamoTarget) {
+  try {
+    await createCapTable(dynamo);
+  } catch (error) {
+    throw new Error(
+      `DynamoDB Local isn't answering at ${dynamoTarget.endpoint}. Start it with \`make db\`.`,
+      { cause: error },
+    );
+  }
 }
 
 const app = await buildApp(config, {
