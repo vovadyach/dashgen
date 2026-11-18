@@ -92,7 +92,8 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 - [x] Postgres on RDS (db.t4g.micro) in private subnets, which only the backend's security group reaches ([runbook](runbooks/deploy.md#the-session-stack))
 - [ ] Migrations and the seed run as a one-off ECS task, before the backend starts
 - [x] No database backups: every session reseeds the data, and the `runs` history starts over
-- [ ] Database password and the Gemini key in AWS Secrets Manager, passed to the container by ECS
+- [x] Database password and the Gemini key in AWS Secrets Manager, which only ECS's task execution role can read ([ADR-0015](decisions/0015-backend-as-rds-admin.md), [runbook](runbooks/deploy.md#the-session-stack))
+- [ ] ECS passes them to the backend's container, as `GEMINI_API_KEY` and `PGPASSWORD`
 - [ ] The backend on ECS Fargate behind a load balancer that accepts only our CloudFront: exactly one task, since the rate limit and run events live in its memory, and deploys that stop the old task first
 - [ ] The backend reaches the daily cap's table with the task's role instead of DynamoDB Local's fake keys
 - [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding the `Last-Event-ID` header

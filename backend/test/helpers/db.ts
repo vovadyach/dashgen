@@ -13,6 +13,8 @@ const ADMIN_URL =
 
 export interface TestDb {
   db: Db;
+  /** The database's URL, with the admin's user and password. */
+  url: string;
   drop: () => Promise<void>;
 }
 
@@ -46,7 +48,7 @@ export async function createTestDb(log?: Logger): Promise<TestDb> {
     url.pathname = `/${name}`;
     db = createDb(url.toString(), log ? { log } : {});
     await migrateDb(db);
-    return { db, drop };
+    return { db, url: url.toString(), drop };
   } catch (error) {
     // Without this, a failed setup would leak the database and keep the process alive.
     await drop();

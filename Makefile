@@ -10,7 +10,7 @@ help:
 	@echo "  make fmt        Format the TypeScript code"
 	@echo "  make check      Run every formatter, linter, type checker and test"
 	@echo "  make clean      Remove installed packages"
-	@echo "  make aws-up     Build the session stack on AWS, after showing its plan (costs money by the hour)"
+	@echo "  make aws-up     Build the session stack on AWS, after showing its plan (costs money by the hour; needs TF_VAR_gemini_api_key)"
 	@echo "  make aws-down   Destroy the session stack: end every AWS work session with it"
 	@echo "  npm run dev     Run the backend (:3000), restarting on changes"
 	@echo "  npm run dev:frontend  Run the page (:5173), which forwards /api to the backend"
@@ -45,9 +45,12 @@ clean:
 # Both commands touch only that stack, never infra/aws/account or
 # infra/aws/always-on, which stay. Terraform shows what it will do, and asks
 # before it changes anything. init runs first, so a new machine works too.
+# aws-up also needs the Gemini key in TF_VAR_gemini_api_key, for the backend's
+# secret; without it, the secret would hold only a placeholder.
 SESSION = terraform -chdir=infra/aws/session
 
 aws-up:
+	@test -n "$$TF_VAR_gemini_api_key" || { echo "Set TF_VAR_gemini_api_key to DashGen's Gemini API key first: docs/runbooks/deploy.md#the-session-stack"; exit 1; }
 	$(SESSION) init -input=false -backend-config=../backend.hcl
 	$(SESSION) apply
 

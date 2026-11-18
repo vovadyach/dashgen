@@ -338,7 +338,7 @@ flowchart TB
 - **The page's files in CloudFront:** the hashed files in `assets/` are cached for a year, and `index.html` is checked on every visit, so a deploy needs no invalidation ([runbook](runbooks/deploy.md#the-page)).
 - **One NAT gateway, in one AZ,** because there's no uptime requirement, and it's already the biggest line on the hourly bill.
 - **Three stacks:** the always-on one in the diagram costs a few cents a month, and the session stack holds everything else. `make aws-down` drains the API before destroying it, and neither `make aws-up` nor `make aws-down` changes CloudFront's settings. The third, `infra/aws/account`, holds what belongs to the AWS account rather than to DashGen, like the budget alerts and the S3 bucket for every stack's Terraform state, and stays on too.
-- **No keys anywhere:** secrets come from Secrets Manager when a task starts, and GitHub Actions signs in with OIDC.
+- **No keys anywhere:** secrets come from Secrets Manager when a task starts, and GitHub Actions signs in with OIDC. RDS makes the database's password itself, and the Gemini key goes from the shell that runs `make aws-up` to Secrets Manager, never into Terraform's state.
 
 ## 4. Data and APIs
 
@@ -346,7 +346,7 @@ What the backend stores, and the contracts between its parts and with the page. 
 
 ### One database
 
-- The backend owns one Postgres database, `dashgen`, and signs in as one user. Locally it's a Docker container; on AWS it's one RDS db.t4g.micro.
+- The backend owns one Postgres database, `dashgen`, and signs in as one user: a user of its own locally, and RDS's admin user on AWS ([ADR-0015](decisions/0015-backend-as-rds-admin.md)). Locally it's a Docker container; on AWS it's one RDS db.t4g.micro.
 - [Drizzle](decisions/0006-drizzle.md) defines the tables in TypeScript, and `drizzle-kit` turns each change into a plain SQL migration file that's committed and reviewed with the code. One migration workflow covers every table.
 - The metrics tables and the `runs` table are read and written only by their own module: the `metrics` module only reads, and the `runs` module only appends.
 

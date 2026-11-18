@@ -96,6 +96,8 @@ aws cloudfront test-function --name dashgen-api --stage LIVE --if-match "$ETAG" 
 - A security group for the backend and one for the database. Only the backend's group can reach Postgres, on port 5432, and nothing joins it until the backend runs on ECS. Until then the database is up, empty, and nothing can reach it.
 - No backups and no final snapshot: each session starts with a new, empty database, and `make aws-down` deletes it with its data.
 - The database's password, which RDS makes and keeps in a Secrets Manager secret of its own, named `rds!db-` and an ID. It's never in Terraform's state or the repo, and RDS deletes it with the database, at once, with no recovery window.
+- The Gemini key, in a Secrets Manager secret named `dashgen/gemini-api-key`. `make aws-up` takes it from your shell, and Terraform passes it to AWS without keeping a copy in its state or plan. `make aws-down` deletes it at once, with no recovery window.
+- An IAM role, `dashgen-task-execution`, which ECS will take to start the backend. It can read these two secrets and nothing else.
 
 While it's up, it costs about $0.07 an hour, so about $51 if it's left up for a month:
 
@@ -106,19 +108,22 @@ While it's up, it costs about $0.07 an hour, so about $51 if it's left up for a 
 | Postgres, db.t4g.micro | $0.016 |
 | Its 20 GB of storage, at $0.115 a GB a month | $0.003 |
 | The password's secret, at $0.40 a month | $0.0005 |
+| The Gemini key's secret, at $0.40 a month | $0.0005 |
 | Everything else | free |
 | **Total** | **about $0.07** |
 
 From the repo root, signed in with `aws login`:
 
 ```
+read -rs TF_VAR_gemini_api_key && export TF_VAR_gemini_api_key   # paste the Gemini key, then Enter
 make aws-up      # shows the plan, and builds it once you answer yes
 make aws-down    # shows what goes, and destroys it once you answer yes
 ```
 
 - **End every work session with `make aws-down`.**
+- **`make aws-up` needs the Gemini key** in `TF_VAR_gemini_api_key`, and stops at once without it. `read -s` keeps the key off the screen and out of your shell's history, and it lasts until you close the terminal. A plan, `make aws-down` and the `terraform-reviewer` work without it.
 - **Both touch only this stack.** `infra/aws/account` and `infra/aws/always-on` stay up, and nothing in the Makefile destroys them.
 - **Both run `terraform init` first,** so they work on a new machine too, once `infra/aws/backend.hcl` exists. The state is at `session/terraform.tfstate`, beside the other two stacks'.
-- **The first `make aws-up` adds 22 resources.** The database takes the longest: about 5 minutes to create, and 2 to delete. The NAT gateway takes a minute or two each way.
+- **The first `make aws-up` adds 26 resources.** The database takes the longest: about 5 minutes to create, and 2 to delete. The NAT gateway takes a minute or two each way.
 - **After `make aws-down`, the console can still list a few resources that are gone.** The tag search lists deleted resources for a while, and a deleted NAT gateway shows as `deleted` for about an hour. Neither costs anything.
 - **Before applying a change to any stack,** check the plan for anything it would delete or replace. From the repo's root, `terraform -chdir=infra/aws/<stack> show -json tfplan | node scripts/plan-changes.js` prints only those, and the plan's summary. In Claude Code, the `terraform-reviewer` subagent runs it for you (`.claude/agents/terraform-reviewer.md`).
