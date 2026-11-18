@@ -51,6 +51,6 @@ Total                5   $0.0275        $0.0055
 
 - Only questions that reached the agent count. Ones turned away first, like an invalid one or one over the daily cap, cost nothing, and aren't runs.
 - The cost is DashGen's estimate: Gemini's token counts at the prices in `backend/src/config.ts`. Google's bill, under **Spend** in AI Studio, is the real number.
-- On AWS, every deploy starts the `runs` table over ([roadmap](../roadmap.md), step 5), so the report covers one session.
+- On AWS, every session starts the `runs` table over ([roadmap](../roadmap.md), step 5), so the report covers one session.
 
 AWS's own costs have budget alerts at $10, $25 and $50 ([AWS account runbook](aws-account.md#4-budget-alerts)).

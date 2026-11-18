@@ -86,14 +86,28 @@ aws cloudfront test-function --name dashgen-api --stage LIVE --if-match "$ETAG" 
 
 ## The session stack
 
-`infra/aws/session` holds what runs on AWS only while DashGen is being worked on, and costs money by the hour. So far it's the network ([design](../design.md#on-aws)):
+`infra/aws/session` holds what runs on AWS only while DashGen is being worked on, and costs money by the hour. So far it's the network and the database ([design](../design.md#on-aws)):
 
 - A VPC, `10.0.0.0/16`, with a public and a private subnet in each of two availability zones: us-east-1a and us-east-1b in this account. The zone `use1-az3` is left out, since Fargate doesn't run there.
 - One NAT gateway, in the first zone, which the private subnets use to reach the internet.
 - A gateway endpoint for DynamoDB, so the daily cap's requests skip the NAT gateway, for free.
 - The VPC's default security group, with its rules removed, so anything that forgets to pick a group gets no traffic.
+- Postgres 18.6 on RDS: one db.t4g.micro in one zone of the private subnets, with 20 GB of encrypted storage. Its database and its admin user are both called `dashgen`, and it accepts only TLS connections.
+- A security group for the backend and one for the database. Only the backend's group can reach Postgres, on port 5432, and nothing joins it until the backend runs on ECS. Until then the database is up, empty, and nothing can reach it.
+- No backups and no final snapshot: each session starts with a new, empty database, and `make aws-down` deletes it with its data.
+- The database's password, which RDS makes and keeps in a Secrets Manager secret of its own, named `rds!db-` and an ID. It's never in Terraform's state or the repo, and RDS deletes it with the database, at once, with no recovery window.
 
-While it's up, it costs about $0.05 an hour: $0.045 for the NAT gateway, and $0.005 for its public IP. The rest is free. Left up for a month, it would cost about $36.
+While it's up, it costs about $0.07 an hour, so about $51 if it's left up for a month:
+
+| Part | Per hour |
+|---|---|
+| NAT gateway | $0.045 |
+| The NAT gateway's public IP | $0.005 |
+| Postgres, db.t4g.micro | $0.016 |
+| Its 20 GB of storage, at $0.115 a GB a month | $0.003 |
+| The password's secret, at $0.40 a month | $0.0005 |
+| Everything else | free |
+| **Total** | **about $0.07** |
 
 From the repo root, signed in with `aws login`:
 
@@ -105,5 +119,6 @@ make aws-down    # shows what goes, and destroys it once you answer yes
 - **End every work session with `make aws-down`.**
 - **Both touch only this stack.** `infra/aws/account` and `infra/aws/always-on` stay up, and nothing in the Makefile destroys them.
 - **Both run `terraform init` first,** so they work on a new machine too, once `infra/aws/backend.hcl` exists. The state is at `session/terraform.tfstate`, beside the other two stacks'.
-- **The first `make aws-up` adds 16 resources.** The NAT gateway takes a minute or two to come up, and as long again to go.
+- **The first `make aws-up` adds 22 resources.** The database takes the longest: about 5 minutes to create, and 2 to delete. The NAT gateway takes a minute or two each way.
+- **After `make aws-down`, the console can still list a few resources that are gone.** The tag search lists deleted resources for a while, and a deleted NAT gateway shows as `deleted` for about an hour. Neither costs anything.
 - **Before applying a change to any stack,** check the plan for anything it would delete or replace. From the repo's root, `terraform -chdir=infra/aws/<stack> show -json tfplan | node scripts/plan-changes.js` prints only those, and the plan's summary. In Claude Code, the `terraform-reviewer` subagent runs it for you (`.claude/agents/terraform-reviewer.md`).

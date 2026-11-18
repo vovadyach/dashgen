@@ -5,7 +5,7 @@
 
 ## Context
 
-A visitor can copy a link to a chart. The AWS backend runs only during work sessions, and every deploy reseeds the database, so the `runs` history starts over ([roadmap](../roadmap.md), step 5).
+A visitor can copy a link to a chart. The AWS backend runs only during work sessions, and every session starts with a new database, so the `runs` history starts over ([roadmap](../roadmap.md), step 5).
 
 Two ways to link a chart were considered:
 

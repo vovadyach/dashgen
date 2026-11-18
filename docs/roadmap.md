@@ -89,8 +89,9 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 - [x] VPC with public and private subnets, a NAT gateway, and a gateway endpoint for DynamoDB ([runbook](runbooks/deploy.md#the-session-stack))
 - [x] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
 - [x] `make aws-up` and `make aws-down`, which apply and destroy only the session stack, `infra/aws/session`, never the two that stay ([runbook](runbooks/deploy.md#the-session-stack))
-- [ ] Postgres on RDS (db.t4g.micro) in private subnets, with migrations and the seed run as a one-off ECS task
-- [ ] No database backups: every deploy reseeds the data, and the `runs` history starts over
+- [x] Postgres on RDS (db.t4g.micro) in private subnets, which only the backend's security group reaches ([runbook](runbooks/deploy.md#the-session-stack))
+- [ ] Migrations and the seed run as a one-off ECS task, before the backend starts
+- [x] No database backups: every session reseeds the data, and the `runs` history starts over
 - [ ] Database password and the Gemini key in AWS Secrets Manager, passed to the container by ECS
 - [ ] The backend on ECS Fargate behind a load balancer that accepts only our CloudFront: exactly one task, since the rate limit and run events live in its memory, and deploys that stop the old task first
 - [ ] The backend reaches the daily cap's table with the task's role instead of DynamoDB Local's fake keys

@@ -293,7 +293,7 @@ flowchart TB
 
     subgraph appstack ["Session stack: destroyed after each session"]
         ecr["ECR: images"]
-        secrets["Secrets Manager<br/>DB passwords, Gemini key"]
+        secrets["Secrets Manager<br/>DB password, Gemini key"]
         logs["CloudWatch Logs"]
         subgraph vpc ["VPC"]
             subgraph pub ["Public subnets, 2 AZs"]
@@ -333,6 +333,7 @@ flowchart TB
 - **Exactly one backend task, even during deploys.** The per-IP rate limit and the events of runs in progress live in the task's memory, so a second task would split the limit and could get a reconnect for a run it never saw. A deploy therefore stops the old task before starting the new one (minimum healthy 0%, maximum 100%). That costs about a minute of downtime per deploy. A page opened then shows its offline banner until its tab comes back into view or it's reloaded, and a page already open says DashGen isn't answering if a question is asked then, since the load balancer's own 503 isn't CloudFront's offline answer. The old task waits for runs in progress before it stops, up to their 25 seconds, so they finish and are saved, but a stream that reconnects to the new task gets `run_not_found`. ECS also replaces a task that fails its health check, with the same effect.
 - **Scaling out later** means moving both to shared storage first: the rate limit counters to DynamoDB, which already holds the daily cap, and the run events to Postgres or Redis. Only then does auto scaling make sense. Full high availability would also need Multi-AZ RDS, which doubles the database's cost. None of it is worth it without an uptime promise.
 - **Migrations run first.** A one-off ECS task runs Drizzle's migrations and the seed before the backend starts.
+- **The database keeps nothing between sessions.** One RDS db.t4g.micro in one zone, with no backups and no final snapshot, so each session starts it empty and reseeds it, and the `runs` history starts over. Only the backend's security group reaches it, over TLS. RDS makes its admin password and keeps it in Secrets Manager, so the password is never in Terraform's state or the repo.
 - **`/api/*` in CloudFront** caches nothing and forwards the `Last-Event-ID` header, so a reconnecting stream resumes where it stopped. ADR-0003's settings already let SSE through.
 - **The page's files in CloudFront:** the hashed files in `assets/` are cached for a year, and `index.html` is checked on every visit, so a deploy needs no invalidation ([runbook](runbooks/deploy.md#the-page)).
 - **One NAT gateway, in one AZ,** because there's no uptime requirement, and it's already the biggest line on the hourly bill.
