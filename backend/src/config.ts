@@ -174,8 +174,8 @@ export type DynamoTarget = { endpoint: string } | { region: string };
  * `DYNAMODB_ENDPOINT`, by default http://localhost:8000, or AWS's own DynamoDB
  * when `DYNAMODB_REGION` is set, as on ECS. AWS takes that one explicit
  * setting, never both, so a run on a developer's machine can't reach it by
- * accident. Set on purpose there, it would sign with that machine's own AWS
- * credentials, so only the task definition sets it.
+ * accident. Set on purpose there, it finds no ECS task's credentials, and
+ * each reservation fails, so only the task definition sets it.
  */
 export function loadDynamoTarget(
   env: NodeJS.ProcessEnv = process.env,

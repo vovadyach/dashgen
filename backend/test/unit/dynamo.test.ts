@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createAwsDynamo } from "../../src/dynamo.ts";
+import { createAwsDynamo, ecsCredentials } from "../../src/dynamo.ts";
 
 describe("createAwsDynamo", () => {
   it("reaches AWS's own DynamoDB in the region, with no retry, like the client for DynamoDB Local", async () => {
@@ -14,5 +14,14 @@ describe("createAwsDynamo", () => {
     } finally {
       client.destroy();
     }
+  });
+});
+
+describe("ecsCredentials", () => {
+  it("fails outside an ECS task, instead of signing with a developer's own credentials", async () => {
+    await assert.rejects(
+      ecsCredentials({ env: { AWS_PROFILE: "default" } })(),
+      /AWS_CONTAINER_CREDENTIALS_RELATIVE_URI isn't set/,
+    );
   });
 });

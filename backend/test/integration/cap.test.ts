@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer as createHttpServer } from "node:http";
 import { type AddressInfo, connect, createServer, type Socket } from "node:net";
 import { after, before, describe, it } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -6,7 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
 
 import { createCapTable, createDailyCap } from "../../src/cap/index.ts";
-import { createDynamo } from "../../src/dynamo.ts";
+import { createDynamo, ecsCredentials } from "../../src/dynamo.ts";
 import {
   createTestTable,
   TEST_DYNAMODB_ENDPOINT,
@@ -212,6 +213,66 @@ describe("daily cap", () => {
         slow.destroy();
         counting.close();
       }
+    },
+  );
+
+  it(
+    "takes the next question after ECS's credential endpoint stalls halfway through a reply, on the same client",
+    { timeout: 10_000 },
+    async () => {
+      // A fake of ECS's credential endpoint. Its first reply stops after the
+      // headers and the start of the body; the later ones are whole.
+      let requests = 0;
+      const ecs = createHttpServer((_request, response) => {
+        requests += 1;
+        response.writeHead(200, { "content-type": "application/json" });
+        if (requests === 1) {
+          response.write('{"AccessKeyId": "local"');
+          return;
+        }
+        response.end(
+          JSON.stringify({
+            AccessKeyId: "local",
+            SecretAccessKey: "local",
+            Token: "local",
+            Expiration: new Date(Date.now() + 60 * 60_000).toISOString(),
+          }),
+        );
+      });
+      await new Promise<void>((resolve) => {
+        ecs.listen(0, "127.0.0.1", resolve);
+      });
+      const { port } = ecs.address() as AddressInfo;
+      const client = new DynamoDBClient({
+        endpoint: TEST_DYNAMODB_ENDPOINT,
+        region: "local",
+        maxAttempts: 1,
+        credentials: ecsCredentials({
+          origin: `http://127.0.0.1:${String(port)}`,
+          env: { AWS_CONTAINER_CREDENTIALS_RELATIVE_URI: "/v2/credentials/1" },
+        }),
+      });
+      const cap = createDailyCap(client, {
+        table: dynamo().table,
+        now: () => new Date("2026-11-08T10:00:00Z"),
+      });
+      try {
+        // The stalled lookup ends at its own 1 second, and the question with it.
+        const started = performance.now();
+        await assert.rejects(cap.reserve());
+        assert.ok(performance.now() - started < 2_000);
+
+        // The next question asks again, and gets its place.
+        assert.deepEqual(await cap.reserve(), { reserved: true });
+        // The one after it signs with the same credentials, without asking.
+        assert.deepEqual(await cap.reserve(), { reserved: true });
+        assert.equal(requests, 2);
+      } finally {
+        client.destroy();
+        ecs.closeAllConnections();
+        ecs.close();
+      }
+      assert.equal(await usedOn("2026-11-08"), "2");
     },
   );
 
