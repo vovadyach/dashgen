@@ -28,25 +28,19 @@ resource "aws_secretsmanager_secret_version" "gemini_api_key" {
   secret_string_wo_version = 1
 }
 
-# What ECS passes to the backend's container: the Gemini key, and the password
-# from RDS's own secret (database.tf) as PGPASSWORD, which node-postgres reads
-# when DATABASE_URL has no password (ADR-0015).
+# What ECS can pass to the backend's containers, by environment variable: the
+# Gemini key, and the password from RDS's own secret (database.tf) as
+# PGPASSWORD, which node-postgres reads when DATABASE_URL has no password
+# (ADR-0015). Each task definition takes only the ones it needs (ecs.tf).
 locals {
-  backend_secrets = [
-    {
-      name      = "GEMINI_API_KEY"
-      valueFrom = aws_secretsmanager_secret.gemini_api_key.arn
-    },
-    {
-      name      = "PGPASSWORD"
-      valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::"
-    },
-  ]
+  secret_env = {
+    GEMINI_API_KEY = aws_secretsmanager_secret.gemini_api_key.arn
+    PGPASSWORD     = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::"
+  }
 }
 
-# The role ECS takes to start the backend's task. It may read these two
-# secrets and nothing else; pulling the image and writing logs come with the
-# task.
+# The role ECS takes to start the backend's tasks. Here it may read these two
+# secrets; ecs.tf lets it pull the image and write the logs too. Nothing else.
 resource "aws_iam_role" "task_execution" {
   name        = "dashgen-task-execution"
   description = "ECS starts the backend's task, with its secrets"

@@ -68,7 +68,7 @@ Approximate on-demand prices in us-east-1. Check them in the AWS pricing calcula
 | NAT gateway | $0.045 |
 | Load balancer | $0.0225, plus a little per use |
 | Postgres (db.t4g.micro) | $0.016 |
-| One Fargate task (0.25 vCPU, 0.5 GB) | $0.0125 |
+| One Fargate task (0.25 vCPU, 0.5 GB), on ARM | $0.0099 |
 | Three public IPv4 addresses | $0.015 |
 | **Total** | **about $0.11** |
 
@@ -329,11 +329,12 @@ flowchart TB
 ```
 
 - **CloudFront is the only way in** ([ADR-0003](decisions/0003-cloudfront-front-door.md) has the details and the reasons). It serves the React app from S3 and runs a CloudFront Function on every `/api/*` request. During a session, the function forwards the request to the load balancer with a secret header, and the load balancer refuses anything without it. Between sessions, the function answers 503 "offline" itself, and the page shows its banner. The hop to the load balancer is plain HTTP, an accepted risk the ADR explains.
-- **Public vs. private:** only CloudFront and the load balancer face the internet. The backend and the database sit in private subnets, and the backend reaches outside services (Gemini, ECR, Secrets Manager, CloudWatch) through the NAT gateway. DynamoDB is the exception: a gateway endpoint, which is free, takes the cap's requests there without the NAT.
+- **Public vs. private:** only CloudFront and the load balancer face the internet. The backend and the database sit in private subnets, and the backend reaches outside services (Gemini, ECR, Secrets Manager, CloudWatch) through the NAT gateway. DynamoDB and S3 are the exceptions: gateway endpoints, which are free, take the cap's requests and the image's layers there without the NAT.
 - **Exactly one backend task, even during deploys.** The per-IP rate limit and the events of runs in progress live in the task's memory, so a second task would split the limit and could get a reconnect for a run it never saw. A deploy therefore stops the old task before starting the new one (minimum healthy 0%, maximum 100%). That costs about a minute of downtime per deploy. A page opened then shows its offline banner until its tab comes back into view or it's reloaded, and a page already open says DashGen isn't answering if a question is asked then, since the load balancer's own 503 isn't CloudFront's offline answer. The old task waits for runs in progress before it stops, up to their 25 seconds, so they finish and are saved, but a stream that reconnects to the new task gets `run_not_found`. ECS also replaces a task that fails its health check, with the same effect.
 - **Scaling out later** means moving both to shared storage first: the rate limit counters to DynamoDB, which already holds the daily cap, and the run events to Postgres or Redis. Only then does auto scaling make sense. Full high availability would also need Multi-AZ RDS, which doubles the database's cost. None of it is worth it without an uptime promise.
-- **Migrations run first.** A one-off ECS task runs Drizzle's migrations and the seed before the backend starts.
-- **The database keeps nothing between sessions.** One RDS db.t4g.micro in one zone, with no backups and no final snapshot, so each session starts it empty and reseeds it, and the `runs` history starts over. Only the backend's security group reaches it, over TLS. RDS makes its admin password and keeps it in Secrets Manager, so the password is never in Terraform's state or the repo.
+- **Migrations run first.** A one-off ECS task runs Drizzle's migrations and the seed before the backend starts, from the backend's own image: `make aws-migrate` runs it.
+- **One image, built for ARM.** `make aws-image` builds `backend/Dockerfile` for Fargate's ARM CPUs, which cost 20% less than x86, and pushes it to the session's ECR, tagged with its commit and as `latest`, which the task definitions use. ECR goes with each session, so each session pushes the image again, until GitHub Actions takes that over (roadmap, step 5).
+- **The database keeps nothing between sessions.** One RDS db.t4g.micro in one zone, with no backups and no final snapshot, so each session starts it empty and reseeds it, and the `runs` history starts over. Only the backend's security group reaches it, over TLS, checked against RDS's certificates in the image. RDS makes its admin password and keeps it in Secrets Manager, so the password is never in Terraform's state or the repo.
 - **`/api/*` in CloudFront** caches nothing and forwards the `Last-Event-ID` header, so a reconnecting stream resumes where it stopped. ADR-0003's settings already let SSE through.
 - **The page's files in CloudFront:** the hashed files in `assets/` are cached for a year, and `index.html` is checked on every visit, so a deploy needs no invalidation ([runbook](runbooks/deploy.md#the-page)).
 - **One NAT gateway, in one AZ,** because there's no uptime requirement, and it's already the biggest line on the hourly bill.

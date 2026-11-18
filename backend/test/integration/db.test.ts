@@ -5,6 +5,7 @@ import { eq, sql } from "drizzle-orm";
 
 import { createDb, isRetryable, withoutQueryValues } from "../../src/db.ts";
 import { services } from "../../src/metrics/schema.ts";
+import { RDS_BUNDLE } from "../fixtures/certs.ts";
 import { createTestDb, type TestDb, unreachableDb } from "../helpers/db.ts";
 import { recordingLogger } from "../helpers/logger.ts";
 
@@ -150,6 +151,30 @@ describe("database", () => {
       } else {
         process.env.PGPASSWORD = saved;
       }
+    }
+  });
+
+  it("refuses a server RDS's certificates don't vouch for, when the URL asks for verify-full, as on AWS", async () => {
+    // On AWS, DATABASE_URL asks for TLS, checked against RDS's bundle in the
+    // image (infra/aws/session/ecs.tf). The test Postgres isn't RDS, so the
+    // connection must fail, whichever way it's set up: without TLS, instead
+    // of going on in plain text, or with TLS, on its certificate.
+    assert.ok(testDb);
+    const url = new URL(testDb.url);
+    url.searchParams.set("sslmode", "verify-full");
+    url.searchParams.set("sslrootcert", RDS_BUNDLE);
+    const tls = createDb(url.toString(), { log });
+    try {
+      await assert.rejects(tls.$client.query("select 1"), (error) => {
+        assert.ok(error instanceof Error);
+        assert.match(
+          error.message,
+          /The server does not support SSL connections|certificate/,
+        );
+        return true;
+      });
+    } finally {
+      await tls.$client.end();
     }
   });
 });

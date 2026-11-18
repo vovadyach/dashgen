@@ -90,7 +90,7 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 - [x] `terraform-reviewer` subagent (read-only) that reads `terraform plan` and reports only what would be deleted or replaced
 - [x] `make aws-up` and `make aws-down`, which apply and destroy only the session stack, `infra/aws/session`, never the two that stay ([runbook](runbooks/deploy.md#the-session-stack))
 - [x] Postgres on RDS (db.t4g.micro) in private subnets, which only the backend's security group reaches ([runbook](runbooks/deploy.md#the-session-stack))
-- [ ] Migrations and the seed run as a one-off ECS task, before the backend starts
+- [x] Migrations and the seed run as a one-off ECS task, before the backend starts: `make aws-migrate` ([runbook](runbooks/deploy.md#the-session-stack))
 - [x] No database backups: every session reseeds the data, and the `runs` history starts over
 - [x] Database password and the Gemini key in AWS Secrets Manager, which only ECS's task execution role can read ([ADR-0015](decisions/0015-backend-as-rds-admin.md), [runbook](runbooks/deploy.md#the-session-stack))
 - [ ] ECS passes them to the backend's container, as `GEMINI_API_KEY` and `PGPASSWORD`

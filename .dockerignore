@@ -6,6 +6,7 @@
 !backend/package.json
 !backend/src
 !backend/drizzle
+!backend/certs
 !frontend/package.json
 !packages/contracts/package.json
 !packages/contracts/src

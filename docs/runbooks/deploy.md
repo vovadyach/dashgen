@@ -86,18 +86,20 @@ aws cloudfront test-function --name dashgen-api --stage LIVE --if-match "$ETAG" 
 
 ## The session stack
 
-`infra/aws/session` holds what runs on AWS only while DashGen is being worked on, and costs money by the hour. So far it's the network and the database ([design](../design.md#on-aws)):
+`infra/aws/session` holds what runs on AWS only while DashGen is being worked on, and costs money by the hour. So far it's the network, the database, the backend's secrets, and its image with the task that fills the database ([design](../design.md#on-aws)):
 
 - A VPC, `10.0.0.0/16`, with a public and a private subnet in each of two availability zones: us-east-1a and us-east-1b in this account. The zone `use1-az3` is left out, since Fargate doesn't run there.
 - One NAT gateway, in the first zone, which the private subnets use to reach the internet.
-- A gateway endpoint for DynamoDB, so the daily cap's requests skip the NAT gateway, for free.
+- Gateway endpoints for DynamoDB and S3, so the daily cap's requests and the image's layers skip the NAT gateway, for free.
 - The VPC's default security group, with its rules removed, so anything that forgets to pick a group gets no traffic.
 - Postgres 18.6 on RDS: one db.t4g.micro in one zone of the private subnets, with 20 GB of encrypted storage. Its database and its admin user are both called `dashgen`, and it accepts only TLS connections.
-- A security group for the backend and one for the database. Only the backend's group can reach Postgres, on port 5432, and nothing joins it until the backend runs on ECS. Until then the database is up, empty, and nothing can reach it.
+- A security group for the backend's tasks and one for the database. Only the backend's group can reach Postgres, on port 5432. It may also send HTTPS out: to ECR, Secrets Manager, CloudWatch Logs and DynamoDB, and later Gemini.
 - No backups and no final snapshot: each session starts with a new, empty database, and `make aws-down` deletes it with its data.
 - The database's password, which RDS makes and keeps in a Secrets Manager secret of its own, named `rds!db-` and an ID. It's never in Terraform's state or the repo, and RDS deletes it with the database, at once, with no recovery window.
 - The Gemini key, in a Secrets Manager secret named `dashgen/gemini-api-key`. `make aws-up` takes it from your shell, and Terraform passes it to AWS without keeping a copy in its state or plan. `make aws-down` deletes it at once, with no recovery window.
-- An IAM role, `dashgen-task-execution`, which ECS will take to start the backend. It can read these two secrets and nothing else.
+- An IAM role, `dashgen-task-execution`, which ECS takes to start the backend's tasks. It can read these two secrets, pull the image and write the tasks' logs, and nothing else.
+- An ECR repository, `dashgen-backend`, for the backend's image, 83 MB. ECR scans each push for known vulnerabilities, for free. `make aws-down` deletes it with its images, so each session pushes the image again.
+- An ECS cluster, `dashgen`, and the one-off task `dashgen-migrate`: the migrations, then the seed, on Fargate's smallest size (0.25 vCPU, 0.5 GB), on ARM. It connects to Postgres with TLS, checked against RDS's certificates in the image (`backend/certs/`), with the password from RDS's secret as `PGPASSWORD`. Its output goes to the log group `/dashgen/migrate`, kept for a day.
 
 While it's up, it costs about $0.07 an hour, so about $51 if it's left up for a month:
 
@@ -109,6 +111,8 @@ While it's up, it costs about $0.07 an hour, so about $51 if it's left up for a 
 | Its 20 GB of storage, at $0.115 a GB a month | $0.003 |
 | The password's secret, at $0.40 a month | $0.0005 |
 | The Gemini key's secret, at $0.40 a month | $0.0005 |
+| The image in ECR, 83 MB at $0.10 a GB a month | under $0.0001 |
+| The migrations task, on ARM, only while it runs | $0.0099, so about $0.0002 a run |
 | Everything else | free |
 | **Total** | **about $0.07** |
 
@@ -116,14 +120,17 @@ From the repo root, signed in with `aws login`:
 
 ```
 read -rs TF_VAR_gemini_api_key && export TF_VAR_gemini_api_key   # paste the Gemini key, then Enter
-make aws-up      # shows the plan, and builds it once you answer yes
-make aws-down    # shows what goes, and destroys it once you answer yes
+make aws-up       # shows the plan, and builds it once you answer yes
+make aws-image    # builds the backend's image for ARM, and pushes it to ECR
+make aws-migrate  # runs the migrations and the seed, as a one-off ECS task
+make aws-down     # shows what goes, and destroys it once you answer yes
 ```
 
 - **End every work session with `make aws-down`.**
 - **`make aws-up` needs the Gemini key** in `TF_VAR_gemini_api_key`, and stops at once without it. `read -s` keeps the key off the screen and out of your shell's history, and it lasts until you close the terminal. A plan, `make aws-down` and the `terraform-reviewer` work without it.
-- **Both touch only this stack.** `infra/aws/account` and `infra/aws/always-on` stay up, and nothing in the Makefile destroys them.
-- **Both run `terraform init` first,** so they work on a new machine too, once `infra/aws/backend.hcl` exists. The state is at `session/terraform.tfstate`, beside the other two stacks'.
-- **The first `make aws-up` adds 26 resources.** The database takes the longest: about 5 minutes to create, and 2 to delete. The NAT gateway takes a minute or two each way.
-- **After `make aws-down`, the console can still list a few resources that are gone.** The tag search lists deleted resources for a while, and a deleted NAT gateway shows as `deleted` for about an hour. Neither costs anything.
+- **Each step checks the one before it.** `make aws-image` and `make aws-migrate` stop at once when the stack is down, and `make aws-migrate` also stops when there's no image yet. `make aws-image` takes about 2 to 3 minutes, and `make aws-migrate` about a minute: it prints the task's output, ending with `Seeded 7200 points.`, and fails when the task does.
+- **`make aws-up` and `make aws-down` touch only this stack.** `infra/aws/account` and `infra/aws/always-on` stay up, and nothing in the Makefile destroys them.
+- **They run `terraform init` first,** so they work on a new machine too, once `infra/aws/backend.hcl` exists. The state is at `session/terraform.tfstate`, beside the other two stacks'.
+- **The first `make aws-up` adds 33 resources.** The database takes the longest: about 5 minutes to create, and 2 to delete. The NAT gateway takes a minute or two each way.
+- **After `make aws-down`, the console can still list a few resources that are gone.** The tag search lists deleted resources for a while, a deleted NAT gateway shows as `deleted` for about an hour, and ECS can keep listing old task definitions as `INACTIVE`. None of them costs anything.
 - **Before applying a change to any stack,** check the plan for anything it would delete or replace. From the repo's root, `terraform -chdir=infra/aws/<stack> show -json tfplan | node scripts/plan-changes.js` prints only those, and the plan's summary. In Claude Code, the `terraform-reviewer` subagent runs it for you (`.claude/agents/terraform-reviewer.md`).
