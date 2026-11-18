@@ -21,9 +21,10 @@ The options considered:
 ## Decision
 
 - DynamoDB holds an item per UTC day: `day`, `used`, and an `expires_at` a month later, after which DynamoDB's TTL deletes it, once Terraform turns TTL on in step 5. Each question takes a place with one conditional `UpdateItem` before its run starts (`backend/src/cap/`), and never gives it back, since a failed run may already have spent tokens.
-- **It fails closed.** When DynamoDB doesn't answer within 2 seconds, the question gets a 503 `unavailable`, and Gemini isn't called. The write gets no retry, since a second try after a lost reply would count one question twice.
+- **It fails closed.** When DynamoDB doesn't answer within 2 seconds, counted from the start, the credential lookup included, the question gets a 503 `unavailable`, and Gemini isn't called. The write gets no retry, since a second try after a lost reply would count one question twice.
 - Only `@aws-sdk/client-dynamodb`, with raw attribute values instead of `@aws-sdk/lib-dynamodb`, since there's only one write.
-- DynamoDB Local runs in Docker Compose: on port 8000 for development, in memory, and the backend makes its table when it starts. On port 8001 for tests, with a table per test file. The client uses fake keys, so a local run can't reach a real AWS account. AWS's table, and the task's role to reach it, come with Terraform in step 5.
+- DynamoDB Local runs in Docker Compose: on port 8000 for development, in memory, and the backend makes its table when it starts. On port 8001 for tests, with a table per test file. The client uses fake keys, so a local run can't reach a real AWS account.
+- On AWS, the backend reaches the always-on stack's table with its ECS task's role, which may only `UpdateItem` it. It asks ECS for the task's credentials itself (`ecsCredentials` in `backend/src/dynamo.ts`), within 1 second, and again after a failure. The SDK's own lookup has no deadline for a reply that stalls after its headers, and makes every later request wait on that same lookup: one stalled reply would refuse every question until the task restarted, while its health check still passed.
 
 ## Consequences
 

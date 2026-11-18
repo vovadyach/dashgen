@@ -5,16 +5,11 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+source scripts/aws-session.sh
 
-# With the stack down, terraform output prints nothing, and still succeeds.
-# Its own errors, like an expired sign-in, show as they are.
-repo=$(terraform -chdir=infra/aws/session output -raw ecr_repository_url)
-if [[ -z $repo ]]; then
-  echo "The session stack isn't up: run make aws-up first." >&2
-  exit 1
-fi
+repo=$(output ecr_repository_url)
 # Only an ECR address goes on: docker login with any other would send ECR's
-# sign-in token to that registry, like Docker Hub for an empty one.
+# sign-in token to that registry.
 if [[ ! $repo =~ ^[0-9]{12}\.dkr\.ecr\.us-east-1\.amazonaws\.com/dashgen-backend$ ]]; then
   echo "Not the session's ECR repository: $repo" >&2
   exit 1
@@ -30,7 +25,7 @@ fi
 
 # Signs Docker in to ECR for 12 hours. The password goes through the pipe,
 # never on a command line.
-aws ecr get-login-password --region us-east-1 |
+aws ecr get-login-password |
   docker login --username AWS --password-stdin "${repo%%/*}"
 
 docker build --platform linux/arm64 --file backend/Dockerfile \

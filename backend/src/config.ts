@@ -154,16 +154,42 @@ export function loadDatabaseUrl(env: NodeJS.ProcessEnv = process.env): Secret {
 
 const DynamoEnv = z.object({
   // DynamoDB Local, which `make db` starts.
-  DYNAMODB_ENDPOINT: z
-    .url({ protocol: /^https?$/, hostname: /.+/ })
-    .default("http://localhost:8000"),
+  DYNAMODB_ENDPOINT: z.url({ protocol: /^https?$/, hostname: /.+/ }).optional(),
+  // AWS's own DynamoDB, like us-east-1. Only the backend's task definition sets
+  // it (infra/aws/session).
+  DYNAMODB_REGION: z
+    .string()
+    .regex(/^[a-z]{2}(-[a-z]+)+-\d+$/)
+    .optional(),
 });
 
-/** Reads `DYNAMODB_ENDPOINT`, where the daily cap keeps its count. */
-export function loadDynamoEndpoint(
+/**
+ * Where the daily cap keeps its count: DynamoDB Local at `endpoint`, or AWS's
+ * own DynamoDB in `region`, with the ECS task's role.
+ */
+export type DynamoTarget = { endpoint: string } | { region: string };
+
+/**
+ * Reads where the daily cap keeps its count: DynamoDB Local at
+ * `DYNAMODB_ENDPOINT`, by default http://localhost:8000, or AWS's own DynamoDB
+ * when `DYNAMODB_REGION` is set, as on ECS. AWS takes that one explicit
+ * setting, never both, so a run on a developer's machine can't reach it by
+ * accident. Set on purpose there, it finds no ECS task's credentials, and
+ * each reservation fails, so only the task definition sets it.
+ */
+export function loadDynamoTarget(
   env: NodeJS.ProcessEnv = process.env,
-): string {
-  return parseEnv(DynamoEnv, env).DYNAMODB_ENDPOINT;
+): DynamoTarget {
+  const { DYNAMODB_ENDPOINT, DYNAMODB_REGION } = parseEnv(DynamoEnv, env);
+  if (DYNAMODB_REGION === undefined) {
+    return { endpoint: DYNAMODB_ENDPOINT ?? "http://localhost:8000" };
+  }
+  if (DYNAMODB_ENDPOINT !== undefined) {
+    throw new Error(
+      "Set DYNAMODB_ENDPOINT for DynamoDB Local, or DYNAMODB_REGION for AWS's own DynamoDB, not both.",
+    );
+  }
+  return { region: DYNAMODB_REGION };
 }
 
 const LogLevelEnv = z.object({ LOG_LEVEL: z.enum(LOG_LEVELS).default("info") });

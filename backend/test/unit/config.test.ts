@@ -4,7 +4,7 @@ import { inspect } from "node:util";
 
 import {
   loadConfig,
-  loadDynamoEndpoint,
+  loadDynamoTarget,
   loadGeminiSettings,
 } from "../../src/config.ts";
 import { VALID_ENV } from "../fixtures/config.ts";
@@ -123,16 +123,40 @@ describe("loadConfig's address", () => {
   });
 });
 
-describe("loadDynamoEndpoint", () => {
+describe("loadDynamoTarget", () => {
   it("defaults to DynamoDB Local on this machine, and rejects what isn't an HTTP address", () => {
-    assert.equal(loadDynamoEndpoint({}), "http://localhost:8000");
-    assert.equal(
-      loadDynamoEndpoint({ DYNAMODB_ENDPOINT: "http://dynamodb:8000" }),
-      "http://dynamodb:8000",
+    assert.deepEqual(loadDynamoTarget({}), {
+      endpoint: "http://localhost:8000",
+    });
+    assert.deepEqual(
+      loadDynamoTarget({ DYNAMODB_ENDPOINT: "http://dynamodb:8000" }),
+      { endpoint: "http://dynamodb:8000" },
     );
     assert.throws(
-      () => loadDynamoEndpoint({ DYNAMODB_ENDPOINT: "localhost:8000" }),
+      () => loadDynamoTarget({ DYNAMODB_ENDPOINT: "localhost:8000" }),
       /DYNAMODB_ENDPOINT/,
+    );
+  });
+
+  it("reaches AWS only with DYNAMODB_REGION, never from the AWS settings a developer's shell may have", () => {
+    assert.deepEqual(loadDynamoTarget({ DYNAMODB_REGION: "us-east-1" }), {
+      region: "us-east-1",
+    });
+    assert.deepEqual(
+      loadDynamoTarget({ AWS_REGION: "us-east-1", AWS_PROFILE: "default" }),
+      { endpoint: "http://localhost:8000" },
+    );
+    assert.throws(
+      () =>
+        loadDynamoTarget({
+          DYNAMODB_REGION: "us-east-1",
+          DYNAMODB_ENDPOINT: "http://localhost:8000",
+        }),
+      /not both/,
+    );
+    assert.throws(
+      () => loadDynamoTarget({ DYNAMODB_REGION: "local" }),
+      /DYNAMODB_REGION/,
     );
   });
 });
