@@ -27,3 +27,29 @@ resource "aws_cloudfront_function" "api" {
 data "aws_cloudfront_cache_policy" "caching_disabled" {
   name = "Managed-CachingDisabled"
 }
+
+# The visitor's headers that /api/* passes on to the backend, and no others:
+# Content-Type, for POST /api/ask's JSON, and Last-Event-ID, which a
+# reconnecting stream sends, so it resumes where it stopped (ADR-0011). AWS's
+# pages disagree on whether Content-Type gets through without this. Nothing
+# else does, so a visitor's own x-origin-verify or x-viewer-ip never reaches
+# the backend: the function sets those two.
+resource "aws_cloudfront_origin_request_policy" "api" {
+  name    = "dashgen-api"
+  comment = "The visitor headers that /api/* passes on to the backend"
+
+  headers_config {
+    header_behavior = "whitelist"
+    headers {
+      items = ["content-type", "last-event-id"]
+    }
+  }
+
+  cookies_config {
+    cookie_behavior = "none"
+  }
+
+  query_strings_config {
+    query_string_behavior = "none"
+  }
+}

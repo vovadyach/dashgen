@@ -214,6 +214,78 @@ describe("HTTP API", () => {
       assert.equal((await askFrom("203.0.113.2")).statusCode, 202);
     });
 
+    it("is rate limited per visitor IP from CloudFront's header on AWS, whatever X-Forwarded-For says", async (t) => {
+      const app = await startApp(
+        t,
+        {},
+        { env: { VIEWER_IP_HEADER: "x-viewer-ip" } },
+      );
+      // Every connection comes from the load balancer, as on AWS.
+      const ask = (viewerIp: string, forwardedFor: string) =>
+        app.inject({
+          method: "POST",
+          url: "/api/ask",
+          payload: { question: QUESTION },
+          remoteAddress: "10.0.0.10",
+          headers: { "x-viewer-ip": viewerIp, "x-forwarded-for": forwardedFor },
+        });
+
+      for (let i = 0; i < 10; i++) {
+        const forged = `203.0.113.${String(i)}`;
+        assert.equal((await ask("198.51.100.10", forged)).statusCode, 202);
+      }
+      // A new X-Forwarded-For each time didn't help.
+      assert.equal(
+        (await ask("198.51.100.10", "203.0.113.99")).statusCode,
+        429,
+      );
+      // Another visitor, behind the same load balancer, still gets through.
+      assert.equal(
+        (await ask("198.51.100.11", "203.0.113.99")).statusCode,
+        202,
+      );
+    });
+
+    it("counts by the connection when the visitor IP header is missing or isn't an IP, which only makes the limit stricter", async (t) => {
+      const app = await startApp(
+        t,
+        {},
+        { env: { VIEWER_IP_HEADER: "x-viewer-ip" } },
+      );
+      const ask = (headers: Record<string, string>) =>
+        app.inject({
+          method: "POST",
+          url: "/api/ask",
+          payload: { question: QUESTION },
+          remoteAddress: "10.0.0.10",
+          headers,
+        });
+
+      for (let i = 0; i < 10; i++) {
+        const headers: Record<string, string> =
+          i % 2 === 0 ? {} : { "x-viewer-ip": `not-an-ip-${String(i)}` };
+        assert.equal((await ask(headers)).statusCode, 202);
+      }
+      assert.equal((await ask({ "x-viewer-ip": "not-an-ip" })).statusCode, 429);
+    });
+
+    it("ignores a visitor IP header unless VIEWER_IP_HEADER names it, as locally", async (t) => {
+      const app = await startApp(t);
+      const ask = (viewerIp: string) =>
+        app.inject({
+          method: "POST",
+          url: "/api/ask",
+          payload: { question: QUESTION },
+          remoteAddress: "203.0.113.1",
+          headers: { "x-viewer-ip": viewerIp },
+        });
+
+      for (let i = 0; i < 10; i++) {
+        assert.equal((await ask(`198.51.100.${String(i)}`)).statusCode, 202);
+      }
+      assert.equal((await ask("198.51.100.99")).statusCode, 429);
+    });
+
     it("saves each finished run, with its cost", async (t) => {
       const { saved, save } = savedRuns();
       const app = await startApp(t, { model: exampleModel(), save });

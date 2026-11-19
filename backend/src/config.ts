@@ -72,6 +72,14 @@ const Env = z.object({
   // own, so the Dockerfile sets 0.0.0.0.
   HOST: z.string().min(1).default("localhost"),
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
+  // On AWS, the header that holds the visitor's IP, which only CloudFront's
+  // function sets (ADR-0003), since every connection there comes from the
+  // load balancer. Unset locally, where a connection's own address is the
+  // visitor's. Lowercase, as Node gives header names.
+  VIEWER_IP_HEADER: z
+    .string()
+    .regex(/^[a-z0-9-]+$/)
+    .optional(),
 });
 
 /** Backend settings, read from environment variables. */
@@ -88,6 +96,8 @@ export interface Config {
   /** The address and port the backend listens on. */
   host: string;
   port: number;
+  /** The header with the visitor's IP, for the rate limit; unset, the connection's address. */
+  viewerIpHeader: string | undefined;
 }
 
 /** Parses `env` with `schema`, and throws an error naming every missing or invalid variable. */
@@ -114,6 +124,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     DAILY_CAP,
     HOST,
     PORT,
+    VIEWER_IP_HEADER,
   } = parseEnv(Env, env);
   return {
     geminiApiKey: new Secret(GEMINI_API_KEY),
@@ -124,6 +135,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dailyCap: DAILY_CAP,
     host: HOST,
     port: PORT,
+    viewerIpHeader: VIEWER_IP_HEADER,
   };
 }
 

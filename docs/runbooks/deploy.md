@@ -6,7 +6,7 @@ Every stack needs Terraform 1.17 or newer, `aws login`, and `infra/aws/backend.h
 
 ## The always-on stack
 
-`infra/aws/always-on` holds what stays on between sessions: CloudFront with the API's function and key-value store, the page's private S3 bucket, and the daily cap's DynamoDB table, with TTL on `expires_at`, for a few cents a month. It stays on: never run `terraform destroy` there. The distribution and the table have `prevent_destroy`, because a new distribution gets a new address, and a new table loses the day's count.
+`infra/aws/always-on` holds what stays on between sessions: CloudFront with the API's function, key-value store and origin request policy, the page's private S3 bucket, and the daily cap's DynamoDB table, with TTL on `expires_at`, for a few cents a month. It stays on: never run `terraform destroy` there. The distribution and the table have `prevent_destroy`, because a new distribution gets a new address, and a new table loses the day's count.
 
 In `infra/aws/always-on`:
 
@@ -58,15 +58,20 @@ CloudFront runs `infra/aws/always-on/functions/api.js` on every `/api/*` request
 | The entry | `/api/*` answers |
 |---|---|
 | None, between sessions | `503 {"status": "offline"}`, from the function itself, with `x-cache: FunctionGeneratedResponse from cloudfront` |
-| `{"loadBalancer": "…", "secret": "…"}` | What that load balancer answers. The function sends the secret as `x-origin-verify`, and drops a visitor's own copy. |
+| `{"loadBalancer": "…", "secret": "…"}` | What that load balancer answers. The function sends the secret as `x-origin-verify` and the visitor's IP as `x-viewer-ip`, and drops a visitor's own copies of both. |
+| The same, with `"closing": true` | The offline answer, except for a run's stream, `GET /api/runs/<id>/events`, which still reaches the load balancer, so runs already started can finish. |
 | Not JSON | CloudFront's own 503 page, with `x-cache: FunctionExecutionError from cloudfront`. No request reaches an origin. |
 
-The session stack will write and delete the entry. Each server in an edge location gets a change on its own, so one answer proves only that one server has it. Observed once, at the Los Angeles edge on 2026-11-16, and not a limit AWS promises:
+From a visitor's request, `/api/*` passes on only `Content-Type` and `Last-Event-ID`, through the origin request policy `dashgen-api`.
+
+`make aws-up` writes the entry once the backend is healthy (`scripts/aws-open.sh`). `make aws-down` first marks it closing, drains, then deletes it (`scripts/aws-close.sh`). Each server in an edge location gets a change on its own, so one answer proves only that one server has it. Observed once, at the Los Angeles edge on 2026-11-16, and not a limit AWS promises:
 
 - Checking `/api/health` every second, the first server had a change 22 to 28 seconds after the write.
 - Checking every 0.2 seconds, 10 answers in a row were offline 42 seconds after a delete.
 
-To turn the API off by hand, in `infra/aws/always-on`. Each write names the store's current ETag, and gets a new one. Requests can still reach the load balancer until every server has the change, so wait for 10 offline answers in a row, then 60 seconds more, before destroying it:
+To turn the API off by hand, without destroying the stack, run `make aws-close` from the repo's root. It drains the way `make aws-down` does, so runs already started still stream their answers, and it stops when a check fails. `make aws-open` turns it on again.
+
+Only when that can't run, delete the entry directly, in `infra/aws/always-on`. That also cuts off the streams of runs in progress. Each write names the store's current ETag, and gets a new one. Requests can still reach the load balancer until every server has the change, so wait for 10 offline answers in a row, then 60 seconds more, before destroying it:
 
 ```
 KVS=$(terraform output -raw session_store_arn)
@@ -74,9 +79,10 @@ KE=$(aws cloudfront-keyvaluestore describe-key-value-store --kvs-arn "$KVS" --qu
 aws cloudfront-keyvaluestore delete-key --kvs-arn "$KVS" --if-match "$KE" --key session
 URL=$(terraform output -raw url)
 n=0; until (( n >= 10 )); do curl -s "$URL/api/health" | grep -q '"offline"' && n=$((n+1)) || n=0; sleep 0.2; done
+sleep 60
 ```
 
-To run the function on a made-up request, without sending a real one. The request in `functions/test-event.json` carries a forged `x-origin-verify`, which a forwarded request must no longer have. The test reads the store, but it doesn't check where the function sends the request:
+To run the function on a made-up request, without sending a real one. The request in `functions/test-event.json` carries a forged `x-origin-verify` and `x-viewer-ip`, which a forwarded request must no longer have. The test reads the store, but it doesn't check where the function sends the request:
 
 ```
 ETAG=$(aws cloudfront describe-function --name dashgen-api --stage LIVE --query ETag --output text)
@@ -125,9 +131,9 @@ From the repo root, signed in with `aws login`:
 
 ```
 read -rs TF_VAR_gemini_api_key && export TF_VAR_gemini_api_key   # paste the Gemini key, then Enter
-make aws-up       # shows the plan, builds it once you answer yes, then deploys the backend
+make aws-up       # shows the plan, builds it once you answer yes, deploys the backend, then opens the API's door
 make aws-deploy   # after a code change: a new image, the migrations, then the backend again
-make aws-down     # shows what goes, and destroys it once you answer yes
+make aws-down     # closes the door and lets questions in flight finish, then shows what goes, and destroys it once you answer yes
 ```
 
 - **End every work session with `make aws-down`.**
@@ -137,9 +143,10 @@ make aws-down     # shows what goes, and destroys it once you answer yes
   - `make aws-image` takes about 2 to 3 minutes.
   - `make aws-migrate` takes about a minute. It prints the task's output, ending with `Seeded 7200 points.`, and fails when the task does.
   - `make aws-start` takes about 2 minutes. It waits until the load balancer's health check passes, and when that fails, shows why ECS stopped the task. That check asks `/api/health`, which shows only that the backend answers. The first question proves the rest (step 5): its 202 shows that its reservation in DynamoDB worked, and its chart, from the metrics in Postgres, and its row in `runs`, which the backend saves in the background, show that Postgres did.
-- **Only CloudFront reaches the backend.** From your Mac, `curl -m 5 "http://$(terraform -chdir=infra/aws/session output -raw load_balancer)/api/health"` gets no answer, since the load balancer's group lets in only CloudFront. Until CloudFront sends `/api/*` to the session (step 5), nothing reaches the backend, and the page shows its offline banner.
-- **`make aws-up` and `make aws-down` touch only this stack.** `infra/aws/account` and `infra/aws/always-on` stay up, and nothing in the Makefile destroys them.
+- **The API's door opens last, and closes first.** After the deploy, `make aws-up` runs `make aws-open`, which writes the session entry and waits until CloudFront answers `{"status":"ok"}`, about half a minute. That answer proves CloudFront, the secret, the load balancer and the backend together. `make aws-down` first marks the entry closing, waits for 10 offline answers in a row, then 60 seconds more: about 2 minutes. While it closes, runs already started can still stream their answers. It keeps the closing entry while `terraform destroy` runs, and deletes it only once the destroy is done, so meanwhile `make aws-open` refuses to reopen the door, even from another terminal. If you cancel the destroy, the door stays closed: `FORCE_OPEN=1 make aws-open` reopens it, and `TAKEOVER=1 make aws-down` tries the teardown again. A second `make aws-down` stops while another one holds the door, since that one may still be waiting at its prompt; `TAKEOVER=1` is only for a teardown that was canceled or abandoned. Every write to the store names the version the script just read, so a change from another terminal stops the script instead of being undone. When a check fails, as with an expired sign-in or a state it can't read, or CloudFront keeps answering for the backend for 2 minutes, or the store changes during the wait, as when someone reopens the door, it stops before anything is destroyed, and says how to destroy without waiting.
+- **Only CloudFront reaches the backend.** From your Mac, `curl -m 5 "http://$(terraform -chdir=infra/aws/session output -raw load_balancer)/api/health"` gets no answer, since the load balancer's group lets in only CloudFront. Through CloudFront, `/api/health` answers `{"status":"ok"}` while the door is open, and `{"status":"offline"}` again once it's closed.
+- **Terraform in `make aws-up` and `make aws-down` touches only this stack.** `infra/aws/account` and `infra/aws/always-on` stay up, and nothing in the Makefile destroys them. The scripts only read the always-on stack's outputs, and write one thing there: the store's session entry.
 - **They run `terraform init` first,** so they work on a new machine too, once `infra/aws/backend.hcl` exists. The state is at `session/terraform.tfstate`, beside the other two stacks'.
-- **The first `make aws-up` adds 47 resources,** then deploys the backend: about 12 minutes in all. The database takes the longest: about 5 minutes to create, and 2 to delete. The NAT gateway takes a minute or two each way.
+- **The first `make aws-up` adds 47 resources,** then deploys the backend and opens the door: about 13 minutes in all. The database takes the longest: about 5 minutes to create, and 2 to delete. The NAT gateway takes a minute or two each way.
 - **After `make aws-down`, the console can still list a few resources that are gone.** The tag search lists deleted resources for a while, a deleted NAT gateway shows as `deleted` for about an hour, and ECS can keep listing old task definitions as `INACTIVE`. None of them costs anything.
 - **Before applying a change to any stack,** check the plan for anything it would delete or replace. From the repo's root, `terraform -chdir=infra/aws/<stack> show -json tfplan | node scripts/plan-changes.js` prints only those, and the plan's summary. In Claude Code, the `terraform-reviewer` subagent runs it for you (`.claude/agents/terraform-reviewer.md`).

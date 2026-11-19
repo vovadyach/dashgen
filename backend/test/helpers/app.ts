@@ -10,14 +10,17 @@ import { decliningModel } from "./model.ts";
  * Builds the backend with test settings, and closes it when the test ends.
  * Runs get fakes unless the test passes its own: a model that declines every
  * question, a save that keeps nothing, a daily cap that's never reached, and
- * no database to close.
+ * no database to close. `env` adds settings to the test ones.
  */
 export async function startApp(
   t: TestContext,
   runs: Partial<ReturnType<AppOptions["runs"]>> = {},
-  options: Omit<AppOptions, "runs"> = {},
+  {
+    env = {},
+    ...options
+  }: Omit<AppOptions, "runs"> & { env?: Record<string, string> } = {},
 ) {
-  const app = await buildApp(loadConfig(VALID_ENV), {
+  const app = await buildApp(loadConfig({ ...VALID_ENV, ...env }), {
     ...options,
     runs: () => ({
       model: decliningModel(),

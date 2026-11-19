@@ -1,10 +1,11 @@
 import { randomUUIDv7 } from "node:crypto";
+import { isIP } from "node:net";
 
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import scalar from "@scalar/fastify-api-reference";
-import Fastify, { type FastifyReply } from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import {
   hasZodFastifySchemaValidationErrors,
   jsonSchemaTransform,
@@ -117,9 +118,10 @@ export async function buildApp(config: Config, options: AppOptions) {
   });
 
   // Routes opt in with `config.rateLimit`. Counts are kept in memory, per
-  // client IP: the address of whoever opened the connection.
+  // visitor IP (visitorIp).
   await app.register(rateLimit, {
     global: false,
+    keyGenerator: (request) => visitorIp(request, config.viewerIpHeader),
     errorResponseBuilder: () =>
       new ApiError(
         429,
@@ -160,4 +162,21 @@ export async function buildApp(config: Config, options: AppOptions) {
   });
 
   return app;
+}
+
+/**
+ * The visitor's IP, which the rate limit counts by. On AWS every connection
+ * comes from the load balancer, so it's the header named in `header`, which
+ * only CloudFront's function sets, after it drops a visitor's own copy
+ * (ADR-0003). X-Forwarded-For is never read: a visitor can put anything in
+ * it. Without the header, or with anything but an IP in it, it's the
+ * connection's address, which on AWS every visitor shares, so a bad value can
+ * only make the limit stricter.
+ */
+function visitorIp(
+  request: FastifyRequest,
+  header: string | undefined,
+): string {
+  const value = header === undefined ? undefined : request.headers[header];
+  return typeof value === "string" && isIP(value) !== 0 ? value : request.ip;
 }
