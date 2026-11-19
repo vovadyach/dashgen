@@ -1,6 +1,6 @@
 # Repo-wide and infrastructure commands. The TypeScript packages have npm
 # scripts of their own: `npm run dev` starts the backend.
-.PHONY: help install db dev fmt check clean aws-up aws-deploy aws-image aws-migrate aws-start aws-down
+.PHONY: help install db dev fmt check clean aws-up aws-deploy aws-image aws-migrate aws-start aws-open aws-close aws-down
 
 help:
 	@echo "DashGen — available commands:"
@@ -10,12 +10,14 @@ help:
 	@echo "  make fmt        Format the TypeScript code"
 	@echo "  make check      Run every formatter, linter, type checker and test"
 	@echo "  make clean      Remove installed packages"
-	@echo "  make aws-up     Build the session stack on AWS, after showing its plan, then deploy the backend (costs money by the hour; needs TF_VAR_gemini_api_key)"
+	@echo "  make aws-up     Build the session stack on AWS, after showing its plan, deploy the backend, and open the API's door (costs money by the hour; needs TF_VAR_gemini_api_key)"
 	@echo "  make aws-deploy Deploy the backend's code: its image, the migrations, then the backend"
 	@echo "  make aws-image  Build the backend's image for ARM, and push it to the session's ECR"
 	@echo "  make aws-migrate  Run the migrations and the seed on AWS, as a one-off ECS task"
 	@echo "  make aws-start  Run the backend on ECS, on its newest image, until it's healthy"
-	@echo "  make aws-down   Destroy the session stack: end every AWS work session with it"
+	@echo "  make aws-open   Open the API's door: CloudFront sends /api/* to the session's backend"
+	@echo "  make aws-close  Close the API's door, and wait for questions in flight to finish"
+	@echo "  make aws-down   Close the door, then destroy the session stack: end every AWS work session with it"
 	@echo "  npm run dev     Run the backend (:3000), restarting on changes"
 	@echo "  npm run dev:frontend  Run the page (:5173), which forwards /api to the backend"
 
@@ -46,18 +48,27 @@ clean:
 
 # The session stack, infra/aws/session: what runs on AWS only while DashGen is
 # being worked on, and costs money by the hour (docs/runbooks/deploy.md).
-# Both commands touch only that stack, never infra/aws/account or
-# infra/aws/always-on, which stay. Terraform shows what it will do, and asks
-# before it changes anything. init runs first, so a new machine works too.
-# aws-up also needs the Gemini key in TF_VAR_gemini_api_key, for the backend's
-# secret; without it, the secret would hold only a placeholder.
+# Terraform here touches only that stack, never infra/aws/account or
+# infra/aws/always-on, which stay. From those, the scripts only read outputs,
+# and write one thing: the session's entry in CloudFront's store, which the
+# session owns (ADR-0003). Terraform shows what it will do, and asks before it
+# changes anything. init runs first, so a new machine works too. aws-up also
+# needs the Gemini key in TF_VAR_gemini_api_key, for the backend's secret;
+# without it, the secret would hold only a placeholder.
 SESSION = terraform -chdir=infra/aws/session
+ALWAYS_ON = terraform -chdir=infra/aws/always-on
+
+# Both stacks' backends, before any script reads their state: on a new
+# machine, a read before init fails.
+INIT = $(SESSION) init -input=false -backend-config=../backend.hcl >/dev/null && \
+	$(ALWAYS_ON) init -input=false -backend-config=../backend.hcl >/dev/null
 
 aws-up:
 	@test -n "$$TF_VAR_gemini_api_key" || { echo "Set TF_VAR_gemini_api_key to DashGen's Gemini API key first: docs/runbooks/deploy.md#the-session-stack"; exit 1; }
-	$(SESSION) init -input=false -backend-config=../backend.hcl
+	$(INIT)
 	$(SESSION) apply
 	$(MAKE) --no-print-directory aws-deploy
+	scripts/aws-open.sh
 
 # The backend's code on AWS, in order: its image, built for Fargate's ARM CPUs
 # and pushed to the session's ECR; the one-off task that applies the
@@ -78,6 +89,23 @@ aws-migrate:
 aws-start:
 	scripts/aws-start.sh
 
+# The API's door (ADR-0003): make aws-up opens it once the backend is
+# healthy, and make aws-down closes it first, waiting for questions in flight.
+aws-open:
+	$(INIT)
+	scripts/aws-open.sh
+
+aws-close:
+	$(INIT)
+	scripts/aws-close.sh
+
+# The closing entry stays while terraform destroy runs, marked with this
+# teardown's random id, so make aws-open can't reopen the door to a stack
+# that's going, and make aws-close leaves it alone. Only this teardown's
+# release deletes it. If the destroy is canceled, the door stays closed.
 aws-down:
-	$(SESSION) init -input=false -backend-config=../backend.hcl
-	$(SESSION) destroy
+	$(INIT)
+	@teardown=$$(node -e 'process.stdout.write(require("node:crypto").randomUUID())') && \
+	scripts/aws-close.sh hold "$$teardown" && \
+	$(SESSION) destroy && \
+	scripts/aws-close.sh release "$$teardown"

@@ -10,6 +10,12 @@ output "backend_log_group" {
   value       = aws_cloudwatch_log_group.backend.name
 }
 
+output "origin_secret" {
+  description = "This session's secret, which CloudFront sends as x-origin-verify, for the session entry that make aws-open writes."
+  value       = terraform_data.origin_secret.output
+  sensitive   = true
+}
+
 output "load_balancer" {
   description = "The load balancer's address, where CloudFront sends /api/*."
   value       = aws_lb.api.dns_name

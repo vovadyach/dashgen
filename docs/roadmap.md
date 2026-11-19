@@ -93,12 +93,12 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 - [x] Migrations and the seed run as a one-off ECS task, before the backend starts: `make aws-migrate` ([runbook](runbooks/deploy.md#the-session-stack))
 - [x] No database backups: every session reseeds the data, and the `runs` history starts over
 - [x] Database password and the Gemini key in AWS Secrets Manager, which only ECS's task execution role can read ([ADR-0015](decisions/0015-backend-as-rds-admin.md), [runbook](runbooks/deploy.md#the-session-stack))
-- [ ] ECS passes them to the backend's container, as `GEMINI_API_KEY` and `PGPASSWORD`
-- [ ] The backend on ECS Fargate behind a load balancer that accepts only our CloudFront: exactly one task, since the rate limit and run events live in its memory, and deploys that stop the old task first
+- [x] ECS passes them to the backend's container, as `GEMINI_API_KEY` and `PGPASSWORD`
+- [x] The backend on ECS Fargate behind a load balancer that accepts only our CloudFront: exactly one task, since the rate limit and run events live in its memory, and deploys that stop the old task first ([runbook](runbooks/deploy.md#the-session-stack))
 - [ ] The backend reaches the daily cap's table with the task's role instead of DynamoDB Local's fake keys
 - [ ] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding the `Last-Event-ID` header
-- [ ] Rate limiting keyed on the visitor's IP from `CloudFront-Viewer-Address`, with a test that a forged `X-Forwarded-For` doesn't change it
-- [ ] `make aws-down`, which drains the API before `terraform destroy`: it deletes the store's entry, waits for 10 offline answers in a row, then 60 seconds more
+- [ ] Rate limiting keyed on the visitor's IP, which CloudFront's function passes as `x-viewer-ip` ([ADR-0003](decisions/0003-cloudfront-front-door.md)), with a test that a forged `X-Forwarded-For` doesn't change it
+- [ ] `make aws-down`, which drains the API before `terraform destroy`: it marks the store's entry as closing, so only the streams of runs already started still get through, waits for 10 offline answers in a row, then 60 seconds more, then deletes the entry
 - [ ] When a reconnecting stream gets CloudFront's own error, like a passing 502, the page tries once more before saying the answer was interrupted, which would invite a second, paid run
 - [ ] Structured JSON logs with a request ID, collected in CloudWatch
 - [ ] GitHub Actions builds the backend's image and deploys it to ECS, with the same OIDC sign-in

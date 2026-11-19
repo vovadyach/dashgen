@@ -12,10 +12,111 @@ output() {
   local value
   value=$(terraform -chdir=infra/aws/session output -raw "$1") || exit 1
   if [[ -z $value ]]; then
-    echo "The session stack isn't up: run make aws-up." >&2
+    echo "The session stack has no $1: it isn't up, or it's older than this code. Run make aws-up." >&2
     exit 1
   fi
   printf '%s' "$value"
+}
+
+# Prints one of the always-on stack's outputs (infra/aws/always-on/outputs.tf),
+# which stays up between sessions. Its errors show as they are, and stop the
+# script, as an empty value does.
+always_on_output() {
+  local value
+  value=$(terraform -chdir=infra/aws/always-on output -raw "$1") || exit 1
+  if [[ -z $value ]]; then
+    echo "The always-on stack has no output $1: see docs/runbooks/deploy.md#the-always-on-stack." >&2
+    exit 1
+  fi
+  printf '%s' "$value"
+}
+
+# The API's door: the session entry in CloudFront's key-value store, at
+# $store, which the caller sets (ADR-0003). Every write names the store's
+# version that the script read, and fails after any change it hasn't seen,
+# like a make aws-open or make aws-down in another terminal.
+
+# The store's current version.
+store_version() {
+  aws cloudfront-keyvaluestore describe-key-value-store --kvs-arn "$store" \
+    --query ETag --output text
+}
+
+# The session entry, as JSON, or nothing when there's none. Any other error,
+# like an expired sign-in, stops the script. The entry, with the secret, is
+# never printed.
+read_entry() {
+  local reply
+  if ! reply=$(aws cloudfront-keyvaluestore get-key --kvs-arn "$store" \
+    --key session --query Value --output text 2>&1); then
+    if [[ $reply == *ResourceNotFoundException* ]]; then
+      return 0
+    fi
+    echo "$reply" >&2
+    exit 1
+  fi
+  printf '%s' "$reply"
+}
+
+# The entry for this session's load balancer and secret, from Terraform's
+# outputs, never from the store, so an old address never comes back. With
+# "closing" as $1, it's marked closing, and $2, when given, is the id of the
+# make aws-down that holds it. A failed or empty read stops it, so a missing
+# output never becomes part of a route. Callers assign its output to a
+# variable, where set -e sees a failure; a command substitution doesn't pass
+# set -e on, hence the || exit.
+session_entry() {
+  local load_balancer secret
+  load_balancer=$(output load_balancer) || exit 1
+  secret=$(output origin_secret) || exit 1
+  LOAD_BALANCER="$load_balancer" SECRET="$secret" CLOSING="${1:-}" \
+    TEARDOWN="${2:-}" node -e '
+      const { LOAD_BALANCER, SECRET, CLOSING, TEARDOWN } = process.env;
+      if (!LOAD_BALANCER || !SECRET) process.exit(1);
+      const entry = { loadBalancer: LOAD_BALANCER, secret: SECRET };
+      if (CLOSING === "closing") entry.closing = true;
+      if (TEARDOWN) entry.teardown = TEARDOWN;
+      process.stdout.write(JSON.stringify(entry));
+    '
+}
+
+# One field of the entry $1, or nothing.
+entry_field() {
+  ENTRY="$1" FIELD="$2" node -e '
+    const { ENTRY, FIELD } = process.env;
+    const value = ENTRY === "" ? undefined : JSON.parse(ENTRY)[FIELD];
+    process.stdout.write(value === undefined ? "" : String(value));
+  '
+}
+
+# Writes the entry $2 over the store's version $1, and only over it. The
+# request goes through stdin, so the secret is never on a command line.
+put_entry() {
+  if [[ -z $2 ]]; then
+    echo "There's no session entry to write, so the store stays as it is." >&2
+    exit 1
+  fi
+  STORE="$store" VERSION="$1" VALUE="$2" node -e '
+    const { STORE, VERSION, VALUE } = process.env;
+    process.stdout.write(
+      JSON.stringify({ KvsARN: STORE, Key: "session", Value: VALUE, IfMatch: VERSION }),
+    );
+  ' | aws cloudfront-keyvaluestore put-key --cli-input-json file:///dev/stdin >/dev/null
+}
+
+# Deletes the entry, only at the store's version $1.
+delete_entry() {
+  aws cloudfront-keyvaluestore delete-key --kvs-arn "$store" --key session \
+    --if-match "$1" >/dev/null
+}
+
+# Whether the entry $1 is a closing entry for the load balancer $2.
+closing_for() {
+  ENTRY="$1" LOAD_BALANCER="$2" node -e '
+    const { ENTRY, LOAD_BALANCER } = process.env;
+    const entry = ENTRY === "" ? {} : JSON.parse(ENTRY);
+    process.exit(entry.closing === true && entry.loadBalancer === LOAD_BALANCER ? 0 : 1);
+  '
 }
 
 # Stops the script unless the ECR repository at $1 has an image tagged latest,
