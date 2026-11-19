@@ -90,18 +90,17 @@ entry_field() {
 }
 
 # Writes the entry $2 over the store's version $1, and only over it. The
-# request goes through stdin, so the secret is never on a command line.
+# entry, with the secret, goes through stdin, so it's never on a command line:
+# printf is part of bash, not a program with arguments of its own. Only
+# --value reads stdin. The AWS CLI can't read --cli-input-json from a pipe:
+# it gets nothing, and fails with "Invalid JSON received".
 put_entry() {
   if [[ -z $2 ]]; then
     echo "There's no session entry to write, so the store stays as it is." >&2
     exit 1
   fi
-  STORE="$store" VERSION="$1" VALUE="$2" node -e '
-    const { STORE, VERSION, VALUE } = process.env;
-    process.stdout.write(
-      JSON.stringify({ KvsARN: STORE, Key: "session", Value: VALUE, IfMatch: VERSION }),
-    );
-  ' | aws cloudfront-keyvaluestore put-key --cli-input-json file:///dev/stdin >/dev/null
+  printf '%s' "$2" | aws cloudfront-keyvaluestore put-key --kvs-arn "$store" \
+    --key session --if-match "$1" --value file:///dev/stdin >/dev/null
 }
 
 # Deletes the entry, only at the store's version $1.
