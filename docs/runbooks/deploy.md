@@ -99,14 +99,14 @@ aws cloudfront test-function --name dashgen-api --stage LIVE --if-match "$ETAG" 
 - Gateway endpoints for DynamoDB and S3, so the daily cap's requests and the image's layers skip the NAT gateway, for free.
 - The VPC's default security group, with its rules removed, so anything that forgets to pick a group gets no traffic.
 - Postgres 18.6 on RDS: one db.t4g.micro in one zone of the private subnets, with 20 GB of encrypted storage. Its database and its admin user are both called `dashgen`, and it accepts only TLS connections.
-- Security groups for the load balancer, the backend's tasks and the database. The load balancer's lets in only CloudFront's addresses, from a list AWS keeps up to date (`com.amazonaws.global.cloudfront.origin-facing`), and reaches only the backend, on port 3000. The backend's lets in only the load balancer, and may reach Postgres, on port 5432, and HTTPS: ECR, Secrets Manager, CloudWatch Logs, DynamoDB and Gemini. Only the backend's group can reach Postgres.
+- Security groups for the load balancer, the backend's tasks and the database. The load balancer's lets in only CloudFront's addresses, from a list AWS keeps up to date (`com.amazonaws.global.cloudfront.origin-facing`), and reaches only the backend, on port 3000. The backend's lets in only the load balancer, and may reach Postgres, on port 5432, and HTTPS: ECR, Secrets Manager, CloudWatch Logs, DynamoDB, and Gemini or Claude. Only the backend's group can reach Postgres.
 - No backups and no final snapshot: each session starts with a new, empty database, and `make aws-down` deletes it with its data.
 - The database's password, which RDS makes and keeps in a Secrets Manager secret of its own, named `rds!db-` and an ID. It's never in Terraform's state or the repo, and RDS deletes it with the database, at once, with no recovery window.
-- The Gemini key, in a Secrets Manager secret named `dashgen/gemini-api-key`. `make aws-up` takes it from your shell, and Terraform passes it to AWS without keeping a copy in its state or plan. `make aws-down` deletes it at once, with no recovery window.
+- The model's key, in a Secrets Manager secret named for its provider: `dashgen/gemini-api-key` or `dashgen/anthropic-api-key`. `make aws-up` takes it from your shell, and only that key, even when your shell has both. Terraform passes it to AWS without keeping a copy in its state or plan. `make aws-down` deletes it at once, with no recovery window.
 - Two IAM roles. ECS takes `dashgen-task-execution` to start the backend's tasks: it can read these two secrets, pull the image and write the tasks' logs, and nothing else. The backend's own role, `dashgen-backend`, can only count the day's questions in the always-on stack's daily cap table, with `UpdateItem`.
 - An ECR repository, `dashgen-backend`, for the backend's image, 83 MB. ECR scans each push for known vulnerabilities, for free. `make aws-down` deletes it with its images, so each session pushes the image again.
 - An ECS cluster, `dashgen`, and the one-off task `dashgen-migrate`: the migrations, then the seed, on Fargate's smallest size (0.25 vCPU, 0.5 GB), on ARM. It connects to Postgres with TLS, checked against RDS's certificates in the image (`backend/certs/`), with the password from RDS's secret as `PGPASSWORD`. Its output goes to the log group `/dashgen/migrate`, kept for a day.
-- The backend's service, `dashgen-backend`: exactly one task of the image's own command, `node src/server.ts`, on the same size. It gets the Gemini key and the database's password as `GEMINI_API_KEY` and `PGPASSWORD`, uses AWS's own DynamoDB (`DYNAMODB_REGION`), and allows CloudFront's address for CORS. A deploy stops the old task before it starts the new one. Its output goes to `/dashgen/backend`, kept for a day.
+- The backend's service, `dashgen-backend`: exactly one task of the image's own command, `node src/server.ts`, on the same size. It gets the model's key as `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`, the database's password as `PGPASSWORD`, and `AI_MODEL` when `TF_VAR_ai_model` sets one ([ADR-0016](../decisions/0016-ai-model-setting.md)), uses AWS's own DynamoDB (`DYNAMODB_REGION`), and allows CloudFront's address for CORS. A deploy stops the old task before it starts the new one. Its output goes to `/dashgen/backend`, kept for a day.
 - A load balancer, `dashgen`, in the public subnets: plain HTTP on port 80, to the task on port 3000. It forwards only requests that carry this session's secret in the `x-origin-verify` header, a random UUID that Terraform makes each session, and answers 403 to anything else. It checks `/api/health` every 10 seconds, and calls a new task healthy after 2 answers in a row.
 
 While it's up, it costs about $0.11 an hour, so about $82 if it's left up for a month:
@@ -118,7 +118,7 @@ While it's up, it costs about $0.11 an hour, so about $82 if it's left up for a 
 | Postgres, db.t4g.micro | $0.016 |
 | Its 20 GB of storage, at $0.115 a GB a month | $0.003 |
 | The password's secret, at $0.40 a month | $0.0005 |
-| The Gemini key's secret, at $0.40 a month | $0.0005 |
+| The model key's secret, at $0.40 a month | $0.0005 |
 | The image in ECR, 83 MB at $0.10 a GB a month | under $0.0001 |
 | The migrations task, on ARM, only while it runs | $0.0099, so about $0.0002 a run |
 | The load balancer | $0.0225, plus a little per use |
@@ -131,6 +131,9 @@ From the repo root, signed in with `aws login`:
 
 ```
 read -rs TF_VAR_gemini_api_key && export TF_VAR_gemini_api_key   # paste the Gemini key, then Enter
+# or, for Claude Haiku 5.5 instead of Gemini:
+# export TF_VAR_ai_model=claude-haiku-5-5
+# read -rs TF_VAR_anthropic_api_key && export TF_VAR_anthropic_api_key   # paste the Claude key
 make aws-up       # shows the plan, builds it once you answer yes, deploys the backend, then opens the API's door
 make aws-deploy   # after a code change: a new image, the migrations, then the backend again
 make aws-down     # closes the door and lets questions in flight finish, then shows what goes, and destroys it once you answer yes
@@ -138,7 +141,9 @@ make aws-down     # closes the door and lets questions in flight finish, then sh
 
 - **End every work session with `make aws-down`.**
 - **`make aws-deploy` has three steps,** which `make aws-up` runs after Terraform, and which also run alone: `make aws-image` builds the backend's image for ARM and pushes it to ECR, `make aws-migrate` runs the migrations and the seed as a one-off ECS task, and `make aws-start` runs the backend on that image.
-- **`make aws-up` needs the Gemini key** in `TF_VAR_gemini_api_key`, and stops at once without it. `read -s` keeps the key off the screen and out of your shell's history, and it lasts until you close the terminal. A plan, `make aws-down` and the `terraform-reviewer` work without it.
+- **`make aws-up` needs the model's key:** `TF_VAR_gemini_api_key` for the default Gemini model, or `TF_VAR_anthropic_api_key` when `TF_VAR_ai_model` names a Claude one, and it stops at once without it. `read -s` keeps the key off the screen and out of your shell's history, and it lasts until you close the terminal. A plan, `make aws-down` and the `terraform-reviewer` work without it.
+- **Pick the AWS model in your shell.** Set `TF_VAR_ai_model` or leave it unset for the default Gemini model. Terraform checks the name before creating resources. To switch between the two Gemini models during a session, change `TF_VAR_ai_model` and run `make aws-up` again. Both use the same key.
+- **End the session before switching providers.** To switch from Gemini to Claude or back, run `make aws-down`, set the new model and its provider's key, then run `make aws-up`. If an `aws-up` plan shows that changing `name` would replace `aws_secretsmanager_secret.model_api_key`, decline the plan. ECS needs the current secret to restart the previous task if the deployment rolls back.
 - **What each step checks.** All three stop at once when the stack is down, and the last two also stop when there's no image yet. Only `make aws-deploy` keeps the order, so `make aws-start` alone doesn't know whether the migrations ran.
   - `make aws-image` takes about 2 to 3 minutes.
   - `make aws-migrate` takes about a minute. It prints the task's output, ending with `Seeded 7200 points.`, and fails when the task does.

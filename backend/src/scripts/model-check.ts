@@ -1,34 +1,36 @@
-// `npm run gemini:check`: two real requests to Gemini, to check that the key,
-// the model and our request format all work before the agent relies on them:
-// the question first, then the model's own reply sent back with tool results,
-// which Gemini 3 accepts only with its thought signatures intact.
-// `npm run gemini:check -- --json` also prints each answer as Gemini sent it.
+// `npm run model:check`: two real requests to the model that AI_MODEL names,
+// to check that the key, the model and our request format all work before the
+// agent relies on them: the question first, then the model's own reply sent
+// back with tool results, which Gemini 3 accepts only with its thought
+// signatures intact.
+// `npm run model:check -- --json` also prints each answer as the provider sent it.
 // Its requests are billed to the key in backend/.env, so people run it, never agents.
-import { createGeminiModel } from "../agent/gemini.ts";
+import { createModel } from "../agent/models.ts";
 import { instructions } from "../agent/instructions.ts";
 import { createTools } from "../agent/tools.ts";
 import type { Message, ModelReply, ToolOutput } from "../agent/types.ts";
-import { loadGeminiSettings } from "../config.ts";
+import { loadModelSettings } from "../config.ts";
 import { METRICS, SERVICES } from "../metrics/seed.ts";
 
 // Only the tools' declarations matter: nothing runs here.
-const notRun = () => Promise.reject(new Error("gemini:check runs no tools."));
+const notRun = () => Promise.reject(new Error("model:check runs no tools."));
 const tools = createTools({ listServices: notRun, query: notRun });
 
-/** Prints each answer as Gemini sent it, for `-- --json`. */
+/** Prints each answer as the provider sent it, for `-- --json`. */
 const printJson: typeof fetch = async (input, init) => {
   const response = await fetch(input, init);
   // Reads a copy, so the SDK still gets the whole answer.
   const body = await response.clone().text();
-  console.log(`Gemini sent HTTP ${String(response.status)}:\n${body}`);
+  console.log(`The provider sent HTTP ${String(response.status)}:\n${body}`);
   return response;
 };
 
 async function check(): Promise<void> {
-  const { apiKey, model: modelName } = loadGeminiSettings();
-  const model = createGeminiModel({
+  const { name, provider, apiKey } = loadModelSettings();
+  const model = createModel({
+    name,
+    provider,
     apiKey: apiKey.reveal(),
-    model: modelName,
     fetch: process.argv.includes("--json") ? printJson : undefined,
   });
   const messages: Message[] = [
@@ -51,12 +53,16 @@ async function check(): Promise<void> {
       console.log(`  calls ${call.name} ${JSON.stringify(call.args)}`);
     }
     if (reply.text !== "") console.log(`  says "${reply.text}"`);
-    const signed = JSON.stringify(reply.raw ?? {}).includes("thoughtSignature");
-    console.log(`  thought signature: ${signed ? "yes" : "no"}`);
+    if (provider === "gemini") {
+      const signed = JSON.stringify(reply.raw ?? {}).includes(
+        "thoughtSignature",
+      );
+      console.log(`  thought signature: ${signed ? "yes" : "no"}`);
+    }
     return reply;
   };
 
-  console.log(`Checking ${modelName}...`);
+  console.log(`Checking ${name}...`);
   const first = await ask("1. The question");
   if (first.calls.length === 0) {
     throw new Error(`The model called no tool (${first.finishReason}).`);
@@ -71,18 +77,18 @@ async function check(): Promise<void> {
             metrics: [...METRICS],
           },
         }
-      : { call, error: "gemini:check runs no queries. Pick another tool." },
+      : { call, error: "model:check runs no queries. Pick another tool." },
   );
   messages.push({ role: "model", reply: first }, { role: "tools", outputs });
   await ask("2. Its reply sent back, with tool results");
-  console.log("Gemini works with DashGen's requests.");
+  console.log(`${name} works with DashGen's requests.`);
 }
 
 try {
   await check();
 } catch (error) {
   console.error(
-    `Gemini check failed: ${error instanceof Error ? error.message : String(error)}`,
+    `Model check failed: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exitCode = 1;
 }

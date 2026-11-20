@@ -2,17 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { Message } from "../../../src/agent/types.ts";
-import {
-  MODEL_CONTENT,
-  QUESTION_MESSAGE,
-  TOOLS,
-} from "../../fixtures/gemini.ts";
-import {
-  type Answer,
-  fakeGemini,
-  failure,
-  request,
-} from "../../helpers/gemini.ts";
+import { QUESTION_MESSAGE, TOOLS } from "../../fixtures/agent.ts";
+import { MODEL_CONTENT } from "../../fixtures/gemini.ts";
+import type { Answer } from "../../helpers/fetch.ts";
+import { fakeGemini, failure } from "../../helpers/gemini.ts";
+import { request } from "../../helpers/model.ts";
 
 describe("createGeminiModel", () => {
   describe("requests", () => {

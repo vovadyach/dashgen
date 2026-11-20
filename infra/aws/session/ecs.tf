@@ -47,7 +47,7 @@ resource "aws_ecs_task_definition" "migrate" {
     command   = ["sh", "-c", "node src/scripts/migrate.ts && node src/scripts/seed.ts"]
 
     environment = [{ name = "DATABASE_URL", value = local.database_url }]
-    # Only the database's password: the migrations need no Gemini key.
+    # Only the database's password: the migrations need no model key.
     secrets = [{ name = "PGPASSWORD", valueFrom = local.secret_env.PGPASSWORD }]
 
     logConfiguration = {

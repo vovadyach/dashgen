@@ -126,7 +126,7 @@ export function checkChart(
 
 /**
  * The rules every model's conversation follows, real or fake, so a loop that
- * breaks them fails in tests too: Gemini answers a request that breaks them
+ * breaks them fails in tests too: the providers answer a request that breaks them
  * with a 400, which isn't retried. Breaking one is the caller's bug, not the
  * model's, so it's a plain Error.
  */
@@ -142,7 +142,7 @@ export function checkConversation(messages: Message[]): void {
           `A reply without tool calls (${finishReason}) can't go back in the conversation.`,
         );
       }
-      // Gemini 3 checks the signatures inside it.
+      // Gemini 3 checks the signatures inside it, and Claude its thinking blocks.
       if (raw === undefined) {
         throw new Error("A reply goes back with its raw, exactly as it came.");
       }

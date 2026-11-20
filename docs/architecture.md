@@ -7,7 +7,7 @@ What runs today, and its API. [design.md](design.md) has the target design, the 
 ```
 Browser ──▶ Frontend ──── /api ──▶ Backend ──────────────▶ Postgres
            (React page,            (Fastify)                (dashgen database: services, metrics, points, runs)
-            Vite on :5173)           ├── agent ───────────▶ Gemini
+            Vite on :5173)           ├── agent ───────────▶ Gemini or Claude (AI_MODEL)
                                      ├── metrics module ──▶ read-only queries
                                      ├── runs module ─────▶ one row per finished run
                                      └── cap module ──────▶ DynamoDB Local (today's count of questions)
@@ -16,7 +16,7 @@ Browser ──▶ Frontend ──── /api ──▶ Backend ─────�
 - **Frontend** (`frontend/`): the React page. It has a question box with example questions to click, the agent's steps as they stream in, and the chart, which AG Charts draws ([ADR-0012](decisions/0012-shadcn-and-ag-charts.md)), with a data table under it. Stop, or Esc, stops watching a question; the run still finishes and is saved. A chart can be pinned to the watchlist, saved in the browser with its numbers; copied as a link that carries the chart ([ADR-0013](decisions/0013-share-links-carry-the-chart.md)); or downloaded as a PNG. Pins and links open with no call to the backend. As it opens, the page gives `GET /api/health` 3 seconds: anything but a 200 with `{"status": "ok"}` shows a banner that the live demo is offline, and turns off everything that sends a question, as does a question that gets CloudFront's offline 503. While offline, the page checks again each time its tab comes back into view ([ADR-0003](decisions/0003-cloudfront-front-door.md)). Locally, Vite's dev server forwards `/api` to the backend, the paths CloudFront will forward on AWS.
 - **Backend** (`backend/`): one TypeScript service. Its HTTP API takes a question, runs the agent in the background, and streams the run's events.
 - **The `metrics` module** (`backend/src/metrics/`): `listServices()` and `query()` over the seeded data. The agent's tools call it.
-- **The `agent` module** (`backend/src/agent/`): the [five tools](design.md#the-agents-tools), the Gemini adapter, and `runAgent`, the loop that answers a question with them within [its limits](design.md#the-daily-cap) ([ADR-0010](decisions/0010-agent-loop.md)). `POST /api/ask` runs it for each question. `npm run gemini:check` tries the adapter with two real requests.
+- **The `agent` module** (`backend/src/agent/`): the [five tools](design.md#the-agents-tools), an adapter for each provider, Gemini and Claude, of which `AI_MODEL` picks one ([ADR-0016](decisions/0016-ai-model-setting.md)), and `runAgent`, the loop that answers a question with them within [its limits](design.md#the-daily-cap) ([ADR-0010](decisions/0010-agent-loop.md)). `POST /api/ask` runs it for each question. `npm run model:check` tries the chosen model with two real requests.
 - **The `runs` module** (`backend/src/runs/`): each run's events in memory, for its stream, and `saveRun()`, which keeps each finished run in the `runs` table, with its cost.
 - **The `cap` module** (`backend/src/cap/`): the [daily cap](design.md#the-daily-cap). `POST /api/ask` takes one of today's 150 questions with one conditional write to DynamoDB before it starts a run ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md)).
 - **Postgres** runs in Docker Compose (`make db`), with one `dashgen` database and user. The tables come from Drizzle migrations, and the data from the seed.
@@ -72,7 +72,7 @@ Database tests run against a separate throwaway Postgres on port 5433, and Dynam
 
 | Where | Settings |
 |---|---|
-| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed` and `gemini:check` | `GEMINI_API_KEY`, `GEMINI_MODEL` (`gemini-3.1-flash-lite`, the default, or `gemini-3.5-flash-lite`: the models DashGen has prices for), `ALLOWED_ORIGINS`, `DATABASE_URL`, `DYNAMODB_ENDPOINT` (`http://localhost:8000`, the default), `DAILY_CAP` (150 questions a day by default), `HOST` and `PORT` (`localhost` and `3000` by default; the image sets `HOST=0.0.0.0`), `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
+| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed` and `model:check` | `AI_MODEL` (`gemini-3.1-flash-lite`, the default, `gemini-3.5-flash-lite` or `claude-haiku-5-5`: the models DashGen has an adapter and prices for), `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` (only the one the model needs), `ALLOWED_ORIGINS`, `DATABASE_URL`, `DYNAMODB_ENDPOINT` (`http://localhost:8000`, the default), `DAILY_CAP` (150 questions a day by default), `HOST` and `PORT` (`localhost` and `3000` by default; the image sets `HOST=0.0.0.0`), `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
 | `.env` at the root (from `.env.example`), read by Docker Compose | `POSTGRES_PASSWORD`, `DASHGEN_DB_PASSWORD` |
 
 ## Known limits

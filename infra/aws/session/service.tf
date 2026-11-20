@@ -86,7 +86,7 @@ resource "aws_ecs_task_definition" "backend" {
     essential    = true
     portMappings = [{ containerPort = 3000, protocol = "tcp" }]
 
-    environment = [
+    environment = concat([
       { name = "DATABASE_URL", value = local.database_url },
       # AWS's own DynamoDB, with this task's role (backend/src/config.ts).
       { name = "DYNAMODB_REGION", value = data.aws_region.current.region },
@@ -94,8 +94,11 @@ resource "aws_ecs_task_definition" "backend" {
       # The visitor's IP, which CloudFront's function sends, for the rate
       # limit (ADR-0003).
       { name = "VIEWER_IP_HEADER", value = "x-viewer-ip" },
-    ]
-    # Both secrets: the Gemini key, and the database's password (secrets.tf).
+      ],
+      # The model TF_VAR_ai_model names; without one, the backend's default.
+      var.ai_model == null ? [] : [{ name = "AI_MODEL", value = var.ai_model }],
+    )
+    # Both secrets: the model's key and the database's password (secrets.tf).
     secrets = [for name, from in local.secret_env : { name = name, valueFrom = from }]
 
     # On a stop, ECS sends SIGTERM, then waits this long before it kills the
@@ -111,6 +114,9 @@ resource "aws_ecs_task_definition" "backend" {
       }
     }
   }])
+
+  # Write the key before ECS can start a task that reads it.
+  depends_on = [aws_secretsmanager_secret_version.model_api_key]
 }
 
 resource "aws_ecs_service" "backend" {

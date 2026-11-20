@@ -79,7 +79,7 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# The private subnets' way out, for Gemini, ECR, Secrets Manager and
+# The private subnets' way out, for the model's API, ECR, Secrets Manager and
 # CloudWatch: one NAT gateway, in the first zone. There's no uptime
 # requirement, and it's already the biggest line on the hourly bill.
 resource "aws_eip" "nat" {

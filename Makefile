@@ -10,7 +10,7 @@ help:
 	@echo "  make fmt        Format the TypeScript code"
 	@echo "  make check      Run every formatter, linter, type checker and test"
 	@echo "  make clean      Remove installed packages"
-	@echo "  make aws-up     Build the session stack on AWS, after showing its plan, deploy the backend, and open the API's door (costs money by the hour; needs TF_VAR_gemini_api_key)"
+	@echo "  make aws-up     Build the session stack on AWS, after showing its plan, deploy the backend, and open the API's door (costs money by the hour; needs the model's key, TF_VAR_gemini_api_key or TF_VAR_anthropic_api_key)"
 	@echo "  make aws-deploy Deploy the backend's code: its image, the migrations, then the backend"
 	@echo "  make aws-image  Build the backend's image for ARM, and push it to the session's ECR"
 	@echo "  make aws-migrate  Run the migrations and the seed on AWS, as a one-off ECS task"
@@ -53,8 +53,9 @@ clean:
 # and write one thing: the session's entry in CloudFront's store, which the
 # session owns (ADR-0003). Terraform shows what it will do, and asks before it
 # changes anything. init runs first, so a new machine works too. aws-up also
-# needs the Gemini key in TF_VAR_gemini_api_key, for the backend's secret;
-# without it, the secret would hold only a placeholder.
+# needs the model's key, for the backend's secret: TF_VAR_gemini_api_key for a
+# Gemini model, the default, or TF_VAR_anthropic_api_key when TF_VAR_ai_model
+# names a Claude one. Without it, the secret would hold only a placeholder.
 SESSION = terraform -chdir=infra/aws/session
 ALWAYS_ON = terraform -chdir=infra/aws/always-on
 
@@ -64,7 +65,8 @@ INIT = $(SESSION) init -input=false -backend-config=../backend.hcl >/dev/null &&
 	$(ALWAYS_ON) init -input=false -backend-config=../backend.hcl >/dev/null
 
 aws-up:
-	@test -n "$$TF_VAR_gemini_api_key" || { echo "Set TF_VAR_gemini_api_key to DashGen's Gemini API key first: docs/runbooks/deploy.md#the-session-stack"; exit 1; }
+	@case "$$TF_VAR_ai_model" in claude-*) key=TF_VAR_anthropic_api_key ;; *) key=TF_VAR_gemini_api_key ;; esac; \
+	test -n "$$(printenv $$key)" || { echo "Set $$key to the API key for $${TF_VAR_ai_model:-the default Gemini model} first: docs/runbooks/deploy.md#the-session-stack"; exit 1; }
 	$(INIT)
 	$(SESSION) apply
 	$(MAKE) --no-print-directory aws-deploy

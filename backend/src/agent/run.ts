@@ -46,7 +46,7 @@ export const RUN_LIMITS = {
 // What visitors read when a run fails, or a filter blocks the question.
 const MESSAGES = {
   agentFailed: "DashGen couldn't answer that. Try asking it another way.",
-  modelDown: "Gemini can't answer right now. Try again in a moment.",
+  modelDown: "The AI model can't answer right now. Try again in a moment.",
   metricsDown: "The metrics are unavailable right now. Try again in a moment.",
   timeout: "That took too long. Try again, or ask something simpler.",
   blocked:
@@ -72,7 +72,7 @@ export interface RunOptions {
   retryDelayMs?: () => number;
 }
 
-/** About 4 characters a token: only to estimate the next request before Gemini counts it. */
+/** About 4 characters a token: only to estimate the next request before the model counts it. */
 const estimateTokens = (value: unknown) =>
   Math.ceil(JSON.stringify(value).length / 4);
 
@@ -86,7 +86,7 @@ const msSince = (start: number) => Math.round(performance.now() - start);
  * internal_error, so even that run keeps its steps and tokens for the runs table.
  *
  * Each request gets one more try, whatever went wrong, if the run has a request
- * left: after a short random wait when Gemini fails in a way retrying can fix,
+ * left: after a short random wait when the model fails in a way retrying can fix,
  * at once after a reply without a tool call. A blocked question ends as a
  * decline right away, since asking again gets the same block.
  */
@@ -177,7 +177,7 @@ export async function runAgent(
           steps.push({ type: "model", ms: msSince(asked), error: "timed out" });
           return timedOut();
         }
-        // Anything else is a bug in DashGen, like a conversation Gemini would refuse.
+        // Anything else is a bug in DashGen, like a conversation the model would refuse.
         if (!(error instanceof ModelError)) throw error;
         steps.push({ type: "model", ms: msSince(asked), error: error.message });
         // No retry when it can't help, the request had its one, or none is left.

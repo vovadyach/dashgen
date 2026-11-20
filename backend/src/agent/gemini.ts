@@ -13,7 +13,7 @@ import { z } from "zod";
 
 import { ModelError } from "./errors.ts";
 import {
-  GeminiErrorBody,
+  ProviderErrorBody,
   type Message,
   type Model,
   type ModelReply,
@@ -38,7 +38,7 @@ const SAFETY_STOPS = new Set<string>([
 
 export interface GeminiOptions {
   apiKey: string;
-  /** A Gemini 3 model, like "gemini-3.1-flash-lite", from GEMINI_MODEL. */
+  /** A Gemini 3 model, like "gemini-3.1-flash-lite", from AI_MODEL. */
   model: string;
   /** Each request's own limit. The run's 25 seconds come in as the request's signal. */
   timeoutMs?: number;
@@ -237,7 +237,7 @@ function toModelError(
 /** Gemini's own reason, out of the JSON body the SDK puts in the error's message. */
 function reasonOf(error: ApiError): string {
   try {
-    const body = GeminiErrorBody.safeParse(JSON.parse(error.message));
+    const body = ProviderErrorBody.safeParse(JSON.parse(error.message));
     if (body.success) return body.data.error.message;
   } catch {
     // Not JSON: the message is readable as it is.
