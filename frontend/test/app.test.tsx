@@ -11,6 +11,7 @@ import {
 import type { Ref } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { STREAM_RETRY_MS } from "../src/run.ts";
 import {
   CHART,
   CHART_OUTCOME,
@@ -562,16 +563,83 @@ describe("the page", () => {
     await screen.findByText("line chart");
   });
 
-  it("says the answer was interrupted when the stream gives up", async () => {
+  it("opens the stream once more, a moment after it gives up, and skips the events it already has", async () => {
+    const askRoute = started();
+    await ask(renderPage());
+    const first = await waitFor(lastStream);
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        first.send(STEPS[0]);
+        // As with CloudFront's own 502, which EventSource can't tell from
+        // the backend's 404.
+        first.fail();
+      });
+      expect(screen.queryByRole("alert")).toBeNull();
+      await act(() => vi.advanceTimersByTimeAsync(STREAM_RETRY_MS - 1));
+      expect(FakeEventSource.opened).toHaveLength(1);
+      await act(() => vi.advanceTimersByTimeAsync(1));
+      const second = lastStream();
+      expect(second).not.toBe(first);
+      expect(second.url).toBe(`/api/runs/${RUN_ID}/events`);
+
+      // The new stream gets the run's events from the first.
+      act(() => {
+        second.send(STEPS[0]);
+        second.send(STEPS[1]);
+        second.send(STEPS[2]);
+        second.send(CHART_OUTCOME);
+      });
+      expect(
+        screen.getAllByText("Looked up the services and metrics"),
+      ).toHaveLength(1);
+      screen.getByText("Drew a line chart");
+    } finally {
+      vi.useRealTimers();
+    }
+    await screen.findByText("line chart");
+    // The stream came back without a second question, which would start, and
+    // pay for, a second run.
+    expect(askRoute).toHaveBeenCalledTimes(1);
+  });
+
+  it("says the answer was interrupted when the stream gives up twice", async () => {
     started();
     await ask(renderPage());
-    const stream = await waitFor(lastStream);
-    act(() => {
-      stream.send(STEPS[0]);
-      stream.fail();
-    });
-    screen.getByText("The answer was interrupted. Ask the question again.");
-    screen.getByText("Looked up the services and metrics");
+    const first = await waitFor(lastStream);
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        first.send(STEPS[0]);
+        first.fail();
+      });
+      await act(() => vi.advanceTimersByTimeAsync(STREAM_RETRY_MS));
+      act(() => {
+        lastStream().fail();
+      });
+      screen.getByText("The answer was interrupted. Ask the question again.");
+      screen.getByText("Looked up the services and metrics");
+      expect(FakeEventSource.opened).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("opens no stream again once the visitor stops", async () => {
+    started();
+    await ask(renderPage());
+    const first = await waitFor(lastStream);
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        first.fail();
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+      await act(() => vi.advanceTimersByTimeAsync(STREAM_RETRY_MS));
+      expect(FakeEventSource.opened).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the API's message when a question can't start, and opens no stream", async () => {

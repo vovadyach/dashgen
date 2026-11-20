@@ -65,11 +65,17 @@ export type Action =
   | { type: "stop" }
   | { type: "open"; saved: SavedChart };
 
-/** The backend no longer knows the run: it ended over 5 minutes ago, or the backend restarted. */
+/**
+ * The run's stream failed twice: the backend no longer knows the run, since it
+ * ended over 5 minutes ago or the backend restarted, or CloudFront kept failing.
+ */
 export const INTERRUPTED: Failure = {
   code: "run_not_found",
   message: "The answer was interrupted. Ask the question again.",
 };
+
+/** How long the page waits to open a run's stream once more, after EventSource gave up on it. */
+export const STREAM_RETRY_MS = 1_000;
 
 const BROKEN = {
   type: "error",
@@ -205,24 +211,47 @@ export function useRun() {
   const askId = run.status === "streaming" ? run.askId : undefined;
   useEffect(() => {
     if (runId === undefined || askId === undefined) return;
-    const source = new EventSource(`/api/runs/${runId}/events`);
-    source.onmessage = (message: MessageEvent<string>) => {
-      const event = parseEvent(message.data);
-      // The run is over. Closing now keeps EventSource from reconnecting
-      // when the backend ends the stream.
-      if (event.type !== "step") source.close();
-      dispatch({ type: "event", runId, event });
+    // The ID of the last event the page took. The backend numbers a run's
+    // events from 1, and a stream opened again gets them from the first, so
+    // it skips up to this one.
+    let last = 0;
+    let retried = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let source: EventSource;
+    const follow = () => {
+      source = new EventSource(`/api/runs/${runId}/events`);
+      source.onmessage = (message: MessageEvent<string>) => {
+        const id = Number(message.lastEventId);
+        if (Number.isInteger(id) && id > 0) {
+          if (id <= last) return;
+          last = id;
+        }
+        const event = parseEvent(message.data);
+        // The run is over. Closing now keeps EventSource from reconnecting
+        // when the backend ends the stream.
+        if (event.type !== "step") source.close();
+        dispatch({ type: "event", runId, event });
+      };
+      source.onerror = () => {
+        // After a dropped connection, EventSource reconnects by itself, with
+        // Last-Event-ID. CLOSED means it gave up, after an answer that isn't a
+        // stream: the backend's 404 for a run it no longer has, or CloudFront's
+        // own error, like a passing 502. EventSource can't tell them apart, so
+        // the page opens the stream once more, a moment later. That costs
+        // nothing, since a stream never starts a run, and saying the answer was
+        // interrupted would invite a second, paid one.
+        if (source.readyState !== EventSource.CLOSED) return;
+        if (retried) {
+          dispatch({ type: "failed", askId, failure: INTERRUPTED });
+          return;
+        }
+        retried = true;
+        retry = setTimeout(follow, STREAM_RETRY_MS);
+      };
     };
-    source.onerror = () => {
-      // After a dropped connection, EventSource reconnects by itself, with
-      // Last-Event-ID. CLOSED means it gave up, after an answer that isn't a
-      // stream. Locally that's the backend's 404 for a run it no longer has.
-      // Through CloudFront it could also be a passing 502 (step 5).
-      if (source.readyState === EventSource.CLOSED) {
-        dispatch({ type: "failed", askId, failure: INTERRUPTED });
-      }
-    };
+    follow();
     return () => {
+      clearTimeout(retry);
       source.close();
     };
   }, [runId, askId]);
