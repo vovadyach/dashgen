@@ -42,6 +42,10 @@ export async function buildApp(config: Config, options: AppOptions) {
       options.logger === true
         ? {
             level: config.logLevel,
+            // Each line is JSON, which CloudWatch reads field by field on
+            // AWS. The level is a word, like "error", not Pino's number,
+            // like 50, so a search can name it (docs/runbooks/deploy.md).
+            formatters: { level: (label) => ({ level: label }) },
             ...(options.logStream && { stream: options.logStream }),
           }
         : false,

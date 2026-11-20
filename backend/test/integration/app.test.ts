@@ -6,6 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { AskResponse, ErrorBody, RunEvent } from "@dashgen/contracts";
 
 import type { Model } from "../../src/agent/types.ts";
+import { LOG_LEVELS } from "../../src/logger.ts";
 import type { NewRun } from "../../src/runs/index.ts";
 import { CHART, QUERY, QUESTION } from "../fixtures/agent.ts";
 import { VALID_ENV } from "../fixtures/config.ts";
@@ -102,6 +103,40 @@ describe("HTTP API", () => {
 
     for (const id of ids) assertRecentUuidV7(id);
     assert.notEqual(ids[0], ids[1]);
+  });
+
+  it("logs a request as JSON lines, each with its level as a word and the request's ID", async (t) => {
+    const lines: string[] = [];
+    const app = await startApp(
+      t,
+      {},
+      {
+        logger: true,
+        logStream: {
+          write: (line) => {
+            lines.push(line);
+          },
+        },
+      },
+    );
+    const before = lines.length;
+
+    const response = await app.inject({ method: "GET", url: "/api/nowhere" });
+
+    const logged = lines
+      .slice(before)
+      .map((line) => JSON.parse(line) as { level?: unknown; reqId?: unknown });
+    assert.ok(logged.length > 0);
+    for (const { level, reqId } of logged) {
+      // A word, like "info", which a CloudWatch search can name, not Pino's
+      // number, like 30.
+      assert.ok(
+        LOG_LEVELS.some((known) => known === level),
+        JSON.stringify(level),
+      );
+      // The ID the response gave back, which finds the request's lines.
+      assert.equal(reqId, response.headers["x-request-id"]);
+    }
   });
 
   describe("GET /api/health", () => {
