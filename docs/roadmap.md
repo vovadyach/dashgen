@@ -115,7 +115,7 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 
 ## 6. Evals
 
-- [ ] `AI_MODEL` picks the model, Gemini or Claude Haiku 5.5 ([ADR-0016](decisions/0016-ai-model-setting.md)), so the evals can run on both
+- [x] `AI_MODEL` picks the model, Gemini or Claude Haiku 5.5 ([ADR-0016](decisions/0016-ai-model-setting.md)), so the evals can run on both
 - [ ] 20–30 test questions, each with the expected tool calls, chart type and chart data: values, dates and units
 - [ ] Ambiguous questions where the right answer is a clarifying question
 - [ ] Scored for accuracy; runs from the command line and in CI, calling the agent loop directly

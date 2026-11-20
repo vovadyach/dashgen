@@ -155,3 +155,21 @@ make aws-down     # closes the door and lets questions in flight finish, then sh
 - **The first `make aws-up` adds 47 resources,** then deploys the backend and opens the door: about 13 minutes in all. The database takes the longest: about 5 minutes to create, and 2 to delete. The NAT gateway takes a minute or two each way.
 - **After `make aws-down`, the console can still list a few resources that are gone.** The tag search lists deleted resources for a while, a deleted NAT gateway shows as `deleted` for about an hour, and ECS can keep listing old task definitions as `INACTIVE`. None of them costs anything.
 - **Before applying a change to any stack,** check the plan for anything it would delete or replace. From the repo's root, `terraform -chdir=infra/aws/<stack> show -json tfplan | node scripts/plan-changes.js` prints only those, and the plan's summary. In Claude Code, the `terraform-reviewer` subagent runs it for you (`.claude/agents/terraform-reviewer.md`).
+
+## Read the backend's logs
+
+The backend writes one JSON line per event, with its level as a word, like `"error"`. The lines about an HTTP request carry its ID as `reqId`, and the agent's lines about a run also carry the run's `runId`. Lines from shared parts, like the SQL statements that `LOG_LEVEL=debug` adds, carry neither. ECS sends the backend's lines to the log group `/dashgen/backend`, and the migrations task's to `/dashgen/migrate`. Both keep a day, and `make aws-down` deletes them with the stack, so read them before that.
+
+```
+aws logs tail /dashgen/backend --follow --format short     # the backend, live
+aws logs tail /dashgen/migrate --since 1h --format short   # the last migrations
+aws logs filter-log-events --log-group-name /dashgen/backend \
+  --filter-pattern '{ $.reqId = "REQUEST_ID" }' \
+  --query 'events[].[message]' --output text               # one request's lines, one a line
+```
+
+- **A request's ID** comes back in its response's `x-request-id` header. For a run, use `{ $.runId = "RUN_ID" }`, with the `runId` from `POST /api/ask`'s answer or the `runs` table.
+- **Warnings and errors:** `{ ($.level = "warn") || ($.level = "error") }`.
+- **Failed requests:** `{ $.res.statusCode >= 400 }`. A request the backend refuses on purpose, like a question past the daily cap, which gets a 503, is logged at `info`, so the filter above misses it.
+- **Without `--follow`,** `aws logs tail` prints the last 10 minutes, or the time `--since` gives, and stops.
+- **A backend that can't start,** like one missing a setting, stops before its logger exists, so its reason is plain text. `aws logs tail` shows it, but the JSON filters above don't.
