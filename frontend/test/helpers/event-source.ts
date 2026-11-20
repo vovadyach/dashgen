@@ -15,6 +15,12 @@ export class FakeEventSource {
   readyState: number = FakeEventSource.CONNECTING;
   onmessage: ((message: MessageEvent<string>) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
+  /**
+   * The events this stream sent, which numbers the next one, as the backend
+   * does: a new stream starts from the run's first event, and one that
+   * reconnects by itself, after drop(), goes on from its last.
+   */
+  private sent = 0;
 
   constructor(url: string) {
     this.url = url;
@@ -32,8 +38,12 @@ export class FakeEventSource {
   send(event: RunEvent): boolean {
     if (this.readyState === FakeEventSource.CLOSED) return true;
     this.readyState = FakeEventSource.OPEN;
+    this.sent += 1;
     this.onmessage?.(
-      new MessageEvent("message", { data: JSON.stringify(event) }),
+      new MessageEvent("message", {
+        data: JSON.stringify(event),
+        lastEventId: String(this.sent),
+      }),
     );
     return this.readyState === FakeEventSource.CLOSED;
   }
@@ -44,7 +54,7 @@ export class FakeEventSource {
     this.onerror?.(new Event("error"));
   }
 
-  /** EventSource gives up, as it does when the backend answers 404. */
+  /** EventSource gives up, as it does when the backend answers 404, or CloudFront 502. */
   fail() {
     this.readyState = FakeEventSource.CLOSED;
     this.onerror?.(new Event("error"));

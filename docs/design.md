@@ -223,7 +223,7 @@ sequenceDiagram
 - **A day's cost has a ceiling.** The backend reserves one of the day's questions before any work starts, and the loop stops at fixed limits on model calls and tokens ([the daily cap](#the-daily-cap)).
 - **The model chooses, the code computes.** `create_chart` names a query result (`q1`), a chart type and a title, and never carries numbers. The backend builds the chart from the metrics module's real result, so the model can't copy a value wrong or invent one.
 - **The visitor watches it work.** A question takes about 10 seconds, so each step appears as it happens instead of after a blank wait.
-- **Starting a run and watching it are separate calls.** `POST /api/ask` is the only call that reserves a question and starts the model. `GET /api/runs/:runId/events` only streams a run that already exists. When the connection drops, the browser reconnects with the ID of the last event it got, and the backend replays the rest. A reconnect never starts, or pays for, a second run.
+- **Starting a run and watching it are separate calls.** `POST /api/ask` is the only call that reserves a question and starts the model. `GET /api/runs/:runId/events` only streams a run that already exists. When the connection drops, the browser reconnects with the ID of the last event it got, and the backend replays the rest. If `EventSource` gives up instead, as it does on CloudFront's own error, like a passing 502, the page opens the stream once more, a second later, and skips the events it already has. Only a second failure says the answer was interrupted. A reconnect never starts, or pays for, a second run.
 - Tool arguments are checked against the known services and metrics before any tool runs. With read-only tools, that limits what an injected prompt can do: it can't write anything or reach other data, though it can still steer the agent to a misleading chart or spend part of the budget.
 
 ### When things go wrong
@@ -545,7 +545,7 @@ Every error carries our own code and a message that's safe to show visitors. Whe
 | `unavailable` | `error` event in the stream, or `POST /api/ask` fails with HTTP 503 | the database or the model fails, after one retry if retrying can help. Before a run, DynamoDB can't count the question |
 | `timeout` | `error` event in the stream | the run took over 25 seconds |
 | `internal_error` | HTTP 500, or the stream's `error` event | a bug in DashGen. A run it ends is still saved, with its steps and tokens so far |
-| `run_not_found` | the stream fails, HTTP 404 | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page says the answer was interrupted and offers to ask again |
+| `run_not_found` | the stream fails, HTTP 404 | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page opens the stream once more, then says the answer was interrupted and offers to ask again |
 
 - **Tests and Postman must read the stream:** a failed run is a 200 response whose last event is `error`.
 - **Run events live in the backend's memory** until 5 minutes after the run ends. The outcome is also saved in `runs`.

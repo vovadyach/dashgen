@@ -99,7 +99,7 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 - [x] CloudFront as the only address visitors use, with the `/api/*` settings, headers and timeouts from [ADR-0003](decisions/0003-cloudfront-front-door.md), forwarding the `Last-Event-ID` header
 - [x] Rate limiting keyed on the visitor's IP, which CloudFront's function passes as `x-viewer-ip` ([ADR-0003](decisions/0003-cloudfront-front-door.md)), with a test that a forged `X-Forwarded-For` doesn't change it
 - [x] `make aws-down`, which drains the API before `terraform destroy`: it marks the store's entry as closing, so only the streams of runs already started still get through, waits for 10 offline answers in a row, then 60 seconds more, then deletes the entry
-- [ ] When a reconnecting stream gets CloudFront's own error, like a passing 502, the page tries once more before saying the answer was interrupted, which would invite a second, paid run
+- [x] When a reconnecting stream gets CloudFront's own error, like a passing 502, the page tries once more before saying the answer was interrupted, which would invite a second, paid run
 - [ ] Structured JSON logs with a request ID, collected in CloudWatch
 - [ ] GitHub Actions builds the backend's image and deploys it to ECS, with the same OIDC sign-in
 - [ ] All infrastructure defined in Terraform: the always-on and session stacks from the [AWS design](design.md#on-aws)
