@@ -1,14 +1,19 @@
 import { ModelError } from "../../src/agent/errors.ts";
-import type { Model, ModelReply, ModelRequest } from "../../src/agent/types.ts";
+import type {
+  Message,
+  Model,
+  ModelReply,
+  ModelRequest,
+} from "../../src/agent/types.ts";
 import { checkConversation } from "../../src/agent/validation.ts";
-import { REASON } from "../fixtures/agent.ts";
+import { QUESTION_MESSAGE, REASON, TOOLS } from "../fixtures/agent.ts";
 
 /** A script step: a reply, an Error to throw, or "hang" until the run's deadline aborts. */
 export type Step = ModelReply | Error | "hang";
 
 /**
  * A model that answers from a script and records each request, so agent tests
- * never call Gemini. It keeps the real model's rules: the same checks on the
+ * never call Gemini or Claude. It keeps the real model's rules: the same checks on the
  * conversation, and an AbortError when the request's signal fires.
  */
 export function fakeModel(
@@ -104,3 +109,12 @@ export function busyError(): ModelError {
     status: 503,
   });
 }
+
+/** A request to an adapter with these messages: by default, the question alone. */
+export const request = (
+  messages: Message[] = [QUESTION_MESSAGE],
+): ModelRequest => ({
+  system: "You are DashGen.",
+  messages,
+  tools: TOOLS,
+});

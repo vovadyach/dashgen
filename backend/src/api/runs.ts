@@ -31,7 +31,7 @@ const MESSAGES = {
   capDown: "DashGen can't take questions right now. Try again in a moment.",
 };
 
-/** What runs need: Gemini, the database and the daily cap on the server, fakes in tests. */
+/** What runs need: the model, the database and the daily cap on the server, fakes in tests. */
 export interface RunDeps extends Pick<RunOptions, "model" | "metrics"> {
   /** Saves a finished run to the runs table, logging with the run's own logger. */
   save: (run: NewRun, log: Logger) => Promise<void>;
@@ -63,7 +63,7 @@ export const runRoutes: FastifyPluginCallbackZod<RunRoutesOptions> = (
 
   /**
    * Takes one of today's questions. When DynamoDB doesn't answer, the
-   * question gets a 503 and no run, so Gemini isn't called: a lost answer is
+   * question gets a 503 and no run, so the model isn't called: a lost answer is
    * cheaper than an unchecked bill (docs/design.md, the daily cap).
    */
   async function reserve(log: Logger): Promise<Reservation> {

@@ -29,7 +29,7 @@ export interface AppOptions {
   /** Where those logs go instead of stdout, so a test can read them. */
   logStream?: { write: (line: string) => void };
   /**
-   * Makes what runs need, with the app's logger: Gemini and the database on
+   * Makes what runs need, with the app's logger: the model and the database on
    * the server, fakes in tests. `close` runs when the app closes.
    */
   runs: (log: Logger) => RunDeps & { close?: () => Promise<void> };
@@ -158,7 +158,7 @@ export async function buildApp(config: Config, options: AppOptions) {
     prefix: "/api",
     ...runs,
     store: createRunStore<RunEvent>({ log: app.log }),
-    price: config.geminiPrice,
+    price: config.model.price,
   });
 
   return app;

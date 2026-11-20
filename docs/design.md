@@ -57,7 +57,7 @@ Prices are from [Google's pricing page](https://ai.google.dev/gemini-api/docs/pr
 | Claude Sonnet 5.5 | $2 / $10 | ~$0.031 | ~$9.30 |
 | OpenAI `gpt-6-sol` | $2 / $10 | ~$0.031 | ~$9.30 |
 
-Prices are from [Anthropic's](https://platform.claude.com/docs/en/about-claude/pricing) and [OpenAI's](https://developers.openai.com/api/docs/pricing) pricing pages, checked on 2026-10-26. At list prices, the smallest Claude and OpenAI models cost about a third of Gemini 3.1 Flash-Lite. Every small model fits the budget, though, so the choice comes down to how reliably each one calls tools, which step 6's evals measure, plus Gemini's free tier during development. The backend keeps the model behind one small interface, so switching providers stays a contained change.
+Prices are from [Anthropic's](https://platform.claude.com/docs/en/about-claude/pricing) and [OpenAI's](https://developers.openai.com/api/docs/pricing) pricing pages, checked on 2026-10-26. At list prices, the smallest Claude and OpenAI models cost about a third of Gemini 3.1 Flash-Lite. Every small model fits the budget, though, so the choice comes down to how reliably each one calls tools, which step 6's evals measure, plus Gemini's free tier during development. The backend keeps the model behind one small interface, and `AI_MODEL` switches between Gemini and Claude Haiku 5.5 ([ADR-0016](decisions/0016-ai-model-setting.md)).
 
 ### AWS, while the stack is up
 
@@ -85,7 +85,7 @@ Approximate on-demand prices in us-east-1. Check them in the AWS pricing calcula
 ### What the estimates tell us
 
 1. **Our servers will be nearly idle.** The bottleneck is Gemini: its latency, its price and its rate limits. So there's no cache and no queue, and one small backend task does the work. That also settles earlier questions: a queue would have no load to smooth, gRPC no latency worth saving, and a separate metrics service no load or team to justify it ([ADR-0005](decisions/0005-one-backend.md)).
-2. **Gemini is the cost that can surprise us.** A busy day costs about $1.30 on Flash-Lite and $3.50–7 on Flash, so the model choice and the daily cap (step 4) are the main cost controls. Flash-Lite is the starting model, and step 6's evals can compare it with Claude Haiku and GPT Luna, which cost less per token.
+2. **Gemini is the cost that can surprise us.** A busy day costs about $1.30 on Flash-Lite and $3.50–7 on Flash, so the model choice and the daily cap (step 4) are the main cost controls. Flash-Lite is the default model, `AI_MODEL` switches to Claude Haiku 5.5, which costs less per token, and step 6's evals can compare the two.
 3. **AWS costs time, not traffic.** About $0.11 an hour whether anyone visits or not, and the NAT gateway is about 40% of it. Running only during sessions keeps AWS around $5 a month, and leaving it on would break the budget.
 4. **The data is tiny.** The smallest Postgres instance is plenty, which gives step 2's database ADR its numbers.
 
@@ -99,7 +99,7 @@ The diagrams are Mermaid: GitHub draws them, and VS Code does too with a Mermaid
 flowchart LR
     visitor(["Visitor in a browser"])
     you(["You, the developer"])
-    gemini["Gemini API"]
+    model["Gemini or Claude API"]
     github["GitHub: code, issues, CI"]
 
     subgraph aws ["AWS"]
@@ -107,7 +107,7 @@ flowchart LR
     end
 
     visitor -->|"asks a question, gets a chart (HTTPS)"| dashgen
-    dashgen -->|"function calling (HTTPS)"| gemini
+    dashgen -->|"function calling (HTTPS)"| model
     you -->|"pushes code, reviews pull requests"| github
     github -->|"tests, then deploys with OIDC: no stored keys"| aws
 ```
@@ -118,7 +118,7 @@ flowchart LR
 flowchart LR
     browser(["Browser"])
     pins[("Browser storage<br/>pinned charts")]
-    gemini["Gemini API"]
+    model["Gemini or Claude API"]
     cap[("DynamoDB<br/>daily cap count")]
 
     subgraph public ["Public"]
@@ -135,7 +135,7 @@ flowchart LR
     cdn -->|"/api/*, with the secret header"| alb
     browser <-->|"pin and unpin"| pins
     alb --> backend
-    backend -->|"function calling, HTTPS"| gemini
+    backend -->|"function calling, HTTPS"| model
     backend -->|"reserve a question"| cap
     backend -->|"SQL through Drizzle"| db
 ```
@@ -144,11 +144,11 @@ flowchart LR
 |---|---|---|
 | CloudFront + S3 | The one address visitors use: serves the React app's files and forwards `/api/*` to the load balancer | Static files need no server, and one address means no CORS and no domain |
 | Load balancer | Health checks, routing to the backend | The backend's only door, open only to our CloudFront |
-| Backend | The agent loop, the metrics queries, the rate limit, the daily cap, all validation | Keeps the Gemini key and every decision on the server |
+| Backend | The agent loop, the metrics queries, the rate limit, the daily cap, all validation | Keeps the model's key and every decision on the server |
 | Postgres | The metric time series and the log of runs, in one database | The data is tiny, and SQL answers questions nobody planned for |
 | DynamoDB | The daily cap's count | It has to outlive each session's database |
 | Browser storage | Pinned charts | No accounts, so there's nothing to keep on the server |
-| Gemini | Picks the tools and writes the chart spec | An outside service, behind one small interface in the backend |
+| Gemini or Claude | Picks the tools and writes the chart spec | An outside service, behind one small interface in the backend, picked with `AI_MODEL` |
 
 ### Inside the backend
 
@@ -160,7 +160,7 @@ flowchart LR
 
     subgraph backend ["Backend: one Fastify process"]
         api["api<br/>REST routes, SSE,<br/>rate limit"]
-        agent["agent<br/>Gemini loop, tools,<br/>question limits"]
+        agent["agent<br/>model loop, tools,<br/>question limits"]
         metrics["metrics<br/>read-only queries"]
         runs["runs<br/>log of each question"]
         cap["cap<br/>daily count"]
@@ -186,7 +186,7 @@ sequenceDiagram
     participant F as Frontend
     participant B as Backend: api + agent
     participant C as Daily cap (DynamoDB)
-    participant LLM as Gemini
+    participant LLM as Gemini or Claude
     participant M as metrics module
     participant DB as Postgres
 
@@ -223,7 +223,7 @@ sequenceDiagram
 - **A day's cost has a ceiling.** The backend reserves one of the day's questions before any work starts, and the loop stops at fixed limits on model calls and tokens ([the daily cap](#the-daily-cap)).
 - **The model chooses, the code computes.** `create_chart` names a query result (`q1`), a chart type and a title, and never carries numbers. The backend builds the chart from the metrics module's real result, so the model can't copy a value wrong or invent one.
 - **The visitor watches it work.** A question takes about 10 seconds, so each step appears as it happens instead of after a blank wait.
-- **Starting a run and watching it are separate calls.** `POST /api/ask` is the only call that reserves a question and starts Gemini. `GET /api/runs/:runId/events` only streams a run that already exists. When the connection drops, the browser reconnects with the ID of the last event it got, and the backend replays the rest. A reconnect never starts, or pays for, a second run.
+- **Starting a run and watching it are separate calls.** `POST /api/ask` is the only call that reserves a question and starts the model. `GET /api/runs/:runId/events` only streams a run that already exists. When the connection drops, the browser reconnects with the ID of the last event it got, and the backend replays the rest. A reconnect never starts, or pays for, a second run.
 - Tool arguments are checked against the known services and metrics before any tool runs. With read-only tools, that limits what an injected prompt can do: it can't write anything or reach other data, though it can still steer the agent to a misleading chart or spend part of the budget.
 
 ### When things go wrong
@@ -235,7 +235,7 @@ sequenceDiagram
     participant F as Frontend
     participant B as Backend
     participant C as Daily cap (DynamoDB)
-    participant LLM as Gemini
+    participant LLM as Gemini or Claude
     participant DB as Postgres
 
     F->>B: POST /api/ask, with the question
@@ -244,15 +244,15 @@ sequenceDiagram
     end
     B->>C: reserve one of today's questions
     break the cap is reached
-        B-->>F: HTTP 503, daily_cap, with Retry-After, and Gemini is never called
+        B-->>F: HTTP 503, daily_cap, with Retry-After, and the model is never called
     end
     break DynamoDB can't answer (fail closed)
-        B-->>F: HTTP 503, unavailable, and Gemini is never called
+        B-->>F: HTTP 503, unavailable, and the model is never called
     end
     B-->>F: runId
     F->>B: GET /api/runs/:runId/events: from here the stream is open, with HTTP 200
     B->>LLM: question + tools
-    break Gemini fails, after one retry if retrying can help
+    break the model fails, after one retry if retrying can help
         B-->>F: error event: unavailable, "Try again in a moment"
     end
     LLM-->>B: call query_metrics(...)
@@ -268,7 +268,7 @@ sequenceDiagram
 ```
 
 - **Two kinds of error.** Before a run starts, `POST /api/ask` fails like a normal request, with an HTTP status. Once the run's stream is open, the HTTP status is already 200, so a failure arrives as the stream's last event instead. Both carry one of [our error codes](#the-frontends-api), so the page shows the right message either way.
-- **Timeouts and retries:** every outside call has a timeout. For a database query, Postgres cancels a statement after 2 seconds, and if Postgres stops answering, the backend gives up a second later and closes that connection. An error that retrying can fix, like a timeout or a 503, gets one retry, after a random wait of 0.5 to 1.5 seconds, so retries from many requests don't all land at once. Any other error, like a wrong key, fails at once. For the database, the errors that retrying can fix are a lost or refused connection, a timeout, and a server that's out of connections, stopping or starting. Each metrics read gets that retry, and so does saving a run. A request to Gemini gets one more try in all, whatever went wrong, so a retry that gets a reply without a tool call ends the run.
+- **Timeouts and retries:** every outside call has a timeout. For a database query, Postgres cancels a statement after 2 seconds, and if Postgres stops answering, the backend gives up a second later and closes that connection. An error that retrying can fix, like a timeout or a 503, gets one retry, after a random wait of 0.5 to 1.5 seconds, so retries from many requests don't all land at once. Any other error, like a wrong key, fails at once. For the database, the errors that retrying can fix are a lost or refused connection, a timeout, and a server that's out of connections, stopping or starting. Each metrics read gets that retry, and so does saving a run. A request to the model gets one more try in all, whatever went wrong, so a retry that gets a reply without a tool call ends the run.
 - **25 seconds per question,** under CloudFront's 30-second timeout, so a slow question gets the backend's own error ([ADR-0003](decisions/0003-cloudfront-front-door.md) explains the three timeouts).
 - **A run always finishes within its limits,** even if the visitor leaves or presses Stop, so a reconnect finds it intact. Stop only stops the page from watching, and the run is still saved. Its cost is already capped: at most 6 model calls and 25 seconds, and the question was reserved when it started.
 - The numbers here (6 calls, 25 seconds per question, a 2-second timeout, one retry) are starting values for the evals to tune.
@@ -279,7 +279,7 @@ sequenceDiagram
 flowchart TB
     visitor(["Visitor"])
     gha["GitHub Actions"]
-    gemini["Gemini API"]
+    model["Gemini or Claude API"]
     offline(["503: the demo is offline"])
 
     subgraph base ["Always on"]
@@ -293,7 +293,7 @@ flowchart TB
 
     subgraph appstack ["Session stack: destroyed after each session"]
         ecr["ECR: images"]
-        secrets["Secrets Manager<br/>DB password, Gemini key"]
+        secrets["Secrets Manager<br/>DB password, selected provider's key"]
         logs["CloudWatch Logs"]
         subgraph vpc ["VPC"]
             subgraph pub ["Public subnets, 2 AZs"]
@@ -317,7 +317,7 @@ flowchart TB
     fn -->|"session running: HTTP + secret header"| alb
     alb --> be
     be --> rds
-    be -->|"outbound only"| nat --> gemini
+    be -->|"outbound only"| nat --> model
     be -->|"reserve a question"| ddb
     secrets -.->|"injected at startup"| ecs
     ecr -.->|"pulled at startup"| ecs
@@ -329,7 +329,7 @@ flowchart TB
 ```
 
 - **CloudFront is the only way in** ([ADR-0003](decisions/0003-cloudfront-front-door.md) has the details and the reasons). It serves the React app from S3 and runs a CloudFront Function on every `/api/*` request. During a session, the function forwards the request to the load balancer with a secret header, and the load balancer refuses anything without it. Between sessions, the function answers 503 "offline" itself, and the page shows its banner. The hop to the load balancer is plain HTTP, an accepted risk the ADR explains.
-- **Public vs. private:** only CloudFront and the load balancer face the internet. The backend and the database sit in private subnets, and the backend reaches outside services (Gemini, ECR, Secrets Manager, CloudWatch) through the NAT gateway. DynamoDB and S3 are the exceptions: gateway endpoints, which are free, take the cap's requests and the image's layers there without the NAT.
+- **Public vs. private:** only CloudFront and the load balancer face the internet. The backend and the database sit in private subnets, and the backend reaches outside services (the model's API, ECR, Secrets Manager, CloudWatch) through the NAT gateway. DynamoDB and S3 are the exceptions: gateway endpoints, which are free, take the cap's requests and the image's layers there without the NAT.
 - **Exactly one backend task, even during deploys.** The per-IP rate limit and the events of runs in progress live in the task's memory, so a second task would split the limit and could get a reconnect for a run it never saw. A deploy therefore stops the old task before starting the new one (minimum healthy 0%, maximum 100%). That costs about a minute of downtime per deploy. A page opened then shows its offline banner until its tab comes back into view or it's reloaded, and a page already open says DashGen isn't answering if a question is asked then, since the load balancer's own 503 isn't CloudFront's offline answer. The old task waits for runs in progress before it stops, up to their 25 seconds, so they finish and are saved, but a stream that reconnects to the new task gets `run_not_found`. ECS also replaces a task that fails its health check, with the same effect.
 - **Scaling out later** means moving both to shared storage first: the rate limit counters to DynamoDB, which already holds the daily cap, and the run events to Postgres or Redis. Only then does auto scaling make sense. Full high availability would also need Multi-AZ RDS, which doubles the database's cost. None of it is worth it without an uptime promise.
 - **Migrations run first.** A one-off ECS task runs Drizzle's migrations and the seed before the backend starts, from the backend's own image: `make aws-migrate` runs it.
@@ -339,7 +339,7 @@ flowchart TB
 - **The page's files in CloudFront:** the hashed files in `assets/` are cached for a year, and `index.html` is checked on every visit, so a deploy needs no invalidation ([runbook](runbooks/deploy.md#the-page)).
 - **One NAT gateway, in one AZ,** because there's no uptime requirement, and it's already the biggest line on the hourly bill.
 - **Three stacks:** the always-on one in the diagram costs a few cents a month, and the session stack holds everything else. `make aws-down` drains the API before destroying it, and neither `make aws-up` nor `make aws-down` changes CloudFront's settings. The third, `infra/aws/account`, holds what belongs to the AWS account rather than to DashGen, like the budget alerts and the S3 bucket for every stack's Terraform state, and stays on too.
-- **No keys anywhere:** secrets come from Secrets Manager when a task starts, and GitHub Actions signs in with OIDC. RDS makes the database's password itself, and the Gemini key goes from the shell that runs `make aws-up` to Secrets Manager, never into Terraform's state.
+- **Each AWS session uses one model provider.** `make aws-up` sends its key from the shell to Secrets Manager using Terraform's write-only argument. ECS reads the key and the RDS-managed password when it starts the task. The two Gemini models share a key, and switching between Gemini and Claude takes a new session so ECS can roll back using the previous task's key. GitHub Actions signs in with OIDC. [ADR-0016](decisions/0016-ai-model-setting.md)
 
 ## 4. Data and APIs
 
@@ -411,14 +411,14 @@ The cap keeps a runaway day from becoming a runaway bill. That takes two things:
 
 **What one question can cost.** The backend enforces four limits:
 
-- **6 model calls.** Every request to Gemini counts, including a retry after an error or after a reply with no tool call, and the second try after a chart is refused. The Gemini SDK's own retries stay off, so none go uncounted.
-- **512 output tokens a call,** with thinking at its lowest level (`MINIMAL`). The limit includes thinking tokens, which Gemini bills as output, so a question writes at most 3,072.
-- **24,000 input tokens a question,** across all its calls, since each call resends the conversation so far. Gemini reports every call's tokens. Before each call, the backend estimates its input: the last call's input, plus that call's reply and the tool outputs added since, at about 4 characters a token. If that would take the question past this budget, the run ends with `agent_failed`.
+- **6 model calls.** Every request to the model counts, including a retry after an error or after a reply with no tool call, and the second try after a chart is refused. Both SDKs' own retries stay off, so none go uncounted.
+- **512 output tokens a call,** with thinking at its lowest: Gemini's `MINIMAL` level, and on Claude Haiku 5.5 none, since a forced tool call skips it. The limit includes thinking tokens, which both providers bill as output, so a question writes at most 3,072.
+- **24,000 input tokens a question,** across all its calls, since each call resends the conversation so far. The provider reports every call's tokens. Before each call, the backend estimates its input: the last call's input, plus that call's reply and the tool outputs added since, at about 4 characters a token. If that would take the question past this budget, the run ends with `agent_failed`.
 - **Short tool results.** The model sees a summary of each query, never its points, so a typical question needs about 8,000 input tokens, whatever the time range.
 
-At the prices of `gemini-3.1-flash-lite` ($0.25 per million input tokens and $1.50 per million output, in October 2026), that's about $0.006 of input and $0.005 of output, about $0.011 a question. The model is the `GEMINI_MODEL` setting, limited to models whose prices the backend knows, since it saves each run's cost: `gemini-3.5-flash-lite`, at $0.30 and $2.50, would make it $0.015.
+At the prices of `gemini-3.1-flash-lite` ($0.25 per million input tokens and $1.50 per million output, in October 2026), that's about $0.006 of input and $0.005 of output, about $0.011 a question. The model is the `AI_MODEL` setting, limited to models whose prices the backend knows, since it saves each run's cost: `gemini-3.5-flash-lite`, at $0.30 and $2.50, would make it $0.015, and `claude-haiku-5-5`, at $0.10 and $0.50, about $0.004.
 
-**The cap is 150 questions a day** by default, so Gemini costs at most about $1.60 a day. The `DAILY_CAP` setting changes it, as for a launch day ([runbook](runbooks/costs.md)). A month with ten session days comes to about $16, which leaves room for AWS's ~$5 within the $25 budget. A busier day gets the cap's message instead of charts.
+**The cap is 150 questions a day** by default, so the model costs at most about $1.60 a day on Flash-Lite, or $0.60 on Claude Haiku 5.5. The `DAILY_CAP` setting changes it, as for a launch day ([runbook](runbooks/costs.md)). A month with ten session days comes to about $16, which leaves room for AWS's ~$5 within the $25 budget. A busier day gets the cap's message instead of charts.
 
 **The count lives in the always-on stack.** `make aws-down` destroys the session's database, so a count kept in Postgres would start over with every session, and two sessions on one day would get two days' worth. Instead, a DynamoDB table holds one item per UTC day, and one conditional write reserves a question ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md), `backend/src/cap/`):
 
@@ -440,7 +440,7 @@ await client.send(
 
 The day's first question creates the item, and later ones add 1 only while it's under the cap. DynamoDB checks the condition and makes the change as one step, so two requests can't both take the last question, and every backend task shares the count. A failed condition means the cap is reached: the question gets "DashGen has answered its 150 questions for today. Ask again after midnight UTC.", with `Retry-After` in seconds until then. With TTL on for `expires_at`, DynamoDB deletes old days by itself some time after it.
 
-- **Fail closed:** if DynamoDB doesn't answer, the question gets a 503 `unavailable`, and Gemini isn't called. A lost answer is cheaper than an unchecked bill.
+- **Fail closed:** if DynamoDB doesn't answer, the question gets a 503 `unavailable`, and the model isn't called. A lost answer is cheaper than an unchecked bill.
 - **A reservation is never given back,** even when the run fails, because a failed run may already have spent tokens.
 - **The write gets no retry,** because it adds 1: a second try after a lost reply would count one question twice. A lost reply refuses the question instead, and its place is lost for the day. Each try gives up after 2 seconds, however far its reply has come.
 - **The same code runs everywhere, with one setting apart.** Locally, DynamoDB Local runs in Docker Compose, in memory, so the backend makes its table when it starts. On AWS, the table is in the always-on stack, and the task definition's `DYNAMODB_REGION` sends the backend there, with its task's role, which may only write to it. Each reservation that reaches DynamoDB is one billed write, refused ones too, while one that times out before it's sent costs nothing. So the bill follows the attempts, not the 150 answered: about a cent for each ten thousand attempts, and the per-IP rate limit slows them down.
@@ -489,7 +489,7 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 | `clarify` | `message`, and 2–4 `choices`, each a complete question | ends the run with the choices |
 | `decline` | `reason` | ends the run with a short refusal and fixed example questions |
 
-- **Every answer is a tool call.** Gemini runs in its `ANY` function-calling mode, which rules out prose, so the backend never parses free text. A run ends with `create_chart`, `clarify` or `decline`. Gemini can still send a reply without a tool call. If its safety filters blocked the question or the answer, the run ends at once as a `decline`, with a fixed message and the example questions: asking again would get the same block. For any other reason, like a malformed call or no tokens left, the backend sends the same request once more, as one of the 6 calls. A second reply without a tool call ends the run with `agent_failed`.
+- **Every answer is a tool call.** Gemini runs in its `ANY` function-calling mode, and Claude with `tool_choice` set to `any`, which rules out prose, so the backend never parses free text. A run ends with `create_chart`, `clarify` or `decline`. The model can still send a reply without a tool call. If a safety filter blocked the question or the answer, the run ends at once as a `decline`, with a fixed message and the example questions: asking again would get the same block. For any other reason, like a malformed call or no tokens left, the backend sends the same request once more, as one of the 6 calls. A second reply without a tool call ends the run with `agent_failed`.
 - **A bad argument,** such as an unknown service, goes back to the model as a tool error and counts toward the 6 calls. Arguments are strict: a misspelled one, like `day` for `days`, is an error too, never silently dropped, which would quietly change the chart.
 - **Several calls in one reply.** To compare 5 services, the model queries them all in one reply, so the question fits in 3 model calls (list, query, chart) instead of 7. The backend runs a reply's calls in order, one at a time, since each takes milliseconds: a later call can use an earlier one's result, so a chart in the same reply as its queries works, which saves a model call. Query IDs follow the order of the calls, failed ones included, so such a chart gets the right results or a refusal, never another service's.
 - **Each run gets its own tools,** which keep its results (`q1`, `q2`…) and query with a clock fixed when the run starts, so results fetched seconds apart still cover the same window. A question can make at most 10 queries, since every result is resent with each later model call.
@@ -542,7 +542,7 @@ Every error carries our own code and a message that's safe to show visitors. Whe
 | `rate_limited` | `POST /api/ask` fails, HTTP 429 | the 11th question in a minute from one IP |
 | `daily_cap` | `POST /api/ask` fails, HTTP 503, with `Retry-After` | the day's questions are used up |
 | `agent_failed` | `error` event in the stream; HTTP stays 200 | no chart, clarifying question or refusal within the [run's limits](#the-daily-cap) |
-| `unavailable` | `error` event in the stream, or `POST /api/ask` fails with HTTP 503 | the database or Gemini fails, after one retry if retrying can help. Before a run, DynamoDB can't count the question |
+| `unavailable` | `error` event in the stream, or `POST /api/ask` fails with HTTP 503 | the database or the model fails, after one retry if retrying can help. Before a run, DynamoDB can't count the question |
 | `timeout` | `error` event in the stream | the run took over 25 seconds |
 | `internal_error` | HTTP 500, or the stream's `error` event | a bug in DashGen. A run it ends is still saved, with its steps and tokens so far |
 | `run_not_found` | the stream fails, HTTP 404 | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page says the answer was interrupted and offers to ask again |

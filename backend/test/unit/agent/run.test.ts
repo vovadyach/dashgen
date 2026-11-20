@@ -256,7 +256,7 @@ describe("runAgent", () => {
       assert.equal(end.code, "unavailable");
       assert.equal(
         end.message,
-        "Gemini can't answer right now. Try again in a moment.",
+        "The AI model can't answer right now. Try again in a moment.",
       );
       assert.equal(down.requests.length, 2);
       assert.ok(

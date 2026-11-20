@@ -1,6 +1,6 @@
 # DashGen
 
-Type a question in plain English, get a chart. A Gemini agent in the backend picks tools, fetches the metrics and returns the chart. `README.md` describes the design; `docs/roadmap.md` is the plan.
+Type a question in plain English, get a chart. An agent in the backend, on Gemini or Claude (`AI_MODEL`), picks tools, fetches the metrics and returns the chart. `README.md` describes the design; `docs/roadmap.md` is the plan.
 
 These rules are for every coding agent. Claude Code reads them through `CLAUDE.md`, which imports this file.
 
@@ -26,7 +26,7 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 - `make db` starts Postgres on localhost:5432 and DynamoDB Local on localhost:8000 in Docker, with Postgres's passwords from the root `.env` that the user makes from `.env.example`. Don't create that file: for a test run, set `POSTGRES_PASSWORD` and `DASHGEN_DB_PASSWORD` as environment variables instead.
 - `npm run db:migrate` and `npm run db:seed` create the tables and the sample data. After a schema change, `npm run db:generate --workspace backend -- --name <change>` writes the SQL migration to commit with it. Never run `npx drizzle-kit` itself: it reads `backend/.env`, which `generate` doesn't need. Never edit a migration that has been merged; add a new one.
 - `npm run cost` prints each UTC day's questions and what they cost, from the `runs` table (`docs/runbooks/costs.md`).
-- `npm run gemini:check` sends two real requests to Gemini, to check the key, the model and the request format. Only the user runs it (see Rules).
+- `npm run model:check` sends two real requests to the model that `AI_MODEL` names, Gemini or Claude, to check the key, the model and the request format. Only the user runs it (see Rules).
 - `make check` also starts a throwaway test Postgres on port 5433 and DynamoDB Local on 8001 (`compose.test.yaml`), so Docker must be running. `npm run test:unit` runs only the tests that need neither.
 
 ## Rules
@@ -34,7 +34,7 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 - Never commit, push or open PRs. The user reviews and commits everything, so leave changes uncommitted and list what changed.
 - Ask before adding a dependency, in any language.
 - Never read or edit `.env` files, not even through a script: they hold secrets. Put every new setting in `.env.example` with a placeholder.
-- Never call Gemini: every request is billed to the user's key. Only the user runs `npm run gemini:check` or sends questions to a running backend. Tests use the fake model in `backend/test/helpers/model.ts`.
+- Never call Gemini or Claude: every request is billed to the user's key. Only the user runs `npm run model:check` or sends questions to a running backend. Tests use the fake model in `backend/test/helpers/model.ts`, and a fake of each provider's API.
 - The repo is public. No keys, secrets or personal details in any file.
 - A choice someone could question (a library, a data model, a trade-off) gets an ADR.
 
@@ -45,3 +45,4 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 - Never create an AWS Organization or Control Tower: that ends the Free plan and its credits.
 - End every AWS work session with `make aws-down`, which destroys only the session stack, `infra/aws/session`. Never run `terraform destroy` on `infra/aws/account` or `infra/aws/always-on`, which stay.
 - Before any `terraform apply`, check its plan for anything it would delete or replace, and tell the user. From the repo's root, `terraform -chdir=infra/aws/<stack> show -json tfplan | node scripts/plan-changes.js` prints only those.
+- If an `aws-up` plan replaces `aws_secretsmanager_secret.model_api_key` because its name changes, stop at the plan. Switch between Gemini and Claude after ending the current session with `make aws-down`. Both Gemini models share the same secret and can switch during a session.

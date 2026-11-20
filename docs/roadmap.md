@@ -65,7 +65,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] A friendly message when the daily cap is hit
 - [ ] A $20 monthly spend cap on the Gemini project, noted in the [runbook](runbooks/costs.md)
 - [x] Model name in config
-- [x] Tokens, cost and latency recorded for every run, with `GEMINI_MODEL` limited to models whose prices the backend knows
+- [x] Tokens, cost and latency recorded for every run, with `AI_MODEL` limited to models whose prices the backend knows
 - [x] Cost per day and per question read from `runs`: `npm run cost`
 
 **Done when:** a vague question gets a clarifying question back, at the daily cap the backend stops calling Gemini, and every run's cost is recorded.
@@ -115,6 +115,7 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 
 ## 6. Evals
 
+- [ ] `AI_MODEL` picks the model, Gemini or Claude Haiku 5.5 ([ADR-0016](decisions/0016-ai-model-setting.md)), so the evals can run on both
 - [ ] 20–30 test questions, each with the expected tool calls, chart type and chart data: values, dates and units
 - [ ] Ambiguous questions where the right answer is a clarifying question
 - [ ] Scored for accuracy; runs from the command line and in CI, calling the agent loop directly

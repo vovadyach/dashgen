@@ -233,7 +233,7 @@ export function useRun() {
     dispatch({ type: "stop" });
   }, []);
 
-  // Shows a saved chart, with no run and no call to Gemini.
+  // Shows a saved chart, with no run and no call to the model.
   const open = useCallback((saved: SavedChart) => {
     dispatch({ type: "open", saved });
   }, []);

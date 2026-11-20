@@ -41,7 +41,7 @@ Where it's headed (the [status](#status) table says what exists today):
          ▼
 ┌─────────────────┐
 │   Backend       │  Node.js + Fastify + TypeScript
-│   (ECS Fargate) │  modules: api, agent (Gemini loop), metrics, runs, cap
+│   (ECS Fargate) │  modules: api, agent (Gemini or Claude loop), metrics, runs, cap
 └────────┬────────┘
          │ SQL through Drizzle
          ▼
@@ -65,7 +65,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 | Database | Postgres 18, Docker Compose | Runs locally: one `dashgen` database, with tables from Drizzle migrations |
 | Daily cap | DynamoDB Local, Docker Compose | Runs locally: today's count of questions ([why DynamoDB](docs/decisions/0014-daily-cap-in-dynamodb.md)) |
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
-| Agent | Gemini (`@google/genai`) | The [five tools](docs/design.md#the-agents-tools), the Gemini adapter and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md)) |
+| Agent | Gemini (`@google/genai`) or Claude Haiku 5.5 (`@anthropic-ai/sdk`), as `AI_MODEL` says | The [five tools](docs/design.md#the-agents-tools), an adapter for each provider, and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md), [why one setting](docs/decisions/0016-ai-model-setting.md)) |
 | Frontend (`frontend/`) | React, TypeScript, Vite, Tailwind, shadcn/ui, AG Charts, TanStack Query | Runs locally: the question box, the steps as they stream in, and the chart, with a data table, in light and dark themes. Charts can be pinned to a watchlist, shared as a link, or downloaded as a PNG |
 | Hosting | AWS, Terraform | Under way (step 5): the budget alerts, Terraform's state in S3, the daily cap's table, and the page on CloudFront with the function in front of `/api/*`, which GitHub Actions deploys after each merge to `main`, and the session stack's network, up only during work sessions ([roadmap](docs/roadmap.md#5-docker-and-aws)) |
 
@@ -75,7 +75,7 @@ You'll need Node.js 26.1+, and Docker for Postgres and DynamoDB Local.
 
 ```bash
 make install                           # install every TypeScript package
-cp backend/.env.example backend/.env   # asking a question needs a real GEMINI_API_KEY, and Postgres (below)
+cp backend/.env.example backend/.env   # asking a question needs a real key for AI_MODEL (GEMINI_API_KEY by default), and Postgres (below)
 make db                                # Postgres and DynamoDB Local, which the backend needs to start
 npm run dev                            # the backend on :3000
 npm run dev:frontend                   # the page on :5173, in a second terminal
@@ -83,7 +83,7 @@ npm run dev:frontend                   # the page on :5173, in a second terminal
 
 Open http://localhost:5173 to ask a question, or http://localhost:3000/docs to try the backend's endpoints in the browser.
 
-With a real `GEMINI_API_KEY` in `backend/.env` (free from [Google AI Studio](https://aistudio.google.com)), `npm run gemini:check` sends Gemini two test requests and prints its replies, to show the key and the model work. `npm run gemini:check -- --json` also prints each reply's JSON, exactly as Gemini sent it.
+With a real key in `backend/.env`, `npm run model:check` sends the model that `AI_MODEL` names two test requests and prints its replies, to show the key and the model work: `GEMINI_API_KEY` for Gemini, the default (free from [Google AI Studio](https://aistudio.google.com)), or `ANTHROPIC_API_KEY` for `claude-haiku-5-5` (free within a Claude Max plan's [API credits](docs/runbooks/costs.md#use-claude-on-the-max-plans-credits)). `npm run model:check -- --json` also prints each reply's JSON, exactly as the provider sent it.
 
 Postgres and DynamoDB Local run in Docker (Docker Desktop or [OrbStack](https://orbstack.dev)):
 
@@ -94,7 +94,7 @@ npm run db:migrate     # create the tables (set DATABASE_URL in backend/.env fir
 npm run db:seed        # 30 days of hourly sample data, ending this hour
 ```
 
-`npm run cost` prints each day's questions and what they cost, from the `runs` table. The [costs runbook](docs/runbooks/costs.md) has it, and how to set Gemini's spend cap.
+`npm run cost` prints each day's questions and what they cost, from the `runs` table. The [costs runbook](docs/runbooks/costs.md) has it, how to set Gemini's spend cap, and how to use Claude on a Max plan's credits.
 
 To run the backend the way AWS will, in its container, use `docker compose up`: it starts the databases, applies the migrations and the seed, then starts the backend on :3000. Stop `npm run dev` first, since both use port 3000.
 
@@ -155,6 +155,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [13. Share links carry the chart](docs/decisions/0013-share-links-carry-the-chart.md)
 - [14. The daily cap counts in DynamoDB](docs/decisions/0014-daily-cap-in-dynamodb.md)
 - [15. The backend signs in to RDS as its admin user](docs/decisions/0015-backend-as-rds-admin.md)
+- [16. One AI_MODEL setting, for Gemini or Claude Haiku 5.5](docs/decisions/0016-ai-model-setting.md)
 
 ## License
 

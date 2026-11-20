@@ -1,4 +1,4 @@
-import { createGeminiModel } from "./agent/index.ts";
+import { createModel } from "./agent/index.ts";
 import { buildApp } from "./app.ts";
 import { createCapTable, createDailyCap } from "./cap/index.ts";
 import { loadConfig, loadDatabaseUrl, loadDynamoTarget } from "./config.ts";
@@ -36,9 +36,9 @@ const app = await buildApp(config, {
   runs: (log) => {
     const db = createDb(databaseUrl.reveal(), { log });
     return {
-      model: createGeminiModel({
-        apiKey: config.geminiApiKey.reveal(),
-        model: config.geminiModel,
+      model: createModel({
+        ...config.model,
+        apiKey: config.model.apiKey.reveal(),
       }),
       metrics: (now, runLog, deadline) =>
         createMetrics(db, { now, log: runLog, signal: deadline }),

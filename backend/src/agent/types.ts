@@ -104,9 +104,13 @@ export interface Tool {
 }
 
 // The model, behind an interface: the agent loop talks to this, so tests pass
-// a scripted fake and never call Gemini.
+// a scripted fake and never call Gemini or Claude. Each provider has an
+// adapter that turns these types into its own requests (gemini.ts, claude.ts).
 
-/** A tool call the model asked for. Gemini may give it an `id`, sent back with its result. */
+/**
+ * A tool call the model asked for, sent back with its result. Gemini may give
+ * it an `id`; Claude always does, and needs it back.
+ */
 export interface ToolCall {
   id?: string;
   name: string;
@@ -118,7 +122,7 @@ export type ToolOutput =
   | { call: ToolCall; result: Record<string, unknown> }
   | { call: ToolCall; error: string };
 
-/** The tokens of one request, or of a whole run. Gemini bills thinking as output. */
+/** The tokens of one request, or of a whole run. Both providers bill thinking as output. */
 export interface Usage {
   inputTokens: number;
   outputTokens: number;
@@ -137,13 +141,13 @@ export interface ModelReply {
   blocked: boolean;
   /** Any text beside the calls; usually empty, since every answer must be a tool call. */
   text: string;
-  /** Why the model stopped, as the provider says it, like "STOP" or "MAX_TOKENS". */
+  /** Why the model stopped, as the provider says it, like Gemini's "STOP" or Claude's "tool_use". */
   finishReason: string;
   usage: Usage;
   /**
    * The reply exactly as the provider sent it, whenever it has calls. Put the
    * whole ModelReply back in the conversation: Gemini 3 checks the signatures
-   * inside it on the next request.
+   * inside it on the next request, and Claude its thinking blocks.
    */
   raw?: unknown;
 }
@@ -202,7 +206,46 @@ export interface RunResult {
   ms: number;
 }
 
-/** The body of an error from the Gemini API, for its own reason in our messages. */
-export const GeminiErrorBody = z.object({
+/**
+ * The body of an error from the Gemini or Claude API, for its own reason in
+ * our messages: both put it at `error.message`.
+ */
+export const ProviderErrorBody = z.object({
   error: z.object({ message: z.string() }),
+});
+
+/** A token count: a whole number, never below 0. */
+const TokenCount = z.number().int().nonnegative();
+
+/**
+ * What the Claude adapter reads from an answer, checked before it's read: the
+ * SDK hands back a body it can't read as JSON as it is. A call needs its ID,
+ * or its tool would run and its result couldn't go back to Claude, and a count
+ * that isn't a number would turn the run's tokens into text.
+ */
+export const ClaudeAnswer = z.object({
+  content: z.array(
+    z.union([
+      z.object({
+        type: z.literal("tool_use"),
+        id: z.string().min(1),
+        name: z.string().min(1),
+        input: z.record(z.string(), z.unknown()),
+      }),
+      z.object({ type: z.literal("text"), text: z.string() }),
+      // Any other block, like thinking, only goes back to Claude as it came.
+      z.object({
+        type: z
+          .string()
+          .refine((type) => type !== "tool_use" && type !== "text"),
+      }),
+    ]),
+  ),
+  stop_reason: z.string().nullable(),
+  usage: z.object({
+    input_tokens: TokenCount,
+    output_tokens: TokenCount,
+    cache_creation_input_tokens: TokenCount.nullish(),
+    cache_read_input_tokens: TokenCount.nullish(),
+  }),
 });
