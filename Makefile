@@ -12,7 +12,7 @@ help:
 	@echo "  make clean      Remove installed packages"
 	@echo "  make aws-up     Build the session stack on AWS, after showing its plan, deploy the backend, and open the API's door (costs money by the hour; needs the model's key, TF_VAR_gemini_api_key or TF_VAR_anthropic_api_key)"
 	@echo "  make aws-deploy Deploy the backend's code: its image, the migrations, then the backend"
-	@echo "  make aws-image  Build the backend's image for ARM, and push it to the session's ECR"
+	@echo "  make aws-image  Build the backend's image for ARM, and push it to ECR"
 	@echo "  make aws-migrate  Run the migrations and the seed on AWS, as a one-off ECS task"
 	@echo "  make aws-start  Run the backend on ECS, on its newest image, until it's healthy"
 	@echo "  make aws-open   Open the API's door: CloudFront sends /api/* to the session's backend"
@@ -50,9 +50,10 @@ clean:
 # being worked on, and costs money by the hour (docs/runbooks/deploy.md).
 # Terraform here touches only that stack, never infra/aws/account or
 # infra/aws/always-on, which stay. From those, the scripts only read outputs,
-# and write one thing: the session's entry in CloudFront's store, which the
-# session owns (ADR-0003). Terraform shows what it will do, and asks before it
-# changes anything. init runs first, so a new machine works too. aws-up also
+# and write two things: the session's entry in CloudFront's store, which the
+# session owns (ADR-0003), and the backend's images in ECR (ADR-0017).
+# Terraform shows what it will do, and asks before it changes anything. init
+# runs first, so a new machine works too. aws-up also
 # needs the model's key, for the backend's secret: TF_VAR_gemini_api_key for a
 # Gemini model, the default, or TF_VAR_anthropic_api_key when TF_VAR_ai_model
 # names a Claude one. Without it, the secret would hold only a placeholder.
@@ -73,7 +74,7 @@ aws-up:
 	scripts/aws-open.sh
 
 # The backend's code on AWS, in order: its image, built for Fargate's ARM CPUs
-# and pushed to the session's ECR; the one-off task that applies the
+# and pushed to ECR, in the always-on stack; the one-off task that applies the
 # migrations and the seed; then the backend's service, on that image.
 # make aws-up runs it after Terraform, and during a session it deploys new
 # code. Each step also runs alone, and checks the one before it.

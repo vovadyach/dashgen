@@ -156,6 +156,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [14. The daily cap counts in DynamoDB](docs/decisions/0014-daily-cap-in-dynamodb.md)
 - [15. The backend signs in to RDS as its admin user](docs/decisions/0015-backend-as-rds-admin.md)
 - [16. One AI_MODEL setting, for Gemini or Claude Haiku 5.5](docs/decisions/0016-ai-model-setting.md)
+- [17. The backend's image lives in the always-on stack, and CI builds it](docs/decisions/0017-image-registry-always-on.md)
 
 ## License
 
