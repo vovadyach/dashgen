@@ -40,7 +40,11 @@ export interface ClaudeOptions {
   model: string;
   /** Each request's own limit. The run's 25 seconds come in as the request's signal. */
   timeoutMs?: number;
-  /** Includes any thinking, which Claude bills as output (docs/design.md, the daily cap). */
+  /**
+   * Includes any thinking, which Claude bills as output (docs/design.md, the
+   * daily cap). Twice Gemini's 512, since one reply can hold up to 10 queries
+   * and a chart, and at 512, Claude's were cut off.
+   */
   maxOutputTokens?: number;
   /** Tests pass a fake, so they never reach Anthropic. */
   fetch?: ClientOptions["fetch"];
@@ -55,7 +59,7 @@ export function createClaudeModel({
   apiKey,
   model,
   timeoutMs = 10_000,
-  maxOutputTokens = 512,
+  maxOutputTokens = 1_024,
   fetch,
 }: ClaudeOptions): Model {
   // A key passed here is the client's only credential, so the SDK reads no
