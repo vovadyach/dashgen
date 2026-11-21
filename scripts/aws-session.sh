@@ -121,16 +121,31 @@ closing_for() {
 # Stops the script unless the ECR repository at $1 has an image tagged latest,
 # which the task definitions run. Without it, ECS would only fail to start a
 # task a minute later. Any other error, like an expired sign-in, shows as it
-# is.
+# is. The image must also be under 6 days old: ECR deletes images a week after
+# their push (infra/aws/always-on/ecr.tf), maybe during this session, and ECS
+# couldn't pull it again for a task it replaces. The day left covers any
+# session.
 require_image() {
-  local error
-  if ! error=$(aws ecr describe-images --repository-name "${1#*/}" \
-    --image-ids imageTag=latest 2>&1 >/dev/null); then
-    if [[ $error == *ImageNotFoundException* ]]; then
+  local pushed
+  if ! pushed=$(aws ecr describe-images --repository-name "${1#*/}" \
+    --image-ids imageTag=latest --query 'imageDetails[0].imagePushedAt' \
+    --output text 2>&1); then
+    if [[ $pushed == *ImageNotFoundException* ]]; then
       echo "There's no image to run yet: run make aws-image first." >&2
     else
-      echo "$error" >&2
+      echo "$pushed" >&2
     fi
+    exit 1
+  fi
+  # The CLI prints the time in ISO 8601, or in Unix seconds when its
+  # cli_timestamp_format setting is wire. A time it can't read counts as too
+  # old, so the check never passes by mistake.
+  if ! PUSHED=$pushed node -e '
+    const value = process.env.PUSHED;
+    const ms = /^\d+(\.\d+)?$/.test(value) ? Number(value) * 1000 : Date.parse(value);
+    process.exit(Date.now() - ms < 6 * 24 * 60 * 60 * 1000 ? 0 : 1);
+  '; then
+    echo "The image tagged latest was pushed at $pushed, over 6 days ago, and ECR deletes images a week after their push, maybe during this session: run make aws-image first." >&2
     exit 1
   fi
 }

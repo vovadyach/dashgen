@@ -42,7 +42,7 @@ resource "aws_ecs_task_definition" "migrate" {
 
   container_definitions = jsonencode([{
     name      = "migrate"
-    image     = "${aws_ecr_repository.backend.repository_url}:latest"
+    image     = "${data.aws_ecr_repository.backend.repository_url}:latest"
     essential = true
     command   = ["sh", "-c", "node src/scripts/migrate.ts && node src/scripts/seed.ts"]
 
@@ -62,7 +62,8 @@ resource "aws_ecs_task_definition" "migrate" {
 }
 
 # What else the execution role (secrets.tf) needs to start the tasks: pull the
-# image from this repository, and write to the tasks' log groups.
+# image from the backend's repository (ecr.tf), and write to the tasks' log
+# groups.
 resource "aws_iam_role_policy" "task_execution_image_and_logs" {
   name = "pull-the-image-and-write-logs"
   role = aws_iam_role.task_execution.id
@@ -83,7 +84,7 @@ resource "aws_iam_role_policy" "task_execution_image_and_logs" {
           "ecr:BatchGetImage",
           "ecr:GetDownloadUrlForLayer",
         ]
-        Resource = aws_ecr_repository.backend.arn
+        Resource = data.aws_ecr_repository.backend.arn
       },
       {
         Effect = "Allow"

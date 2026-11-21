@@ -22,8 +22,8 @@ output "load_balancer" {
 }
 
 output "ecr_repository_url" {
-  description = "Where make aws-image pushes the backend's image."
-  value       = aws_ecr_repository.backend.repository_url
+  description = "Where make aws-image pushes the backend's image: the always-on stack's repository."
+  value       = data.aws_ecr_repository.backend.repository_url
 }
 
 output "cluster" {

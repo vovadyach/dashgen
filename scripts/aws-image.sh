@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # make aws-image: builds the backend's image for Fargate's ARM CPUs, and
-# pushes it to the session stack's ECR repository (infra/aws/session/ecr.tf),
-# tagged with its commit, and as latest, which the task definitions use.
+# pushes it to the backend's ECR repository, in the always-on stack
+# (infra/aws/always-on/ecr.tf), tagged with its commit, and as latest, which
+# the task definitions use.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -11,7 +12,7 @@ repo=$(output ecr_repository_url)
 # Only an ECR address goes on: docker login with any other would send ECR's
 # sign-in token to that registry.
 if [[ ! $repo =~ ^[0-9]{12}\.dkr\.ecr\.us-east-1\.amazonaws\.com/dashgen-backend$ ]]; then
-  echo "Not the session's ECR repository: $repo" >&2
+  echo "Not the backend's ECR repository: $repo" >&2
   exit 1
 fi
 
@@ -28,8 +29,14 @@ fi
 aws ecr get-login-password |
   docker login --username AWS --password-stdin "${repo%%/*}"
 
-docker build --platform linux/arm64 --file backend/Dockerfile \
-  --tag "$repo:$tag" --tag "$repo:latest" .
+# --provenance=false: one image per push. Otherwise Docker pushes an index
+# that holds the image and a build attestation: three entries in ECR. The
+# label with the build's time gives each build its own digest: from unchanged
+# code, Docker would rebuild the same image, and ECR would keep its first push
+# time, which the week-old check and ECR's cleanup count from.
+docker build --platform linux/arm64 --provenance=false \
+  --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --file backend/Dockerfile --tag "$repo:$tag" --tag "$repo:latest" .
 # Only this build's two tags. --all-tags would also push older local tags,
 # like last session's images.
 docker push "$repo:$tag"
