@@ -63,7 +63,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] The same for database errors: one retry, then `unavailable`
 - [x] [Daily cap](design.md#the-daily-cap) of 150 questions, counted in DynamoDB, with DynamoDB Local in Docker Compose ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md))
 - [x] A friendly message when the daily cap is hit
-- [ ] A $20 monthly spend cap on the Gemini project, noted in the [runbook](runbooks/costs.md)
+- [x] A monthly cap on the model's spend: Claude Haiku 5.5 runs on the Max plan's $100 of API credits, with no card on file, and the Gemini project stays on the free tier, so it can't charge at all ([runbook](runbooks/costs.md))
 - [x] Model name in config
 - [x] Tokens, cost and latency recorded for every run, with `AI_MODEL` limited to models whose prices the backend knows
 - [x] Cost per day and per question read from `runs`: `npm run cost`
@@ -102,9 +102,9 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 - [x] When a reconnecting stream gets CloudFront's own error, like a passing 502, the page tries once more before saying the answer was interrupted, which would invite a second, paid run
 - [x] Structured JSON logs with a request ID, collected in CloudWatch
 - [x] GitHub Actions builds the backend's image and deploys it to ECS, with the same OIDC sign-in, from an image repository in the always-on stack ([ADR-0017](decisions/0017-image-registry-always-on.md))
-- [ ] All infrastructure defined in Terraform: the always-on and session stacks from the [AWS design](design.md#on-aws)
-- [ ] `terraform destroy` finishes cleanly: secrets deleted with no recovery window, RDS without a final snapshot
-- [ ] Deploy runbook: [`docs/runbooks/deploy.md`](runbooks/deploy.md)
+- [x] All infrastructure defined in Terraform: the always-on and session stacks from the [AWS design](design.md#on-aws)
+- [x] `terraform destroy` finishes cleanly: secrets deleted with no recovery window, RDS without a final snapshot
+- [x] Deploy runbook: [`docs/runbooks/deploy.md`](runbooks/deploy.md)
 
 **Done when:**
 
