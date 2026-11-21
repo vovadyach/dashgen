@@ -1,45 +1,22 @@
 #!/usr/bin/env bash
-# make aws-image: builds the backend's image for Fargate's ARM CPUs, and
-# pushes it to the backend's ECR repository, in the always-on stack
-# (infra/aws/always-on/ecr.tf), tagged with its commit, and as latest, which
-# the task definitions use.
+# make aws-image: builds the backend's image from your own code, for a session
+# that runs dev (TF_VAR_image_tag=dev make aws-up), and pushes it to ECR, in
+# the always-on stack (infra/aws/always-on/ecr.tf), tagged dev and
+# dev-<commit>. It deploys nothing: make aws-deploy builds and deploys in one
+# go, under the session's deploy lock, and make aws-migrate and make aws-start
+# run the newest dev image. A session that runs main runs CI's image instead
+# (ADR-0017), so there it builds nothing.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 source scripts/aws-session.sh
 
 repo=$(output ecr_repository_url)
-# Only an ECR address goes on: docker login with any other would send ECR's
-# sign-in token to that registry.
-if [[ ! $repo =~ ^[0-9]{12}\.dkr\.ecr\.us-east-1\.amazonaws\.com/dashgen-backend$ ]]; then
-  echo "Not the backend's ECR repository: $repo" >&2
-  exit 1
+image_tag=$(output image_tag)
+if [[ $image_tag != dev ]]; then
+  echo "This session runs main, the image CI builds from each merge to main, so there's nothing to build. To run your own code, start a session with TF_VAR_image_tag=dev make aws-up."
+  exit 0
 fi
 
-# The commit. When any file differs from it, untracked ones too, since Docker
-# copies those as well, the tag says dirty, with the time, so it never stands
-# for code the commit doesn't have.
-tag=$(git rev-parse --short HEAD)
-if [[ -n $(git status --porcelain) ]]; then
-  tag="$tag-dirty-$(date -u +%Y%m%dT%H%M%SZ)"
-fi
-
-# Signs Docker in to ECR for 12 hours. The password goes through the pipe,
-# never on a command line.
-aws ecr get-login-password |
-  docker login --username AWS --password-stdin "${repo%%/*}"
-
-# --provenance=false: one image per push. Otherwise Docker pushes an index
-# that holds the image and a build attestation: three entries in ECR. The
-# label with the build's time gives each build its own digest: from unchanged
-# code, Docker would rebuild the same image, and ECR would keep its first push
-# time, which the week-old check and ECR's cleanup count from.
-docker build --platform linux/arm64 --provenance=false \
-  --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --file backend/Dockerfile --tag "$repo:$tag" --tag "$repo:latest" .
-# Only this build's two tags. --all-tags would also push older local tags,
-# like last session's images.
-docker push "$repo:$tag"
-docker push "$repo:latest"
-
-echo "Pushed the backend's image: $tag, also as latest."
+tag=$(dev_image_tag)
+push_image "$repo" "$tag" dev

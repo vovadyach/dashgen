@@ -6,7 +6,7 @@ Every stack needs Terraform 1.17 or newer, `aws login`, and `infra/aws/backend.h
 
 ## The always-on stack
 
-`infra/aws/always-on` holds what stays on between sessions: CloudFront with the API's function, key-value store and origin request policy, the page's private S3 bucket, the daily cap's DynamoDB table, with TTL on `expires_at`, and the backend's ECR repository, `dashgen-backend`, for a few cents a month. The repository keeps each image of the backend, 86 MB, for a week after its push, and scans each push for known vulnerabilities, for free ([ADR-0017](../decisions/0017-image-registry-always-on.md)). The session stack looks it up, so apply this stack before the next `make aws-up` after a change to it. To move a session made before ADR-0017, which holds its own copy of the repository under the same name: run `make aws-down` with the code that started it, then apply this stack, then start the next session. It stays on: never run `terraform destroy` there. The distribution and the table have `prevent_destroy`, because a new distribution gets a new address, and a new table loses the day's count.
+`infra/aws/always-on` holds what stays on between sessions: CloudFront with the API's function, key-value store and origin request policy, the page's private S3 bucket, the daily cap's DynamoDB table, with TTL on `expires_at`, and the backend's ECR repository, `dashgen-backend`, for a few cents a month. The repository keeps CI's newest 3 images of the backend from `main`, 86 MB each, however old, and every other image for a week after its push, and scans each push for known vulnerabilities, for free ([ADR-0017](../decisions/0017-image-registry-always-on.md)). The session stack looks it up, so apply this stack before the next `make aws-up` after a change to it. To move a session made before ADR-0017, which holds its own copy of the repository under the same name: run `make aws-down` with the code that started it, then apply this stack, then start the next session. It stays on: never run `terraform destroy` there. The distribution and the table have `prevent_destroy`, because a new distribution gets a new address, and a new table loses the day's count.
 
 In `infra/aws/always-on`:
 
@@ -50,6 +50,40 @@ An invalidation makes every edge location drop its copies, so the next requests 
 ```
 aws cloudfront create-invalidation --distribution-id "$(terraform -chdir=infra/aws/always-on output -raw distribution_id)" --paths "/*"
 ```
+
+## The backend's image
+
+The backend runs from an image of `backend/Dockerfile`, built for Fargate's ARM CPUs, in the always-on stack's ECR repository, `dashgen-backend` ([ADR-0017](../decisions/0017-image-registry-always-on.md)). A session runs one of two images:
+
+| Image | Built by | Tags | Kept |
+|---|---|---|---|
+| `main` | GitHub Actions, after each merge to `main` | `main`, and `main-<commit>` | The newest 3, however old |
+| `dev` | `make aws-deploy` or `make aws-image`, from your own code, in a session started with `TF_VAR_image_tag=dev` | `dev`, and `dev-<commit>`, with `-dirty-<time>-<6 random hex digits>` when files differ from the commit | A week after its push |
+
+**GitHub Actions builds `main`** after every push to `main`, once the checks pass: the `deploy-backend` job in `.github/workflows/ci.yml` runs `scripts/ci-deploy-backend.sh` on GitHub's ARM runner. It signs in with OIDC, as the `dashgen-backend-deploy` role, which can only push to this repository, copy the session's task definitions, run the migrations task and restart the backend's service. The tasks it starts get the session's secrets, as any deploy's do, so only workflows on `main` can take the role. Then:
+
+- **With no session up,** the image waits for the next `make aws-up`.
+- **In a session that runs `main`,** the job runs the migrations, then restarts the backend on the new image, and waits until the load balancer finds it healthy, about 3 minutes. If the new image fails, ECS goes back to the old one, and the job fails.
+- **In a session that runs `dev`, or one that `make aws-up` is still starting,** the job leaves it as it is. A starting session gets its own image from `make aws-up`: `main`'s newest, or your build.
+
+**Every deploy pins one image by its digest,** CI's and `make aws-deploy`'s alike. It reads which image the tag points to once, copies the session's two task definition templates with that image's digest in place of the tag, and runs the migrations and the backend on the copies. So the backend always runs the code whose migrations just ran, even when `main` moves meanwhile.
+
+- **Terraform registers the templates,** in families of their own, `dashgen-backend-template` and `dashgen-migrate-template`, so the newest template always has this stack's settings, like `AI_MODEL`. It leaves the running service to the deploy, so an apply never restarts the backend on an image that isn't built or migrated yet.
+- **The copies go in `dashgen-backend` and `dashgen-migrate`.** ECS keeps each deploy's, which cost nothing.
+- **Deploys take turns.** A deploy holds the session's lock, one item in the DynamoDB table `dashgen-deploy-lock`, from reading which image the session runs to the backend's update. A second deploy, from CI or from another terminal, says another deploy is running and waits, for up to 30 minutes. So two never interleave and leave the older image running.
+- **A deploy checks the lock right before each change to ECS,** and renews it for 30 minutes. One whose lock ran out, as after a pause of over 30 minutes, and that another deploy took, stops before it changes anything. A lock that a stopped deploy left expires 30 minutes after its last check, and goes with the session anyway.
+- **Two migrations never run at once.** A deploy that stops while its migrations task may still run, as when the wait for it fails, leaves the task running and keeps the lock, which expires within 30 minutes. Right after a start, ECS can leave a task out of its lists for a moment, and by then it lists it, so the next deploy waits until ECS shows it as `STOPPED`, not only stopping, before it starts its own.
+
+The job needs one repository secret, set once, after `terraform apply` in `infra/aws/always-on` has made the role, and before the job's first run. It's a secret, since the role holds the account ID:
+
+```
+gh secret set AWS_BACKEND_DEPLOY_ROLE_ARN --body "$(terraform -chdir=infra/aws/always-on output -raw backend_deploy_role_arn)"
+```
+
+- **The first `main` image comes with the first merge after that.** Until then, `make aws-up` stops before Terraform builds anything, and says so, and `TF_VAR_image_tag=dev make aws-up` runs your own code meanwhile.
+- **To run the job again,** as after a failure, rerun it from the run's page in the Actions tab. A rerun of `main`'s newest commit keeps the image its first run pushed, so the digest ECS may still need keeps its tags. A run, first or rerun, moves `main` only when git confirms that its commit is the one `main`'s image comes from, or newer, since GitHub doesn't promise to start runs in merge order. So an older run changes nothing, and can't roll back a newer image. When git can't tell, as after a rewrite of `main`'s history, the job fails, and its log says how to unblock it.
+- **The job's log is public,** so the account ID shows as `***` there, and the migrations' output stays in `/dashgen/migrate`.
+- **A merge during `make aws-down`** can fail the job, as the session goes away under it. There's nothing to fix: the image is in ECR.
 
 ## The API's door
 
@@ -104,8 +138,9 @@ aws cloudfront test-function --name dashgen-api --stage LIVE --if-match "$ETAG" 
 - The database's password, which RDS makes and keeps in a Secrets Manager secret of its own, named `rds!db-` and an ID. It's never in Terraform's state or the repo, and RDS deletes it with the database, at once, with no recovery window.
 - The model's key, in a Secrets Manager secret named for its provider: `dashgen/gemini-api-key` or `dashgen/anthropic-api-key`. `make aws-up` takes it from your shell, and only that key, even when your shell has both. Terraform passes it to AWS without keeping a copy in its state or plan. `make aws-down` deletes it at once, with no recovery window.
 - Two IAM roles. ECS takes `dashgen-task-execution` to start the backend's tasks: it can read these two secrets, pull the image and write the tasks' logs, and nothing else. The backend's own role, `dashgen-backend`, can only count the day's questions in the always-on stack's daily cap table, with `UpdateItem`.
-- An ECS cluster, `dashgen`, and the one-off task `dashgen-migrate`: the migrations, then the seed, on Fargate's smallest size (0.25 vCPU, 0.5 GB), on ARM. It connects to Postgres with TLS, checked against RDS's certificates in the image (`backend/certs/`), with the password from RDS's secret as `PGPASSWORD`. Its output goes to the log group `/dashgen/migrate`, kept for a day.
-- The backend's service, `dashgen-backend`: exactly one task of the image's own command, `node src/server.ts`, on the same size. It gets the model's key as `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`, the database's password as `PGPASSWORD`, and `AI_MODEL` when `TF_VAR_ai_model` sets one ([ADR-0016](../decisions/0016-ai-model-setting.md)), uses AWS's own DynamoDB (`DYNAMODB_REGION`), and allows CloudFront's address for CORS. A deploy stops the old task before it starts the new one. Its output goes to `/dashgen/backend`, kept for a day.
+- An ECS cluster, `dashgen`, and the one-off task `dashgen-migrate`, which each deploy copies from the template `dashgen-migrate-template` ([the backend's image](#the-backends-image)): the migrations, then the seed, on Fargate's smallest size (0.25 vCPU, 0.5 GB), on ARM. It connects to Postgres with TLS, checked against RDS's certificates in the image (`backend/certs/`), with the password from RDS's secret as `PGPASSWORD`. Its output goes to the log group `/dashgen/migrate`, kept for a day.
+- The backend's service, `dashgen-backend`, from the template `dashgen-backend-template`: exactly one task of the image's own command, `node src/server.ts`, on the same size. It gets the model's key as `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`, the database's password as `PGPASSWORD`, and `AI_MODEL` when `TF_VAR_ai_model` sets one ([ADR-0016](../decisions/0016-ai-model-setting.md)), uses AWS's own DynamoDB (`DYNAMODB_REGION`), and allows CloudFront's address for CORS. A deploy stops the old task before it starts the new one. Its output goes to `/dashgen/backend`, kept for a day.
+- The deploy lock, the DynamoDB table `dashgen-deploy-lock`, which holds one item while a deploy runs, so deploys take turns. On demand, it costs a fraction of a cent.
 - A load balancer, `dashgen`, in the public subnets: plain HTTP on port 80, to the task on port 3000. It forwards only requests that carry this session's secret in the `x-origin-verify` header, a random UUID that Terraform makes each session, and answers 403 to anything else. It checks `/api/health` every 10 seconds, and calls a new task healthy after 2 answers in a row.
 
 While it's up, it costs about $0.11 an hour, so about $82 if it's left up for a month:
@@ -132,17 +167,20 @@ read -rs TF_VAR_gemini_api_key && export TF_VAR_gemini_api_key   # paste the Gem
 # or, for Claude Haiku 5.5 instead of Gemini:
 # export TF_VAR_ai_model=claude-haiku-5-5
 # read -rs TF_VAR_anthropic_api_key && export TF_VAR_anthropic_api_key   # paste the Claude key
-make aws-up       # shows the plan, builds it once you answer yes, deploys the backend, then opens the API's door
-make aws-deploy   # after a code change: a new image, the migrations, then the backend again
+make aws-up       # shows the plan, builds it once you answer yes, deploys the backend on CI's main image, then opens the API's door
+# or, to run your own code, as to test a branch before merging it:
+# TF_VAR_image_tag=dev make aws-up
+make aws-deploy   # in a dev session, after a code change: a new image, the migrations, then the backend again
 make aws-down     # closes the door and lets questions in flight finish, then shows what goes, and destroys it once you answer yes
 ```
 
 - **End every work session with `make aws-down`.**
-- **`make aws-deploy` has three steps,** which `make aws-up` runs after Terraform, and which also run alone: `make aws-image` builds the backend's image for ARM and pushes it to ECR, `make aws-migrate` runs the migrations and the seed as a one-off ECS task, and `make aws-start` runs the backend on that image.
+- **Pick the image with `TF_VAR_image_tag`:** `main`, the default, is CI's, so `make aws-up` builds nothing, and checks that it exists before Terraform does anything. `dev` is your own code's, which `make aws-up` builds and pushes ([the backend's image](#the-backends-image)). Like `TF_VAR_ai_model`, Terraform checks the name, and written before the command, it lasts for that command only. So in a `dev` session, a later `make aws-up`, as to switch models, needs `TF_VAR_image_tag=dev` again: without it, `make aws-up` stops rather than switch the session to `main`.
+- **`make aws-deploy` has three steps,** which `make aws-up` runs after Terraform, all under the deploy lock: in a session that runs `dev`, it builds your own code's image for ARM and pushes it to ECR as `dev`, then the migrations and the seed run as a one-off ECS task, and the backend starts, both on that build, pinned by its digest ([the backend's image](#the-backends-image)). So it deploys your build even when another checkout pushes `dev` meanwhile. In a session that runs `main`, it builds nothing, since CI builds that image, and only runs the migrations and restarts the backend on it. Each step also runs alone: `make aws-image` builds and pushes, and deploys nothing, and `make aws-migrate` and `make aws-start` each run the image that the session's tag points to when they run.
 - **`make aws-up` needs the model's key:** `TF_VAR_gemini_api_key` for the default Gemini model, or `TF_VAR_anthropic_api_key` when `TF_VAR_ai_model` names a Claude one, and it stops at once without it. `read -s` keeps the key off the screen and out of your shell's history, and it lasts until you close the terminal. A plan, `make aws-down` and the `terraform-reviewer` work without it.
 - **Pick the AWS model in your shell.** Set `TF_VAR_ai_model` or leave it unset for the default Gemini model. Terraform checks the name before creating resources. To switch between the two Gemini models during a session, change `TF_VAR_ai_model` and run `make aws-up` again. Both use the same key.
 - **End the session before switching providers.** To switch from Gemini to Claude or back, run `make aws-down`, set the new model and its provider's key, then run `make aws-up`. If an `aws-up` plan shows that changing `name` would replace `aws_secretsmanager_secret.model_api_key`, decline the plan. ECS needs the current secret to restart the previous task if the deployment rolls back.
-- **What each step checks.** All three stop at once when the stack is down, and the last two also stop when there's no image yet. The repository outlives sessions, though, so an image from an earlier session counts: `make aws-start` alone would run that older code, and `make aws-deploy` builds the current code first. They also stop when the image is over 6 days old, since ECR deletes images a week after their push, and could do it during the session. Only `make aws-deploy` keeps the order, so `make aws-start` alone doesn't know whether the migrations ran.
+- **What each step checks.** All three stop at once when the stack is down, and the last two also stop when the session's image isn't in ECR yet. The repository outlives sessions, though, so in a `dev` session, an image from an earlier one counts: `make aws-start` alone would run that older code, and `make aws-deploy` builds the current code first. They also stop when a `dev` image is over 6 days old, since ECR deletes it a week after its push, and could do it during the session. CI's newest 3 `main` images stay however old they are. Only `make aws-deploy` keeps the order, so `make aws-start` alone doesn't know whether the migrations ran.
   - `make aws-image` takes about 2 to 3 minutes.
   - `make aws-migrate` takes about a minute. It prints the task's output, ending with `Seeded 7200 points.`, and fails when the task does.
   - `make aws-start` takes about 2 minutes. It waits until the load balancer's health check passes, and when that fails, shows why ECS stopped the task. That check asks `/api/health`, which shows only that the backend answers. The first question proves the rest (step 5): its 202 shows that its reservation in DynamoDB worked, and its chart, from the metrics in Postgres, and its row in `runs`, which the backend saves in the background, show that Postgres did.
@@ -150,8 +188,8 @@ make aws-down     # closes the door and lets questions in flight finish, then sh
 - **Only CloudFront reaches the backend.** From your Mac, `curl -m 5 "http://$(terraform -chdir=infra/aws/session output -raw load_balancer)/api/health"` gets no answer, since the load balancer's group lets in only CloudFront. Through CloudFront, `/api/health` answers `{"status":"ok"}` while the door is open, and `{"status":"offline"}` again once it's closed.
 - **Terraform in `make aws-up` and `make aws-down` touches only this stack.** `infra/aws/account` and `infra/aws/always-on` stay up, and nothing in the Makefile destroys them. The scripts only read the always-on stack's outputs, and write two things there: the store's session entry, and the backend's images, which `make aws-image` pushes to ECR.
 - **They run `terraform init` first,** so they work on a new machine too, once `infra/aws/backend.hcl` exists. The state is at `session/terraform.tfstate`, beside the other two stacks'.
-- **The first `make aws-up` adds 46 resources,** then deploys the backend and opens the door: about 13 minutes in all. The database takes the longest: about 5 minutes to create, and 2 to delete. The NAT gateway takes a minute or two each way.
-- **After `make aws-down`, the console can still list a few resources that are gone.** The tag search lists deleted resources for a while, a deleted NAT gateway shows as `deleted` for about an hour, and ECS can keep listing old task definitions as `INACTIVE`. None of them costs anything.
+- **The first `make aws-up` adds 47 resources,** then deploys the backend and opens the door: about 13 minutes in all. The database takes the longest: about 5 minutes to create, and 2 to delete. The NAT gateway takes a minute or two each way.
+- **After `make aws-down`, the console can still list a few resources that are gone.** The tag search lists deleted resources for a while, a deleted NAT gateway shows as `deleted` for about an hour, and ECS keeps listing Terraform's old templates as `INACTIVE`, and each deploy's 2 copies as `ACTIVE`, since nothing deregisters those. None of them costs anything.
 - **Before applying a change to any stack,** check the plan for anything it would delete or replace. From the repo's root, `terraform -chdir=infra/aws/<stack> show -json tfplan | node scripts/plan-changes.js` prints only those, and the plan's summary. In Claude Code, the `terraform-reviewer` subagent runs it for you (`.claude/agents/terraform-reviewer.md`).
 
 ## Read the backend's logs
