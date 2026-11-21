@@ -65,9 +65,11 @@ resource "aws_iam_role_policy" "backend" {
 }
 
 # The image's own command, node src/server.ts, on port 3000. 0.25 vCPU and
-# 0.5 GB on ARM, like the migrations task.
+# 0.5 GB on ARM, like the migrations task. A template, like the migrations
+# task's (ecs.tf): each deploy copies its newest revision into
+# dashgen-backend, pinned to one image.
 resource "aws_ecs_task_definition" "backend" {
-  family                   = "dashgen-backend"
+  family                   = "dashgen-backend-template"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = 256
@@ -82,7 +84,7 @@ resource "aws_ecs_task_definition" "backend" {
 
   container_definitions = jsonencode([{
     name         = "backend"
-    image        = "${data.aws_ecr_repository.backend.repository_url}:latest"
+    image        = "${data.aws_ecr_repository.backend.repository_url}:${var.image_tag}"
     essential    = true
     portMappings = [{ containerPort = 3000, protocol = "tcp" }]
 
@@ -159,7 +161,13 @@ resource "aws_ecs_service" "backend" {
   }
 
   lifecycle {
-    ignore_changes = [desired_count]
+    # The deploy owns both once the service exists. desired_count:
+    # scripts/aws-start.sh asks for one task. task_definition: each deploy
+    # registers a copy of this stack's definition pinned to one image's
+    # digest, and runs the migrations and the backend on it
+    # (scripts/aws-session.sh), so an apply never restarts the backend on an
+    # image that isn't built or migrated yet.
+    ignore_changes = [desired_count, task_definition]
   }
 
   # A target group takes a service only once a listener sends to it.

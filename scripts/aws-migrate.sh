@@ -1,45 +1,34 @@
 #!/usr/bin/env bash
 # make aws-migrate: runs the one-off task that applies the migrations and the
-# seed on AWS (infra/aws/session/ecs.tf), waits for it to stop, shows its
-# output, and fails when the task did.
+# seed on AWS (infra/aws/session/ecs.tf), on the image that the session's tag,
+# main or dev, points to now, pinned by its digest, holding the session's
+# deploy lock. It waits for the task to stop, shows its output, and fails
+# when the task did. make aws-deploy runs the migrations and the backend on
+# one image instead (scripts/aws-deploy.sh).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 source scripts/aws-session.sh
 
 cluster=$(output cluster)
-task_family=$(output migrate_task)
+template=$(output migrate_template)
 log_group=$(output migrate_log_group)
 subnets=$(output private_subnets)
 security_group=$(output backend_security_group)
-require_image "$(output ecr_repository_url)"
+lock_table=$(output deploy_lock_table)
+repo=$(output ecr_repository_url)
+
+if ! lock_deploys "$lock_table"; then
+  echo "The session has no deploy lock table: it's older than this code. Run make aws-up." >&2
+  exit 1
+fi
+# Under the lock, so a switch between main and dev can't change it meanwhile.
+image_tag=$(output image_tag)
+require_image "$repo" "$image_tag"
+image=$(image_by_digest "$repo" "$image_tag")
+migrate=$(pin_task_definition "$template" dashgen-migrate "$image" "$image_tag")
 
 # In the private subnets, in the backend's security group, with no public IP.
-started=$(aws ecs run-task \
-  --cluster "$cluster" \
-  --task-definition "$task_family" \
-  --launch-type FARGATE \
-  --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$security_group],assignPublicIp=DISABLED}" \
-  --query '[tasks[0].taskArn, failures[0].reason]' --output text)
-read -r task failure <<<"$started"
-if [[ $task == None ]]; then
-  echo "ECS didn't start the task: $failure" >&2
-  exit 1
-fi
-
-echo "Started the migrations task. It takes about a minute."
-aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task"
-
-# Its output, then how it ended: the container's exit code, or why ECS
-# stopped it before it ran.
-aws logs tail "$log_group" \
-  --log-stream-names "migrate/migrate/${task##*/}" --format short || true
-ended=$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" \
-  --query 'tasks[0].[containers[0].exitCode, stoppedReason]' --output text)
-read -r code reason <<<"$ended"
-if [[ $code != 0 ]]; then
-  echo "The migrations task failed, with exit code $code: $reason" >&2
-  exit 1
-fi
-
-echo "The migrations and the seed are applied."
+run_migrations "$cluster" "$migrate" \
+  "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$security_group],assignPublicIp=DISABLED}" \
+  "$log_group"

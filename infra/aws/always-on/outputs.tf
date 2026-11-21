@@ -8,6 +8,11 @@ output "page_deploy_role_arn" {
   value       = aws_iam_role.page_deploy.arn
 }
 
+output "backend_deploy_role_arn" {
+  description = "The role GitHub Actions takes to push and deploy the backend's image, for its AWS_BACKEND_DEPLOY_ROLE_ARN secret."
+  value       = aws_iam_role.backend_deploy.arn
+}
+
 output "distribution_id" {
   description = "The CloudFront distribution's ID, for cache invalidations."
   value       = aws_cloudfront_distribution.front_door.id

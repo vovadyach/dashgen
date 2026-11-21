@@ -10,11 +10,11 @@ help:
 	@echo "  make fmt        Format the TypeScript code"
 	@echo "  make check      Run every formatter, linter, type checker and test"
 	@echo "  make clean      Remove installed packages"
-	@echo "  make aws-up     Build the session stack on AWS, after showing its plan, deploy the backend, and open the API's door (costs money by the hour; needs the model's key, TF_VAR_gemini_api_key or TF_VAR_anthropic_api_key)"
-	@echo "  make aws-deploy Deploy the backend's code: its image, the migrations, then the backend"
-	@echo "  make aws-image  Build the backend's image for ARM, and push it to ECR"
+	@echo "  make aws-up     Build the session stack on AWS, after showing its plan, deploy the backend on CI's main image, and open the API's door (costs money by the hour; needs the model's key, TF_VAR_gemini_api_key or TF_VAR_anthropic_api_key). TF_VAR_image_tag=dev runs your own code instead"
+	@echo "  make aws-deploy Deploy the backend's code: your own code's image in a dev session, the migrations, then the backend"
+	@echo "  make aws-image  Build your own code's image for ARM, and push it to ECR as dev"
 	@echo "  make aws-migrate  Run the migrations and the seed on AWS, as a one-off ECS task"
-	@echo "  make aws-start  Run the backend on ECS, on its newest image, until it's healthy"
+	@echo "  make aws-start  Run the backend on ECS, on the session's image, until it's healthy"
 	@echo "  make aws-open   Open the API's door: CloudFront sends /api/* to the session's backend"
 	@echo "  make aws-close  Close the API's door, and wait for questions in flight to finish"
 	@echo "  make aws-down   Close the door, then destroy the session stack: end every AWS work session with it"
@@ -53,10 +53,16 @@ clean:
 # and write two things: the session's entry in CloudFront's store, which the
 # session owns (ADR-0003), and the backend's images in ECR (ADR-0017).
 # Terraform shows what it will do, and asks before it changes anything. init
-# runs first, so a new machine works too. aws-up also
-# needs the model's key, for the backend's secret: TF_VAR_gemini_api_key for a
-# Gemini model, the default, or TF_VAR_anthropic_api_key when TF_VAR_ai_model
-# names a Claude one. Without it, the secret would hold only a placeholder.
+# runs first, so a new machine works too. aws-up also needs the model's key,
+# for the backend's secret: TF_VAR_gemini_api_key for a Gemini model, the
+# default, or TF_VAR_anthropic_api_key when TF_VAR_ai_model names a Claude
+# one. Without it, the secret would hold only a placeholder. In a session
+# that runs dev, it stops unless TF_VAR_image_tag says dev or main, so
+# running it again, as to switch models, never switches the session to main
+# by accident, and it stops when it can't read the session's state. And
+# unless TF_VAR_image_tag is dev, it checks that CI's main image exists
+# before Terraform builds anything, so it never builds a stack that can't
+# start.
 SESSION = terraform -chdir=infra/aws/session
 ALWAYS_ON = terraform -chdir=infra/aws/always-on
 
@@ -69,19 +75,23 @@ aws-up:
 	@case "$$TF_VAR_ai_model" in claude-*) key=TF_VAR_anthropic_api_key ;; *) key=TF_VAR_gemini_api_key ;; esac; \
 	test -n "$$(printenv $$key)" || { echo "Set $$key to the API key for $${TF_VAR_ai_model:-the default Gemini model} first: docs/runbooks/deploy.md#the-session-stack"; exit 1; }
 	$(INIT)
+	@bash -c 'source scripts/aws-session.sh && keep_image_tag'
+	@bash -c 'source scripts/aws-session.sh && [[ $${TF_VAR_image_tag:-main} == dev ]] || require_image ecr/dashgen-backend main'
 	$(SESSION) apply
 	$(MAKE) --no-print-directory aws-deploy
 	scripts/aws-open.sh
 
-# The backend's code on AWS, in order: its image, built for Fargate's ARM CPUs
-# and pushed to ECR, in the always-on stack; the one-off task that applies the
-# migrations and the seed; then the backend's service, on that image.
-# make aws-up runs it after Terraform, and during a session it deploys new
-# code. Each step also runs alone, and checks the one before it.
+# The backend's code on AWS, in order, under the session's deploy lock
+# (scripts/aws-deploy.sh): in a session that runs dev, its image, built from
+# your own code for Fargate's ARM CPUs and pushed to ECR, in the always-on
+# stack; then the one-off task that applies the migrations and the seed, and
+# the backend's service, both on that image, pinned by its digest, so they run
+# the same code. In a session that runs main, CI builds the image (ADR-0017),
+# so it builds nothing. make aws-up runs it after Terraform, and during a
+# session it deploys new code. aws-image, aws-migrate and aws-start each run
+# one step alone.
 aws-deploy:
-	scripts/aws-image.sh
-	scripts/aws-migrate.sh
-	scripts/aws-start.sh
+	scripts/aws-deploy.sh
 
 aws-image:
 	scripts/aws-image.sh

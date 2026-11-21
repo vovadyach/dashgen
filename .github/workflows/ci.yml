@@ -9,10 +9,11 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same branch cancels the run that's still going.
+# A newer push to a pull request's branch cancels the run that's still going.
+# On main, it waits instead, so a deploy is never cut off halfway.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
@@ -68,3 +69,39 @@ jobs:
           aws s3 cp frontend/dist/index.html "s3://$BUCKET/index.html" --cache-control "no-cache"
         env:
           BUCKET: ${{ secrets.AWS_SITE_BUCKET }}
+
+  # The backend's image from main, once the checks pass (ADR-0017,
+  # docs/runbooks/deploy.md#the-backends-image): built on GitHub's ARM runner,
+  # for Fargate's ARM CPUs, pushed to ECR, and deployed when a session runs
+  # main. A pull request never builds or deploys.
+  deploy-backend:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    # About 10 minutes, but up to 30 more can go to waiting for another
+    # deploy to finish, as deploys take turns (scripts/aws-session.sh).
+    timeout-minutes: 45
+    # id-token lets the job ask GitHub for a token that AWS trades for the
+    # backend_deploy role (infra/aws/always-on/github.tf).
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # main's whole history, so the deploy can tell whether main's image
+          # comes from a newer commit than this run's.
+          fetch-depth: 0
+      # The deploy's steps run small Node scripts, on the repo's Node.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_BACKEND_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+          # The account ID is in the role and the image's address: it shows
+          # as *** in these public logs.
+          mask-aws-account-id: true
+      - run: scripts/ci-deploy-backend.sh

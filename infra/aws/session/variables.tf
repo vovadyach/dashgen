@@ -37,3 +37,18 @@ variable "ai_model" {
     error_message = "TF_VAR_ai_model must name a model DashGen has: ${join(", ", keys(local.model_providers))}."
   }
 }
+
+# From TF_VAR_image_tag: which of the backend's images the session runs
+# (ADR-0017). main, the default, is CI's, built from each merge to main, so
+# make aws-up builds nothing. dev is your own code's, which make aws-image
+# builds, to try a branch.
+variable "image_tag" {
+  description = "The backend's image the session runs: main, from CI, or dev, from make aws-image."
+  type        = string
+  default     = "main"
+
+  validation {
+    condition     = contains(["main", "dev"], var.image_tag)
+    error_message = "TF_VAR_image_tag must be main, CI's image, or dev, your own code's."
+  }
+}

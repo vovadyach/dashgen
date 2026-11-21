@@ -5,6 +5,16 @@ output "backend_service" {
   value       = aws_ecs_service.backend.name
 }
 
+output "backend_template" {
+  description = "The family of the backend's task definition template, which each deploy copies into dashgen-backend, pinned to one image."
+  value       = aws_ecs_task_definition.backend.family
+}
+
+output "deploy_lock_table" {
+  description = "The table that lets one deploy run at a time, CI's or make aws-deploy's."
+  value       = aws_dynamodb_table.deploy_lock.name
+}
+
 output "backend_log_group" {
   description = "Where the backend writes its output."
   value       = aws_cloudwatch_log_group.backend.name
@@ -26,13 +36,18 @@ output "ecr_repository_url" {
   value       = data.aws_ecr_repository.backend.repository_url
 }
 
+output "image_tag" {
+  description = "The backend's image the session runs: main, CI's, or dev, from make aws-image."
+  value       = var.image_tag
+}
+
 output "cluster" {
   description = "The ECS cluster that runs the backend's tasks."
   value       = aws_ecs_cluster.main.name
 }
 
-output "migrate_task" {
-  description = "The migrations task's family: ECS runs its latest revision."
+output "migrate_template" {
+  description = "The family of the migrations task's template, which each deploy copies into dashgen-migrate, pinned to one image."
   value       = aws_ecs_task_definition.migrate.family
 }
 

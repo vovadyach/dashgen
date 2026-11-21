@@ -26,9 +26,12 @@ locals {
 
 # The migrations, then the seed, as compose.yaml's migrate service runs them
 # locally. 0.25 vCPU and 0.5 GB, Fargate's smallest, on ARM: $0.0099 an hour,
-# 20% less than on x86, for the minute or so it runs.
+# 20% less than on x86, for the minute or so it runs. A template, in a family
+# of its own: each deploy copies its newest revision into dashgen-migrate,
+# pinned to one image (scripts/aws-session.sh), so the newest template is
+# always this stack's.
 resource "aws_ecs_task_definition" "migrate" {
-  family                   = "dashgen-migrate"
+  family                   = "dashgen-migrate-template"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = 256
@@ -42,7 +45,7 @@ resource "aws_ecs_task_definition" "migrate" {
 
   container_definitions = jsonencode([{
     name      = "migrate"
-    image     = "${data.aws_ecr_repository.backend.repository_url}:latest"
+    image     = "${data.aws_ecr_repository.backend.repository_url}:${var.image_tag}"
     essential = true
     command   = ["sh", "-c", "node src/scripts/migrate.ts && node src/scripts/seed.ts"]
 
