@@ -102,9 +102,9 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 - [x] When a reconnecting stream gets CloudFront's own error, like a passing 502, the page tries once more before saying the answer was interrupted, which would invite a second, paid run
 - [x] Structured JSON logs with a request ID, collected in CloudWatch
 - [x] GitHub Actions builds the backend's image and deploys it to ECS, with the same OIDC sign-in, from an image repository in the always-on stack ([ADR-0017](decisions/0017-image-registry-always-on.md))
-- [ ] All infrastructure defined in Terraform: the always-on and session stacks from the [AWS design](design.md#on-aws)
-- [ ] `terraform destroy` finishes cleanly: secrets deleted with no recovery window, RDS without a final snapshot
-- [ ] Deploy runbook: [`docs/runbooks/deploy.md`](runbooks/deploy.md)
+- [x] All infrastructure defined in Terraform: the always-on and session stacks from the [AWS design](design.md#on-aws)
+- [x] `terraform destroy` finishes cleanly: secrets deleted with no recovery window, RDS without a final snapshot
+- [x] Deploy runbook: [`docs/runbooks/deploy.md`](runbooks/deploy.md)
 
 **Done when:**
 
