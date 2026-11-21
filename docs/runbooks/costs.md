@@ -14,6 +14,8 @@ What holds DashGen's costs down, how to set the limits that live outside this re
 
 ## Set the Gemini spend cap
 
+Only a project with billing needs it. On the free tier, with no billing account, Gemini can't charge at all, and DashGen's own project stays there, since DashGen runs on Claude's credits.
+
 Do it once, by hand: the cap is in your Google account, not in this repo.
 
 1. Open [Google AI Studio](https://aistudio.google.com), in the project that holds DashGen's API key.

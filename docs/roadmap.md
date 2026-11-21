@@ -63,7 +63,7 @@ The reasoning behind bigger choices lives in [decisions](decisions/).
 - [x] The same for database errors: one retry, then `unavailable`
 - [x] [Daily cap](design.md#the-daily-cap) of 150 questions, counted in DynamoDB, with DynamoDB Local in Docker Compose ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md))
 - [x] A friendly message when the daily cap is hit
-- [ ] A $20 monthly spend cap on the Gemini project, noted in the [runbook](runbooks/costs.md)
+- [x] A monthly cap on the model's spend: Claude Haiku 5.5 runs on the Max plan's $100 of API credits, with no card on file, and the Gemini project stays on the free tier, so it can't charge at all ([runbook](runbooks/costs.md))
 - [x] Model name in config
 - [x] Tokens, cost and latency recorded for every run, with `AI_MODEL` limited to models whose prices the backend knows
 - [x] Cost per day and per question read from `runs`: `npm run cost`
