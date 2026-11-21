@@ -16,7 +16,7 @@ import { request } from "../../helpers/model.ts";
 
 describe("createClaudeModel", () => {
   describe("requests", () => {
-    it("sends the question with the design's settings: tool calls only, 512 tokens, low effort", async () => {
+    it("sends the question with the design's settings: tool calls only, 1,024 tokens, low effort", async () => {
       const { model, bodies } = fakeClaude();
 
       await model.next(request());
@@ -29,7 +29,7 @@ describe("createClaudeModel", () => {
         { role: "user", content: QUESTION_MESSAGE.text },
       ]);
       assert.deepEqual(body.tool_choice, { type: "any" });
-      assert.equal(body.max_tokens, 512);
+      assert.equal(body.max_tokens, 1_024);
       assert.deepEqual(body.output_config, { effort: "low" });
       // Claude Haiku 5.5 refuses sampling settings, and a forced call skips thinking.
       for (const unset of ["temperature", "top_p", "top_k", "thinking"]) {

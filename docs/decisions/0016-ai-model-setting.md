@@ -27,7 +27,7 @@ The options for the Claude model, at the design's 8,000 input and 1,500 output t
 
 - `AI_MODEL` picks the model: `gemini-3.1-flash-lite`, the default, `gemini-3.5-flash-lite` or `claude-haiku-5-5`. It replaces `GEMINI_MODEL`, and a leftover `GEMINI_MODEL` stops the backend at startup, so it's never ignored without a word.
 - Only the chosen model's key is required: `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`.
-- `backend/src/agent/claude.ts` is the Claude adapter, on `@anthropic-ai/sdk`, built like `gemini.ts`: a forced tool call, 512 output tokens, low effort, no retries of the SDK's own, and the API's address and the key pinned, so no `ANTHROPIC_*` variable can change them. Its tools aren't strict: strict tools refuse the minimum, maximum and length limits that DashGen's arguments have, and each tool checks its arguments itself anyway.
+- `backend/src/agent/claude.ts` is the Claude adapter, on `@anthropic-ai/sdk`, built like `gemini.ts`: a forced tool call, 1,024 output tokens, twice Gemini's, since at 512 its replies with many tool calls were cut off, low effort, no retries of the SDK's own, and the API's address and the key pinned, so no `ANTHROPIC_*` variable can change them. Its tools aren't strict: strict tools refuse the minimum, maximum and length limits that DashGen's arguments have, and each tool checks its arguments itself anyway.
 - On AWS, `TF_VAR_ai_model` sets `AI_MODEL`. Terraform validates the name before creating resources. Each session stores one model key in Secrets Manager so the backend receives only the key it needs, even when both providers' keys are set in the shell. Keeping that provider for the session lets ECS read the same secret if it rolls back to the previous task definition.
 
 ## Consequences
