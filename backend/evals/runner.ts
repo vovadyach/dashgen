@@ -70,8 +70,11 @@ export interface Row {
   cut_off: 0 | 1;
   max_out_tokens: number;
   cost_usd: number;
-  /** `case`: the case's fingerprint, so an edited case can't reuse old rows. */
-  meta: { ended: string; case: string };
+  /**
+   * `case`: the case's fingerprint, so an edited case can't reuse old rows.
+   * Rows that an older runner wrote have none.
+   */
+  meta: { ended: string; case?: string };
 }
 
 /** A model call that got a reply, with its tokens and why it stopped. */
@@ -141,6 +144,11 @@ function checkRows(rows: Row[], cases: EvalCase[], modelName: string): void {
       `These results come from ${other.model}, not ${modelName}. Run with --fresh to start over, or keep them and use another --variant.`,
     );
   }
+  if (rows.some((row) => row.meta.case === undefined)) {
+    throw new EvalSetupError(
+      "These results were written by an older version of the eval runner, which didn't fingerprint each case. Run with --fresh to start over.",
+    );
+  }
   for (const c of cases) {
     const print = fingerprint(c);
     const stale = rows.find(
@@ -162,15 +170,17 @@ async function runOne(
   metrics: Metrics,
 ): Promise<void> {
   const { db, dir, log, price, retryDelayMs } = options;
-  // What the model saw and said, for the trace.
-  const requests: ModelRequest[] = [];
-  const replies: ModelReply[] = [];
+  // What the model saw and said, for the trace: the last request, and its
+  // reply when it got one.
+  let lastRequest: ModelRequest | undefined;
+  let lastReply: ModelReply | undefined;
   const model: Model = {
     name: options.model.name,
     next: async (request) => {
-      requests.push({ ...request, messages: [...request.messages] });
+      lastRequest = { ...request, messages: [...request.messages] };
+      lastReply = undefined;
       const reply = await options.model.next(request);
-      replies.push(reply);
+      lastReply = reply;
       return reply;
     },
   };
@@ -178,7 +188,7 @@ async function runOne(
   const writeTrace = (result?: RunResult) => {
     writeFileSync(
       traceFile,
-      `${JSON.stringify(trace(c, requests, replies, result), null, 2)}\n`,
+      `${JSON.stringify(trace(c, lastRequest, lastReply, result), null, 2)}\n`,
     );
   };
 
@@ -204,25 +214,20 @@ async function runOne(
   }
   if (options.signal?.aborted) return;
 
-  // The provider failing, not the agent: a call that failed even after its
-  // one retry, or a run in which no call got any reply, as with a wrong key or
-  // spent credits. Any other failure, like a request refused after replies
-  // came, or a tool that broke, is the agent's or DashGen's, so it's scored.
-  const failedStep = result.steps.findLast(isFailed);
-  const lastTwo = result.steps.slice(-2);
-  const modelSteps = result.steps.filter((s) => s.type === "model");
-  const noReply =
-    modelSteps.length > 0 && modelSteps.every((s) => "error" in s);
-  const failedTwice =
-    lastTwo.length === 2 &&
-    lastTwo.every((s) => s.type === "model" && "error" in s);
-  if (
-    result.end.type === "error" &&
-    result.end.code === "unavailable" &&
-    (failedTwice || noReply)
-  ) {
+  // A run that ends unavailable failed outside the agent: the model's API,
+  // when its last failed step is a model call, or the database, when it's a
+  // tool call. That's no answer, so it's never scored: it goes to
+  // errors.jsonl, the eval exits with 1, and the next run tries it again.
+  const lastStep = result.steps.at(-1);
+  if (result.end.type === "error" && result.end.code === "unavailable") {
+    const failedStep = result.steps.findLast(isFailed);
     writeTrace(result);
-    appendError(dir, c, rep, "api_error", failedStep?.error, result);
+    if (failedStep?.type === "tool") {
+      const why = `${failedStep.tool} ${failedStep.error}`;
+      appendError(dir, c, rep, "harness_error", why, result);
+    } else {
+      appendError(dir, c, rep, "api_error", failedStep?.error, result);
+    }
     return;
   }
 
@@ -238,8 +243,15 @@ async function runOne(
   }
   if (options.signal?.aborted) return;
   const { grade, explanation } = graded;
-  if (result.end.type === "error" && failedStep && explanation.outcome) {
-    explanation.outcome = `${explanation.outcome} The ${failedStep.type === "model" ? "model call" : `${failedStep.tool} call`} failed: ${failedStep.error}`;
+  // Only the step that ended the run explains it: an earlier failed call may
+  // be one the model then corrected.
+  if (
+    result.end.type === "error" &&
+    lastStep &&
+    isFailed(lastStep) &&
+    explanation.outcome
+  ) {
+    explanation.outcome = `${explanation.outcome} The ${lastStep.type === "model" ? "model call" : `${lastStep.tool} call`} failed: ${lastStep.error}`;
   }
 
   writeTrace(result);
@@ -313,20 +325,16 @@ interface Turn {
  */
 function trace(
   c: EvalCase,
-  requests: ModelRequest[],
-  replies: ModelReply[],
+  last: ModelRequest | undefined,
+  lastReply: ModelReply | undefined,
   result: RunResult | undefined,
 ): Turn[] {
-  const last = requests.at(-1);
   const turns: Turn[] = [];
   if (last) turns.push({ role: "system", content: last.system });
-  // A reply with no calls never goes back in the conversation, so the last
-  // reply is added when the conversation doesn't hold it yet.
+  // The last request's conversation doesn't hold its own reply, so that
+  // reply, when it came, is added at the end.
   const messages = last ? [...last.messages] : [];
-  const lastReply = replies.at(-1);
-  if (lastReply && requests.length === replies.length) {
-    messages.push({ role: "model", reply: lastReply });
-  }
+  if (lastReply) messages.push({ role: "model", reply: lastReply });
   if (messages.length === 0) messages.push({ role: "user", text: c.question });
 
   for (const message of messages) {

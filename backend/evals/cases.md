@@ -13,8 +13,8 @@ AI_MODEL=claude-haiku-5-5 npm run eval -- --fresh          # from scratch
 - **It calls the model for real,** billed to your Claude credits: about $0.05 for all 54 runs. So people run it, never agents.
 - **It needs the test Postgres** that `make check` starts, or `docker compose --file compose.test.yaml up --detach --wait`.
 - **Results go to `.claude/hillclimb/agent/baseline/`,** out of git. A second run goes on where the last one stopped, but it refuses results from another model, or from a case that has changed since: then start over with `--fresh`, or use another `--variant`.
-- **`--fresh` deletes the variant's results for every case,** so it can't go with `--cases`.
-- **It exits with 1 when a run is left unscored,** as when the model's API keeps failing: run it again to retry those runs.
+- **`--fresh` moves the variant's old results to `<variant>.before-fresh`,** for every case, so it can't go with `--cases`. A run that fails, as with an expired key, never costs them.
+- **It exits with 1 when a run is left unscored,** as when the model's API or the database fails: run it again to retry those runs.
 - **To try a change to the agent,** run it with `--variant v1`, and compare the 2 scores.
 
 ## Baseline
@@ -47,7 +47,7 @@ What counts as right:
 - **"The last 24 hours" must be hourly,** by the tool's own rule: "For today or the last day, use 1 with hourly buckets".
 - **The title is the model's own words,** so it isn't checked.
 - **A reply cut off at the output cap is a failure,** since visitors see "No answer this time". The run is scored, and its `cut_off` is 1.
-- **The model's API failing isn't the agent's fault.** That run goes to `errors.jsonl`, out of the score, and the next `npm run eval` tries it again.
+- **A run that ends `unavailable` isn't an answer,** since the model's API or the database failed. It goes to `errors.jsonl`, out of the score, and the next `npm run eval` tries it again.
 
 ## The cases
 
@@ -67,10 +67,10 @@ Where it came from: **example** is one of the page's 4 examples, **real** is a q
 | 10  | new     | When did payments-service errors spike this week?            | Line chart: errors, `payments-service`, 7 days                                   |
 | 11  | new     | Show checkout-api latency for the last 5 days by hour        | Line chart: latency, `checkout-api`, 5 days, hourly                              |
 | 12  | new     | Average latency per service this week                        | Bar chart: average latency, all 5 services, 7 days                               |
-| 13  | new     | Which service had the most errors yesterday?                 | Bar or pie chart: total errors, all 5 services, 1 day                            |
+| 13  | new     | Which service had the most errors yesterday?                 | Bar or pie chart: total errors, all 5 services, 1 or 2 days                      |
 | 14  | new     | errors for auth-service in the last 30 days                  | Line chart: errors, `auth-service`, 30 days                                      |
 | 15  | new     | Compare latency of search-service and notifications-worker   | Line chart: latency, those 2 services, 7 days; or a bar of their average latency |
-| 16  | new     | payments errors in the last 24 hours                         | Line chart: errors, `payments-service`, 1 day                                    |
+| 16  | new     | payments errors in the last 24 hours                         | Line chart: errors, `payments-service`, 1 day, hourly                            |
 | 17  | new     | Show me latency                                              | Line chart: latency, all 5 services, 7 days                                      |
 | 18  | new     | Show errors for the payment service                          | Line chart: errors, `payments-service`, 7 days                                   |
 | 19  | new     | Total errors per service over the last 14 days               | Bar or pie chart: total errors, all 5 services, 14 days                          |

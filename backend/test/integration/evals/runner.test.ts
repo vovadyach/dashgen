@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -14,7 +20,7 @@ import {
 import { ModelError } from "../../../src/agent/errors.ts";
 import type { Model } from "../../../src/agent/types.ts";
 import { seedMetrics } from "../../../src/metrics/seed.ts";
-import { createTestDb, type TestDb } from "../../helpers/db.ts";
+import { createTestDb, type TestDb, unreachableDb } from "../../helpers/db.ts";
 import { findCase } from "../../helpers/evals.ts";
 import { recordingLogger } from "../../helpers/logger.ts";
 import {
@@ -45,13 +51,16 @@ const freshDir = () => {
   return dir;
 };
 
-// A right chart, a reply cut off twice, a refusal, the model's API failing
-// twice, and a request the provider refused after a first reply.
+// A right chart after a failed call, a reply cut off twice, a refusal, the
+// model's API failing twice, and a request the provider refused after a first
+// reply.
 const CASE_IDS = ["c01", "c05", "c25", "c20", "c09"];
 const cases = CASE_IDS.map(findCase);
 
 /** What the fake model answers, case by case, in that order. */
 const firstScript = () => [
+  // The trace keeps the last reply even after a failed call.
+  busyError(),
   reply([
     "query_metrics",
     { service: "payments-service", metric: "errors", days: 7 },
@@ -69,7 +78,7 @@ const firstScript = () => [
   declineReply(),
   busyError(),
   busyError(),
-  // After a reply, a refused request is the run's own failure, so it's scored.
+  // A run that ends unavailable is never scored, even after a reply.
   reply(["list_services"]),
   new ModelError("Claude answered 400: invalid request", {
     retryable: false,
@@ -83,16 +92,18 @@ const evalWith = (
   {
     runCases = cases,
     onStart,
+    db,
   }: {
     runCases?: EvalCase[];
     onStart?: (todo: number, done: number) => void;
+    db?: TestDb["db"];
   } = {},
 ) => {
   assert.ok(testDb);
   return runEval({
     model,
     price: { input: 1, output: 2 },
-    db: testDb.db,
+    db: db ?? testDb.db,
     cases: runCases,
     reps: 1,
     // One at a time, so the runs take the script's replies in order.
@@ -105,7 +116,7 @@ const evalWith = (
 };
 
 describe("runEval", () => {
-  it("writes a graded row per run, and keeps only the API's failures out of the score", async () => {
+  it("writes a graded row per run, and keeps the runs that ended unavailable out of the score", async () => {
     const dir = freshDir();
     await evalWith(dir, fakeModel(firstScript()));
 
@@ -116,25 +127,20 @@ describe("runEval", () => {
         [findCase("c01").id, 1, 0],
         [findCase("c05").id, 0, 1],
         [findCase("c25").id, 1, 0],
-        [findCase("c09").id, 0, 0],
       ],
     );
 
-    const [chart, cutOff, , refused] = rows;
-    assert.ok(chart && cutOff && refused);
+    const [chart, cutOff] = rows;
+    assert.ok(chart && cutOff);
     assert.deepEqual(chart.tags, ["chart", "example"]);
     assert.equal(chart.model, "fake-model");
     assert.deepEqual(chart.usage, { input_tokens: 4_000, output_tokens: 120 });
     assert.equal(chart.cost_usd, 0.00424);
-    assert.equal(chart.model_calls, 2);
+    assert.equal(chart.model_calls, 3);
     assert.equal(chart.tool_calls, 2);
     assert.equal(chart.max_out_tokens, 60);
     assert.equal(cutOff.meta.ended, "error agent_failed");
     assert.equal(cutOff.stop_reason, "max_tokens");
-    assert.match(
-      refused.explanation.outcome ?? "",
-      /got error unavailable\. The model call failed: Claude answered 400/,
-    );
 
     const errors = readFileSync(join(dir, "errors.jsonl"), "utf8")
       .trim()
@@ -148,6 +154,14 @@ describe("runEval", () => {
         message: "Gemini answered 503: overloaded",
         model: "fake-model",
         usage: { input_tokens: 0, output_tokens: 0 },
+      },
+      {
+        prompt_id: findCase("c09").id,
+        rep: 0,
+        failure_class: "api_error",
+        message: "Claude answered 400: invalid request",
+        model: "fake-model",
+        usage: { input_tokens: 2_000, output_tokens: 60 },
       },
     ]);
 
@@ -177,11 +191,12 @@ describe("runEval", () => {
     );
   });
 
-  it("goes on where the last run stopped: only the run that wasn't scored runs again", async () => {
+  it("goes on where the last run stopped: only the runs that weren't scored run again", async () => {
     const dir = freshDir();
     await evalWith(dir, fakeModel(firstScript()));
     let counts: number[] = [];
-    // A single reply: running any other case again would run out of script.
+    // A reply each for c20 and c09: running any other case again would run
+    // out of script.
     await evalWith(
       dir,
       fakeModel([
@@ -195,6 +210,7 @@ describe("runEval", () => {
             ],
           },
         ]),
+        declineReply(),
       ]),
       {
         onStart: (todo, done) => {
@@ -203,11 +219,11 @@ describe("runEval", () => {
       },
     );
 
-    assert.deepEqual(counts, [1, 4]);
+    assert.deepEqual(counts, [2, 3]);
     const { lines, unscored } = summarize(dir, cases, 1, "fake-model");
     assert.equal(
       lines[0],
-      "Correct: 3 of 5 runs (60%), on fake-model. 95% sure the true rate is 23% to 88%.",
+      "Correct: 4 of 5 runs (80%), on fake-model. 95% sure the true rate is 38% to 96%.",
     );
     assert.ok(
       lines.some((line) =>
@@ -271,6 +287,44 @@ describe("runEval", () => {
     );
     assert.equal(unscored, 1);
     assert.match(lines[1] ?? "", /api_error, Claude answered 401/);
+  });
+
+  it("keeps a run whose tool failed out of the score, as when the database fails", async () => {
+    const dir = freshDir();
+    const down = unreachableDb();
+    try {
+      await evalWith(dir, fakeModel([reply(["list_services"])]), {
+        runCases: [findCase("c01")],
+        db: down,
+      });
+    } finally {
+      await down.$client.end();
+    }
+
+    assert.deepEqual(readRows(dir), []);
+    const { lines, unscored } = summarize(
+      dir,
+      [findCase("c01")],
+      1,
+      "fake-model",
+    );
+    assert.equal(unscored, 1);
+    assert.match(lines[1] ?? "", /harness_error, list_services failed/);
+  });
+
+  it("refuses rows that an older runner wrote, with no case fingerprint", async () => {
+    const dir = freshDir();
+    writeFileSync(
+      join(dir, "results.jsonl"),
+      `${JSON.stringify({ prompt_id: findCase("c01").id, rep: 0, model: "fake-model", meta: { ended: "chart" } })}\n`,
+    );
+
+    await assert.rejects(
+      evalWith(dir, fakeModel([])),
+      (error: unknown) =>
+        error instanceof EvalSetupError &&
+        /older version of the eval runner/.test(error.message),
+    );
   });
 
   it("refuses to reuse a case's rows once the case has changed", async () => {

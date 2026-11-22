@@ -13,8 +13,9 @@
 // another reason than the agent, like the model's API being down, in
 // errors.jsonl, which the score leaves out. A second `npm run eval` goes on
 // where the last one stopped: it skips the runs already in results.jsonl.
-// It exits with 1 when a run is left unscored, so a wrong key can't pass.
-import { rmSync } from "node:fs";
+// It exits with 1 when a run is left unscored, as when the model's API or the
+// database fails, so a wrong key can't pass.
+import { existsSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -86,18 +87,26 @@ try {
     error,
   );
 }
+// Drops the eval's database once, whether Ctrl+C or the finally below gets there first.
+let dropping: Promise<void> | undefined;
+const dropDb = () => (dropping ??= testDb.drop());
 // Ctrl+C would skip the finally below, and leave the eval's database behind.
 // The signal stops new runs first, and makes a run still going write nothing.
 const stop = new AbortController();
 process.once("SIGINT", () => {
   stop.abort();
-  void testDb.drop().finally(() => process.exit(130));
+  void dropDb().finally(() => process.exit(130));
 });
 
 try {
-  // Only now that the model's settings and the database work, so a failed
-  // start never costs the old results.
-  if (options.fresh) rmSync(dir, { recursive: true, force: true });
+  // The old results move aside rather than go, so a run that fails, as with
+  // an expired key, never costs them: they're in <variant>.before-fresh.
+  if (options.fresh && existsSync(dir)) {
+    const backup = `${dir}.before-fresh`;
+    rmSync(backup, { recursive: true, force: true });
+    renameSync(dir, backup);
+    console.log(`The old results are in ${backup}.`);
+  }
   await seedMetrics(testDb.db, NOW);
   await runEval({
     model,
@@ -127,5 +136,5 @@ try {
   console.error(error.message);
   process.exitCode = 1;
 } finally {
-  await testDb.drop();
+  await dropDb();
 }
