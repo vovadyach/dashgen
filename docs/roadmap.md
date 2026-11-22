@@ -130,7 +130,7 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 - [x] Pin charts to a watchlist, saved in the browser with their data, so they still draw while the backend is offline
 - [x] Copy a link that carries the chart ([ADR-0013](decisions/0013-share-links-carry-the-chart.md)), and download it as a PNG
 - [x] A note under the question box says questions are saved
-- [ ] A mascot of our own: an animal (a meerkat, a lookout watching the metrics) drawn as one flat SVG, no memes since the repo is public. Animated with CSS and still for visitors who turned on reduced motion. Its mood follows the outcome: playful on `decline`, curious on `clarify`, sorry on errors, asleep when the backend is offline or the daily cap is reached. No mascot next to a chart
+- [x] On a slow connection, a pinned card's mini chart draws itself while the page loads, one at a time: a line, then bars, then a pie, from `index.html` itself, with the page's CSS inline: 2.6 s instead of a blank page until 6.6 s on Slow 3G ([ADR-0020](decisions/0020-first-paint-in-index-html.md))
 - [x] Works on a phone, from 320 px wide: every chart names all its services, nothing runs off the screen, and the examples make way for the answer
 - [ ] Invisible bot check (Cloudflare Turnstile)
 

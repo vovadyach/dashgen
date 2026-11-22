@@ -67,7 +67,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
 | Agent | Gemini (`@google/genai`) or Claude Haiku 5.5 (`@anthropic-ai/sdk`), as `AI_MODEL` says | The [five tools](docs/design.md#the-agents-tools), an adapter for each provider, and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md), [why one setting](docs/decisions/0016-ai-model-setting.md)) |
 | Evals (`backend/evals/`) | Code-graded, on fixed sample data | 27 questions, twice each: 54 of 54 runs right on Claude Haiku 5.5. CI runs them on pull requests that change the agent ([scores](backend/evals/cases.md#scores), [ADR-0018](docs/decisions/0018-agent-evals.md), [ADR-0019](docs/decisions/0019-evals-in-ci.md)) |
-| Frontend (`frontend/`) | React, TypeScript, Vite, Tailwind, shadcn/ui, AG Charts, TanStack Query | The question box, the steps as they stream in, and the chart, with a data table, in light and dark themes, on phones too. Charts can be pinned to a watchlist, shared as a link, or downloaded as a PNG |
+| Frontend (`frontend/`) | React, TypeScript, Vite, Tailwind, shadcn/ui, AG Charts, TanStack Query | The question box, the steps as they stream in, and the chart, with a data table, in light and dark themes, on phones too. Charts can be pinned to a watchlist, shared as a link, or downloaded as a PNG. On a slow connection, a small chart draws itself while the page loads |
 | Hosting | AWS, Terraform, GitHub Actions | Done (step 5): the budget alerts, the page on CloudFront from a private S3 bucket, the daily cap's table and the image registry stay on. For a work session, `make aws-up` adds the backend on ECS Fargate behind a load balancer, Postgres on RDS and the model's key in Secrets Manager; between sessions, `/api/*` answers that it's offline. GitHub Actions deploys the page and the backend's image after each merge to `main`, signing in to AWS with OIDC ([runbook](docs/runbooks/deploy.md)) |
 
 ## Running locally
@@ -160,6 +160,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [17. The backend's image lives in the always-on stack, and CI builds it](docs/decisions/0017-image-registry-always-on.md)
 - [18. The agent's evals are graded by code, on fixed data, and only people run them](docs/decisions/0018-agent-evals.md)
 - [19. The evals also run in CI, on pull requests that change the agent](docs/decisions/0019-evals-in-ci.md)
+- [20. The page's first paint comes from index.html alone](docs/decisions/0020-first-paint-in-index-html.md)
 
 ## License
 

@@ -5,8 +5,27 @@ import {
   useQuery,
 } from "@tanstack/react-query";
 
-/** How long GET /api/health has to answer before DashGen counts as offline (ADR-0003). */
-const TIMEOUT_MS = 3000;
+/** How long GET /api/health has to answer before DashGen counts as offline (ADR-0003). index.html's check gives it the same. */
+export const TIMEOUT_MS = 3000;
+
+/** What GET /api/health answered, or null: no answer in time, no network, or a body that isn't JSON. */
+type HealthAnswer = { status: number; body: unknown } | null;
+
+/**
+ * The check index.html starts while the page's code downloads, so the first
+ * render can know its answer (ADR-0020): the check, and its answer once
+ * it's in.
+ */
+interface EarlyCheck {
+  check: Promise<HealthAnswer>;
+  answer?: HealthAnswer;
+}
+
+declare global {
+  interface Window {
+    dashgenHealth?: EarlyCheck;
+  }
+}
 
 /**
  * Whether DashGen's backend is up: GET /api/health answered within 3
@@ -14,7 +33,18 @@ const TIMEOUT_MS = 3000;
  * CloudFront's 503 between sessions, its own 502 or 504 page, no answer in
  * time, or no network.
  */
+const isUp = (answer: HealthAnswer) =>
+  answer !== null &&
+  answer.status === 200 &&
+  Health.safeParse(answer.body).success;
+
 async function isOnline(): Promise<boolean> {
+  // The page's first check is the one index.html started, if it did.
+  return isUp(await (takeEarlyCheck()?.check ?? askHealth()));
+}
+
+/** Asks GET /api/health, with 3 seconds to answer. index.html's check does the same. */
+async function askHealth(): Promise<HealthAnswer> {
   // A timer of its own, not AbortSignal.timeout(): the tests' fake timers
   // can't move that one's clock.
   const timeout = new AbortController();
@@ -27,20 +57,24 @@ async function isOnline(): Promise<boolean> {
       cache: "no-store",
       signal: timeout.signal,
     });
-    return (
-      response.status === 200 && Health.safeParse(await response.json()).success
-    );
+    return { status: response.status, body: await response.json() };
   } catch {
-    // No answer in time, no network, or a body that isn't JSON.
-    return false;
+    return null;
   } finally {
     clearTimeout(timer);
   }
 }
 
+/** index.html's check, once: after it, the page asks for itself. */
+function takeEarlyCheck(): EarlyCheck | undefined {
+  const early = window.dashgenHealth;
+  delete window.dashgenHealth;
+  return early;
+}
+
 /**
  * The page's check of the backend, as TanStack Query runs it: once as the
- * page opens, then only while DashGen is offline, each time the tab comes
+ * page opens, started by index.html, then only while DashGen is offline, each time the tab comes
  * back into view, so a session that started meanwhile turns the page back
  * on. No polling, and no checks while it's online.
  */
@@ -54,7 +88,22 @@ const online = queryOptions({
   // TanStack Query's "focus" is the tab coming into view: visibilitychange.
   refetchOnWindowFocus: (query) => query.state.data === false,
   refetchOnReconnect: false,
+  // An answer seedOnline() gave the first render counts as the first check.
+  refetchOnMount: false,
 });
+
+/**
+ * Gives the first render the answer of index.html's check, if it's in, so
+ * an offline banner is in the page's first frame instead of pushing the page
+ * down a moment later. main.tsx calls it once, before React renders. Until
+ * the check answers, the page counts as online, as before.
+ */
+export function seedOnline(client: QueryClient) {
+  const answer = window.dashgenHealth?.answer;
+  if (answer === undefined) return;
+  takeEarlyCheck();
+  client.setQueryData(online.queryKey, isUp(answer));
+}
 
 /**
  * Whether DashGen is offline, as the page last found it. Until the first
