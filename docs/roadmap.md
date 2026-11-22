@@ -120,9 +120,7 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 - [x] Ambiguous questions where the right answer is a clarifying question
 - [x] Scored for accuracy; runs from the command line, calling the agent loop directly ([ADR-0018](decisions/0018-agent-evals.md)): 46 of 54 runs right on Claude Haiku 5.5, the first baseline
 - [x] The agent fixed for the 4 questions the first baseline got wrong, with 2 rules: one chart of one metric, and charts over time by default. 54 of 54 runs right ([scores](../backend/evals/cases.md#scores))
-- [ ] The evals in CI too, which then spend the Claude credits on each run
-- [ ] `eval-runner` subagent on Haiku that runs the evals and returns only the score and the failures
-- [ ] Model routing: a cheaper model first, a stronger one when its answer fails validation, kept only if evals show it saves money without losing accuracy
+- [x] The evals in CI too, on pull requests that change the agent: about $0.05 a run of the Claude credits, failing when a case is wrong in both runs ([ADR-0019](decisions/0019-evals-in-ci.md))
 
 **Done when:** the README reports the agent's eval accuracy.
 
@@ -157,6 +155,8 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 
 ## Later
 
+- An `eval-reviewer` subagent on Haiku that reads an eval run's results and traces, and returns only the score and the failures. It never runs the evals: only the user and CI do
+- Model routing: a cheaper model first, a stronger one when its answer fails validation, kept only if the evals show it saves money without losing accuracy. Claude Haiku 5.5 already gets 54 of 54, and the only cheaper model would be Gemini
 - Follow-ups: a "change this chart" box on each chart that sends only that chart
 - "Build me a dashboard": one request creates several charts
 - CSV and Excel upload (tables, not PDFs): S3 presigned URLs and SQS, anonymous sessions, files deleted after 24 hours

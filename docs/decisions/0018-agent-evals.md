@@ -1,6 +1,6 @@
 # 18. The agent's evals are graded by code, on fixed data, and only people run them
 
-- **Status:** Accepted
+- **Status:** Accepted. [ADR-0019](0019-evals-in-ci.md) adds runs in CI, on pull requests that change the agent
 - **Date:** 2026-11-21
 
 ## Context

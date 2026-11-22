@@ -535,6 +535,8 @@ export interface Summary {
   lines: string[];
   /** The asked-for runs that failed for another reason than the agent, and wait for another try. */
   unscored: number;
+  /** The cases wrong in every graded run, which fail the eval. One wrong run can be chance. */
+  alwaysWrong: string[];
 }
 
 /** The score, how sure it is, the cases that weren't right every time, and the runs not scored yet. */
@@ -548,6 +550,7 @@ export function summarize(
     rep < reps && cases.some((c) => c.id === id);
   const rows = readRows(dir).filter((row) => asked(row.prompt_id, row.rep));
   const lines: string[] = [];
+  const alwaysWrong: string[] = [];
 
   // errors.jsonl keeps every failed attempt; a later success replaces it.
   const errorsPath = join(dir, "errors.jsonl");
@@ -591,6 +594,7 @@ export function summarize(
       const runs = rows.filter((row) => row.prompt_id === c.id);
       const wrong = runs.filter((row) => row.grade.correct !== 1);
       if (wrong.length === 0) continue;
+      if (wrong.length === runs.length) alwaysWrong.push(c.id);
       const why = wrong.map(
         (row) => Object.values(row.explanation).join(" ") || row.meta.ended,
       );
@@ -606,7 +610,7 @@ export function summarize(
       `Not scored yet: ${String(unscored.size)} runs, since the model's API or the runner failed. Run it again to retry them. The last reason: ${failures.at(-1)?.failure_class ?? ""}, ${failures.at(-1)?.message ?? ""}`,
     );
   }
-  return { lines, unscored: unscored.size };
+  return { lines, unscored: unscored.size, alwaysWrong };
 }
 
 /** One failed attempt, as errors.jsonl keeps it. */

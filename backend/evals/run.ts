@@ -13,8 +13,9 @@
 // another reason than the agent, like the model's API being down, in
 // errors.jsonl, which the score leaves out. A second `npm run eval` goes on
 // where the last one stopped: it skips the runs already in results.jsonl.
-// It exits with 1 when a run is left unscored, as when the model's API or the
-// database fails, so a wrong key can't pass.
+// It exits with 1 when a case is wrong in every run, which fails CI's check
+// (.github/workflows/evals.yml), or when a run is left unscored, as when the
+// model's API or the database fails, so a wrong key can't pass.
 import { existsSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -129,14 +130,28 @@ try {
         `${String(todo)} runs to do on ${settings.name}: ${String(cases.length)} cases × ${String(reps)}, ${String(done)} already done.`,
       );
     },
+    // A counter that rewrites itself, on a terminal only: in CI's log, each
+    // update would pile up on one line.
     onRun: (finished) => {
-      process.stdout.write(`\r${String(finished)} done`);
+      if (process.stdout.isTTY) {
+        process.stdout.write(`\r${String(finished)} done`);
+      }
     },
   });
-  const { lines, unscored } = summarize(dir, cases, reps, settings.name);
+  const { lines, unscored, alwaysWrong } = summarize(
+    dir,
+    cases,
+    reps,
+    settings.name,
+  );
   console.log(`\n${lines.join("\n")}`);
+  if (alwaysWrong.length > 0) {
+    console.log(
+      `\nFailed, since these cases were wrong in every run: ${alwaysWrong.join(", ")}.`,
+    );
+  }
   console.log(`\nEach run's full exchange is in ${join(dir, "traces")}.`);
-  if (unscored > 0) process.exitCode = 1;
+  if (unscored > 0 || alwaysWrong.length > 0) process.exitCode = 1;
 } catch (error) {
   if (!(error instanceof EvalSetupError)) throw error;
   console.error(error.message);

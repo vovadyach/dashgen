@@ -10,11 +10,11 @@ AI_MODEL=claude-haiku-5-5 npm run eval -- --cases c01,c05  # only these
 AI_MODEL=claude-haiku-5-5 npm run eval -- --fresh          # from scratch
 ```
 
-- **It calls the model for real,** billed to your Claude credits: about $0.05 for all 54 runs. So people run it, never agents.
+- **It calls the model for real,** billed to your Claude credits: about $0.05 for all 54 runs. So people run it, never agents. CI runs it too, on pull requests that change the agent ([ADR-0019](../../docs/decisions/0019-evals-in-ci.md)).
 - **It needs the test Postgres** that `make check` starts, or `docker compose --file compose.test.yaml up --detach --wait`.
 - **Results go to `.claude/hillclimb/agent/baseline/`,** out of git. A second run goes on where the last one stopped, but it refuses results from another model, from a case that has changed since, or from code that has changed since: any file in `src/agent/`, `src/metrics/` or `packages/contracts/src/`, `evals/grade.ts` or `NOW`, even a comment. Then start over with `--fresh`, or use another `--variant`.
 - **`--fresh` moves the variant's old results to `<variant>.before-fresh`,** for every case, so it can't go with `--cases`. A run that fails, as with an expired key, never costs them.
-- **It exits with 1 when a run is left unscored,** as when the model's API or the database fails: run it again to retry those runs.
+- **It exits with 1 when a case is wrong in every run,** which fails CI's check, **or when a run is left unscored,** as when the model's API or the database fails: run it again to retry those runs.
 - **To try a change to the agent,** run it with `--variant v1`, and compare the 2 scores.
 
 ## Scores
