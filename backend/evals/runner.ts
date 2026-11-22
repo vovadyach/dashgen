@@ -633,3 +633,24 @@ function wilson(right: number, n: number): [number, number] {
     (1 + (z * z) / n);
   return [Math.max(0, centre - spread), Math.min(1, centre + spread)];
 }
+
+/**
+ * The eval's log: errors only, each as the event and the error's own message,
+ * as errors.jsonl keeps it. Never the whole error: a failed model call's
+ * carries the response headers, which name the Claude organization, and CI's
+ * log and the run's page are public.
+ */
+export function evalLogger(
+  write: (line: string) => void = console.error,
+): Logger {
+  const quiet = () => undefined;
+  return {
+    error: (obj, msg) => {
+      const err = "err" in obj ? obj.err : undefined;
+      write(err instanceof Error ? `${msg}: ${err.message}` : msg);
+    },
+    warn: quiet,
+    info: quiet,
+    debug: quiet,
+  };
+}

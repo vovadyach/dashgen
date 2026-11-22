@@ -38,7 +38,7 @@ The $100 Claude Max plan includes $100 of Claude API credits a month, for API ke
 2. Under **API credits**, select **Link organization**, choose a Console organization or create one, review the terms, and link it.
 3. In that organization, on [platform.claude.com](https://platform.claude.com), create an API key.
 4. Put it in `backend/.env` as `ANTHROPIC_API_KEY`, with `AI_MODEL=claude-haiku-5-5`, then run `npm run model:check`. On AWS, the key and the model come from `TF_VAR_anthropic_api_key` and `TF_VAR_ai_model` ([deploy runbook](deploy.md#the-session-stack)).
-5. For the evals in CI, add it to GitHub too: run `gh secret set ANTHROPIC_API_KEY` and paste it ([ADR-0019](../decisions/0019-evals-in-ci.md)).
+5. For the evals in CI, create a second key, used only there, and add it to GitHub: run `gh secret set ANTHROPIC_API_KEY` and paste it ([ADR-0019](../decisions/0019-evals-in-ci.md)). If it ever leaks from CI, only that key needs replacing.
 
 - Add no card and buy no credits in that organization. Then, once the month's $100 is used, requests stop until the next month's credits, instead of being billed. Usage is never charged to the Claude plan itself. This doesn't hold for an organization invoiced through Anthropic's sales team, which is billed as usual beyond the credits.
 - Unused credits expire at the end of each billing cycle. A new subscriber can link an organization after 7 days on the plan.
@@ -46,7 +46,7 @@ The $100 Claude Max plan includes $100 of Claude API credits a month, for API ke
 - The credits don't change Claude Code's limits, and Claude Code doesn't use them.
 - On `claude-haiku-5-5`, a question costs at most about $0.004, so 150 questions a day use at most about $18 a month.
 - CI's evals use about $0.05 a run, on each push to a pull request that changes the agent.
-- A key with an expiry date needs a new one before then, in the same 3 places: `backend/.env`, `TF_VAR_anthropic_api_key` at the next `make aws-up`, and the GitHub secret. Then delete the old key. A session that's already up keeps the old key until `make aws-down`.
+- A key with an expiry date needs a new one before then. The local key goes in `backend/.env` and in `TF_VAR_anthropic_api_key` at the next `make aws-up`, and CI's key in the GitHub secret. Then delete the old one. A session that's already up keeps the old key until `make aws-down`.
 
 Anthropic's [help article](https://support.claude.com/en/articles/17154008-monthly-api-credits-for-max-ultra-and-team-plans) has the details.
 

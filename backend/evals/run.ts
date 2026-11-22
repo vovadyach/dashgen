@@ -23,11 +23,16 @@ import { parseArgs } from "node:util";
 
 import { createModel } from "../src/agent/index.ts";
 import { loadModelSettings } from "../src/config.ts";
-import { consoleLogger } from "../src/logger.ts";
 import { seedMetrics } from "../src/metrics/seed.ts";
 import { createTestDb, type TestDb } from "../test/helpers/db.ts";
 import { CASES, NOW } from "./cases.ts";
-import { EvalSetupError, hasRows, runEval, summarize } from "./runner.ts";
+import {
+  evalLogger,
+  EvalSetupError,
+  hasRows,
+  runEval,
+  summarize,
+} from "./runner.ts";
 
 function fail(message: string, cause?: unknown): never {
   console.error(message);
@@ -123,7 +128,7 @@ try {
     reps,
     concurrency,
     dir,
-    log: consoleLogger("error"),
+    log: evalLogger(),
     signal: stop.signal,
     onStart: (todo, done) => {
       console.log(

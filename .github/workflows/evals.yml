@@ -11,6 +11,9 @@ on:
       - backend/src/metrics/**
       - backend/evals/**
       - packages/contracts/src/**
+      # A package upgrade, like zod or the Claude SDK, can change what the
+      # model gets.
+      - package-lock.json
       - .github/workflows/evals.yml
 
 # The evals only read the code, so the token can't write anything.

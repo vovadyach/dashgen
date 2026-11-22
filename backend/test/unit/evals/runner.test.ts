@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import {
+  evalLogger,
   EvalSetupError,
   fingerprintedFiles,
   hasRows,
@@ -117,5 +118,20 @@ describe("fingerprintedFiles", () => {
     ]) {
       assert.ok(files.includes(file), `${file} isn't fingerprinted`);
     }
+  });
+});
+
+describe("evalLogger", () => {
+  it("prints an error's own message, never the response headers it carries, since CI's log is public", () => {
+    const lines: string[] = [];
+    const log = evalLogger((line) => {
+      lines.push(line);
+    });
+    const err = Object.assign(new Error("Claude answered 429: rate limited"), {
+      headers: { "anthropic-organization-id": "an-organization-id" },
+    });
+    log.error({ code: "unavailable", err }, "run failed");
+    log.warn({ err }, "model call failed, retrying");
+    assert.deepEqual(lines, ["run failed: Claude answered 429: rate limited"]);
   });
 });
