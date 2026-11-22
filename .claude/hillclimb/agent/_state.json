@@ -1,0 +1,16 @@
+{
+  "metrics": [
+    { "id": "correct", "label": "Correct", "kind": "binary" },
+    { "id": "outcome", "label": "Outcome", "kind": "binary" },
+    { "id": "chart", "label": "Chart", "kind": "binary" },
+    { "id": "data", "label": "Data", "kind": "binary" }
+  ],
+  "perf_fields": [
+    { "id": "cut_off", "label": "Cut off" },
+    { "id": "max_out_tokens", "label": "Max reply", "unit": "tokens" },
+    { "id": "latency_s", "label": "Seconds", "unit": "s" },
+    { "id": "cost_usd", "label": "Cost", "unit": "$" },
+    { "id": "model_calls", "label": "Model calls" },
+    { "id": "tool_calls", "label": "Tool calls" }
+  ]
+}
