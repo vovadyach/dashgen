@@ -37,6 +37,10 @@ export async function createTestDb(log?: Logger): Promise<TestDb> {
   let db: Db | undefined;
 
   const drop = async () => {
+    // DROP DATABASE ... WITH (FORCE) ends any connection still closing, which
+    // the pool would log as a failed idle connection. Here that's expected.
+    db?.$client.removeAllListeners("error");
+    db?.$client.on("error", () => undefined);
     await db?.$client.end();
     await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
     await admin.end();

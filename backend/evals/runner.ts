@@ -11,7 +11,11 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
+import { z } from "zod";
+
 import { type RunResult, runAgent } from "../src/agent/index.ts";
+import { instructions } from "../src/agent/instructions.ts";
+import { createTools } from "../src/agent/tools.ts";
 import type {
   Model,
   ModelReply,
@@ -71,10 +75,11 @@ export interface Row {
   max_out_tokens: number;
   cost_usd: number;
   /**
-   * `case`: the case's fingerprint, so an edited case can't reuse old rows.
-   * Rows that an older runner wrote have none.
+   * `case` and `agent`: fingerprints of the case and of the agent, so an
+   * edited case, or new instructions or tools, can't reuse old rows. Rows that
+   * an older runner wrote lack them.
    */
-  meta: { ended: string; case?: string };
+  meta: { ended: string; case?: string; agent?: string };
 }
 
 /** A model call that got a reply, with its tokens and why it stopped. */
@@ -96,19 +101,40 @@ export function fingerprint(c: EvalCase): string {
     .slice(0, 12);
 }
 
+/**
+ * The agent as the model meets it, hashed: its instructions and its tools'
+ * descriptions and arguments. A change to either makes old rows stale.
+ */
+export function agentFingerprint(): string {
+  const notRun = () =>
+    Promise.reject(new Error("The fingerprint runs no tool."));
+  const tools = createTools({ listServices: notRun, query: notRun }).map(
+    (tool) => ({
+      name: tool.name,
+      description: tool.description,
+      args: z.toJSONSchema(tool.args),
+    }),
+  );
+  return createHash("sha256")
+    .update(JSON.stringify([instructions(NOW), tools]))
+    .digest("hex")
+    .slice(0, 12);
+}
+
 const key = (id: string, rep: number) => `${id}#${String(rep)}`;
 
 /**
  * Runs each case `reps` times, CONCURRENCY at a time, and writes a row per
  * graded run. Runs already in results.jsonl are skipped, so a second call
- * goes on where the last one stopped. Results from another model, or from
- * a case since edited, stop it with an EvalSetupError instead.
+ * goes on where the last one stopped. Results from another model, from a
+ * changed agent, or from a case since edited stop it with an EvalSetupError.
  */
 export async function runEval(options: EvalOptions): Promise<void> {
   const { cases, reps, concurrency, dir } = options;
   mkdirSync(join(dir, "traces"), { recursive: true });
   const rows = readRows(dir);
-  checkRows(rows, cases, options.model.name);
+  const agent = agentFingerprint();
+  checkRows(rows, cases, options.model.name, agent);
   const metrics = createMetrics(options.db, {
     now: () => NOW,
     log: options.log,
@@ -128,7 +154,7 @@ export async function runEval(options: EvalOptions): Promise<void> {
       job && !options.signal?.aborted;
       job = jobs.shift()
     ) {
-      await runOne(options, job.c, job.rep, metrics);
+      await runOne(options, job.c, job.rep, metrics, agent);
       finished += 1;
       options.onRun?.(finished);
     }
@@ -136,17 +162,27 @@ export async function runEval(options: EvalOptions): Promise<void> {
   await Promise.all(Array.from({ length: concurrency }, work));
 }
 
-/** Refuses to add to rows that another model wrote, or that an edited case's old version wrote. */
-function checkRows(rows: Row[], cases: EvalCase[], modelName: string): void {
+/** Refuses to add to rows that another model, another version of the agent, or an edited case's old version wrote. */
+function checkRows(
+  rows: Row[],
+  cases: EvalCase[],
+  modelName: string,
+  agent: string,
+): void {
   const other = rows.find((row) => row.model !== modelName);
   if (other) {
     throw new EvalSetupError(
       `These results come from ${other.model}, not ${modelName}. Run with --fresh to start over, or keep them and use another --variant.`,
     );
   }
-  if (rows.some((row) => row.meta.case === undefined)) {
+  if (rows.some((row) => !row.meta.case || !row.meta.agent)) {
     throw new EvalSetupError(
-      "These results were written by an older version of the eval runner, which didn't fingerprint each case. Run with --fresh to start over.",
+      "These results were written by an older version of the eval runner, which didn't fingerprint each case and the agent. Run with --fresh to start over.",
+    );
+  }
+  if (rows.some((row) => row.meta.agent !== agent)) {
+    throw new EvalSetupError(
+      "The agent's instructions or tools have changed since these results were written. Run with --fresh to start over, or use another --variant to compare the two.",
     );
   }
   for (const c of cases) {
@@ -168,6 +204,7 @@ async function runOne(
   c: EvalCase,
   rep: number,
   metrics: Metrics,
+  agent: string,
 ): Promise<void> {
   const { db, dir, log, price, retryDelayMs } = options;
   // What the model saw and said, for the trace: the last request, and its
@@ -209,7 +246,7 @@ async function runOne(
     if (options.signal?.aborted) return;
     writeTrace();
     const failure = error instanceof CeilingError ? "timeout" : "harness_error";
-    appendError(dir, c, rep, failure, errorText(error));
+    appendError(dir, price, c, rep, failure, errorText(error));
     return;
   }
   if (options.signal?.aborted) return;
@@ -224,9 +261,9 @@ async function runOne(
     writeTrace(result);
     if (failedStep?.type === "tool") {
       const why = `${failedStep.tool} ${failedStep.error}`;
-      appendError(dir, c, rep, "harness_error", why, result);
+      appendError(dir, price, c, rep, "harness_error", why, result);
     } else {
-      appendError(dir, c, rep, "api_error", failedStep?.error, result);
+      appendError(dir, price, c, rep, "api_error", failedStep?.error, result);
     }
     return;
   }
@@ -238,7 +275,7 @@ async function runOne(
     if (options.signal?.aborted) return;
     // Like the database failing while the grader builds the right chart.
     writeTrace(result);
-    appendError(dir, c, rep, "harness_error", errorText(error), result);
+    appendError(dir, price, c, rep, "harness_error", errorText(error), result);
     return;
   }
   if (options.signal?.aborted) return;
@@ -278,7 +315,7 @@ async function runOne(
     cut_off: answered.some((s) => /^max_tokens$/i.test(s.finishReason)) ? 1 : 0,
     max_out_tokens: Math.max(0, ...answered.map((s) => s.outputTokens)),
     cost_usd: costOf(result, price),
-    meta: { ended: endOf(result), case: fingerprint(c) },
+    meta: { ended: endOf(result), case: fingerprint(c), agent },
   };
   appendFileSync(join(dir, "results.jsonl"), `${JSON.stringify(row)}\n`);
 }
@@ -392,8 +429,10 @@ export function readRows(dir: string): Row[] {
     .map((line) => JSON.parse(line) as Row);
 }
 
+/** Writes why a run wasn't scored, with what its calls cost, since a failed run is billed too. */
 function appendError(
   dir: string,
+  price: Price,
   c: EvalCase,
   rep: number,
   failureClass: string,
@@ -412,6 +451,7 @@ function appendError(
             input_tokens: result.usage.inputTokens,
             output_tokens: result.usage.outputTokens,
           },
+          cost_usd: costOf(result, price),
         }
       : {}),
   };
@@ -436,6 +476,20 @@ export function summarize(
   const rows = readRows(dir).filter((row) => asked(row.prompt_id, row.rep));
   const lines: string[] = [];
 
+  // errors.jsonl keeps every failed attempt; a later success replaces it.
+  const errorsPath = join(dir, "errors.jsonl");
+  const attempts = existsSync(errorsPath)
+    ? readFileSync(errorsPath, "utf8")
+        .split("\n")
+        .filter((line) => line.trim())
+        .map((line) => JSON.parse(line) as ErrorLine)
+        .filter((e) => asked(e.prompt_id, e.rep))
+    : [];
+  const scored = new Set(rows.map((row) => key(row.prompt_id, row.rep)));
+  const failures = attempts.filter((e) => !scored.has(key(e.prompt_id, e.rep)));
+  // Every failed attempt was billed, even one that a later run replaced.
+  const failedCost = attempts.reduce((sum, e) => sum + (e.cost_usd ?? 0), 0);
+
   if (rows.length === 0) {
     lines.push("No graded runs yet.");
   } else {
@@ -448,12 +502,17 @@ export function summarize(
     const [low, high] = wilson((right / rows.length) * caseCount, caseCount);
     const pct = (x: number) => `${String(Math.round(x * 100))}%`;
     const seconds = rows.map((row) => row.latency_s).sort((a, b) => a - b);
+    const cost = rows.reduce((sum, row) => sum + row.cost_usd, failedCost);
+    const failedPart =
+      failedCost > 0
+        ? `, $${failedCost.toFixed(4)} of it in runs that weren't scored`
+        : "";
     lines.push(
       `Correct: ${String(right)} of ${String(rows.length)} runs (${pct(right / rows.length)}), on ${modelName}. 95% sure the true rate is ${pct(low)} to ${pct(high)}.`,
       METRIC_IDS.slice(1)
         .map((id) => `${id} ${String(count(id))} of ${String(rows.length)}`)
         .join(", "),
-      `Cut off: ${String(rows.filter((row) => row.cut_off === 1).length)} runs. Biggest reply: ${String(Math.max(...rows.map((row) => row.max_out_tokens)))} output tokens. Seconds: median ${(seconds[Math.floor(seconds.length / 2)] ?? 0).toFixed(1)}, max ${(seconds.at(-1) ?? 0).toFixed(1)}. Cost: $${rows.reduce((sum, row) => sum + row.cost_usd, 0).toFixed(4)}.`,
+      `Cut off: ${String(rows.filter((row) => row.cut_off === 1).length)} runs. Biggest reply: ${String(Math.max(...rows.map((row) => row.max_out_tokens)))} output tokens. Seconds: median ${(seconds[Math.floor(seconds.length / 2)] ?? 0).toFixed(1)}, max ${(seconds.at(-1) ?? 0).toFixed(1)}. Cost: $${cost.toFixed(4)}${failedPart}.`,
     );
     for (const c of cases) {
       const runs = rows.filter((row) => row.prompt_id === c.id);
@@ -468,25 +527,6 @@ export function summarize(
     }
   }
 
-  // errors.jsonl keeps every failed attempt; a later success replaces it.
-  const scored = new Set(rows.map((row) => key(row.prompt_id, row.rep)));
-  const errorsPath = join(dir, "errors.jsonl");
-  const failures = existsSync(errorsPath)
-    ? readFileSync(errorsPath, "utf8")
-        .split("\n")
-        .filter((line) => line.trim())
-        .map(
-          (line) =>
-            JSON.parse(line) as {
-              prompt_id: string;
-              rep: number;
-              failure_class: string;
-              message: string;
-            },
-        )
-        .filter((e) => asked(e.prompt_id, e.rep))
-        .filter((e) => !scored.has(key(e.prompt_id, e.rep)))
-    : [];
   const unscored = new Set(failures.map((e) => key(e.prompt_id, e.rep)));
   if (unscored.size > 0) {
     lines.push(
@@ -494,6 +534,16 @@ export function summarize(
     );
   }
   return { lines, unscored: unscored.size };
+}
+
+/** One failed attempt, as errors.jsonl keeps it. */
+interface ErrorLine {
+  prompt_id: string;
+  rep: number;
+  failure_class: string;
+  message: string;
+  /** When the run got far enough to have used tokens. */
+  cost_usd?: number;
 }
 
 /** The 95% Wilson interval of a share: where the true rate likely is, given the runs. */

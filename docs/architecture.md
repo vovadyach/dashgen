@@ -72,7 +72,7 @@ Database tests run against a separate throwaway Postgres on port 5433, and Dynam
 
 | Where | Settings |
 |---|---|
-| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed` and `model:check` | `AI_MODEL` (`gemini-3.1-flash-lite`, the default, `gemini-3.5-flash-lite` or `claude-haiku-5-5`: the models DashGen has an adapter and prices for), `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` (only the one the model needs), `ALLOWED_ORIGINS`, `DATABASE_URL`, `DYNAMODB_ENDPOINT` (`http://localhost:8000`, the default), `DAILY_CAP` (150 questions a day by default), `HOST` and `PORT` (`localhost` and `3000` by default; the image sets `HOST=0.0.0.0`), `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
+| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed`, `model:check` and `eval` | `AI_MODEL` (`gemini-3.1-flash-lite`, the default, `gemini-3.5-flash-lite` or `claude-haiku-5-5`: the models DashGen has an adapter and prices for), `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` (only the one the model needs), `ALLOWED_ORIGINS`, `DATABASE_URL`, `DYNAMODB_ENDPOINT` (`http://localhost:8000`, the default), `DAILY_CAP` (150 questions a day by default), `HOST` and `PORT` (`localhost` and `3000` by default; the image sets `HOST=0.0.0.0`), `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement). A missing or invalid one stops the command that needs it |
 | `.env` at the root (from `.env.example`), read by Docker Compose | `POSTGRES_PASSWORD`, `DASHGEN_DB_PASSWORD` |
 
 ## Known limits

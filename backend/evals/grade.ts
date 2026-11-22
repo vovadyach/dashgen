@@ -34,7 +34,8 @@ export function endOf(result: RunResult): string {
 /**
  * Grades the run against the case's right answer, and against each of the
  * others that are just as right: the first that it matches wins. When it
- * matches none, the grade and its reasons are those of the main one.
+ * matches none, the grade and its reasons are those of the closest one, with
+ * the most marks, and of the main one on a tie.
  */
 export async function gradeRun(
   evalCase: EvalCase,
@@ -43,12 +44,16 @@ export async function gradeRun(
 ): Promise<Graded> {
   const main = await gradeAgainst(evalCase.expected, result, metrics);
   if (main.grade.correct) return main;
+  let closest = main;
   for (const expected of evalCase.alsoRight ?? []) {
     const graded = await gradeAgainst(expected, result, metrics);
     if (graded.grade.correct) return graded;
+    if (marks(graded) > marks(closest)) closest = graded;
   }
-  return main;
+  return closest;
 }
+
+const marks = ({ grade }: Graded) => grade.outcome + grade.chart + grade.data;
 
 async function gradeAgainst(
   expected: Expected,

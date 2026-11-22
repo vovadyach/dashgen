@@ -237,6 +237,18 @@ describe("gradeRun", () => {
     );
     assert.deepEqual(grade, ALL_RIGHT);
   });
+
+  it("gives a run that matches no right answer the marks of the closest one", async () => {
+    // c02 takes a chart over time, or a bar of totals. This bar of totals
+    // covers 6 days, not 7: the right chart choices, with the wrong data.
+    const c = find("c02");
+    const [totals] = c.alsoRight ?? [];
+    assert.ok(totals?.outcome === "chart");
+    const sixDays = await rightChart(totals.chart, "bar", 6, "day", metrics());
+    assert.ok(sixDays);
+    const { grade } = await gradeRun(c, chartRun(sixDays, "total"), metrics());
+    assert.deepEqual(grade, { correct: 0, outcome: 1, chart: 1, data: 0 });
+  });
 });
 
 describe("rightChart", () => {

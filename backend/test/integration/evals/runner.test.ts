@@ -13,6 +13,7 @@ import { after, before, describe, it } from "node:test";
 import { type EvalCase, NOW } from "../../../evals/cases.ts";
 import {
   EvalSetupError,
+  fingerprint,
   readRows,
   runEval,
   summarize,
@@ -91,12 +92,16 @@ const evalWith = (
   model: Model,
   {
     runCases = cases,
+    reps = 1,
     onStart,
     db,
+    signal,
   }: {
     runCases?: EvalCase[];
+    reps?: number;
     onStart?: (todo: number, done: number) => void;
     db?: TestDb["db"];
+    signal?: AbortSignal;
   } = {},
 ) => {
   assert.ok(testDb);
@@ -105,13 +110,14 @@ const evalWith = (
     price: { input: 1, output: 2 },
     db: db ?? testDb.db,
     cases: runCases,
-    reps: 1,
+    reps,
     // One at a time, so the runs take the script's replies in order.
     concurrency: 1,
     dir,
     log: recordingLogger().log,
     retryDelayMs: () => 0,
     ...(onStart ? { onStart } : {}),
+    ...(signal ? { signal } : {}),
   });
 };
 
@@ -154,6 +160,7 @@ describe("runEval", () => {
         message: "Gemini answered 503: overloaded",
         model: "fake-model",
         usage: { input_tokens: 0, output_tokens: 0 },
+        cost_usd: 0,
       },
       {
         prompt_id: findCase("c09").id,
@@ -162,6 +169,7 @@ describe("runEval", () => {
         message: "Claude answered 400: invalid request",
         model: "fake-model",
         usage: { input_tokens: 2_000, output_tokens: 60 },
+        cost_usd: 0.00212,
       },
     ]);
 
@@ -324,6 +332,69 @@ describe("runEval", () => {
       (error: unknown) =>
         error instanceof EvalSetupError &&
         /older version of the eval runner/.test(error.message),
+    );
+  });
+
+  it("counts the cost of the runs that weren't scored too, since they were billed", async () => {
+    const dir = freshDir();
+    await evalWith(dir, fakeModel(firstScript()));
+
+    const { lines } = summarize(dir, cases, 1, "fake-model");
+    assert.match(
+      lines[2] ?? "",
+      /Cost: \$0\.0125, \$0\.0021 of it in runs that weren't scored\.$/,
+    );
+  });
+
+  it("counts the range by case, since a case's runs mostly agree", async () => {
+    const dir = freshDir();
+    const twice = [findCase("c25"), findCase("c26")];
+    await evalWith(
+      dir,
+      // c26's second run gets no tool call twice, so it fails.
+      fakeModel([
+        declineReply(),
+        declineReply(),
+        declineReply(),
+        emptyReply(),
+        emptyReply(),
+      ]),
+      { runCases: twice, reps: 2 },
+    );
+
+    const { lines } = summarize(dir, twice, 2, "fake-model");
+    // By run, 3 of 4 would read 30% to 95%; by case, the 2 cases read wider.
+    assert.equal(
+      lines[0],
+      "Correct: 3 of 4 runs (75%), on fake-model. 95% sure the true rate is 20% to 97%.",
+    );
+  });
+
+  it("starts no run once the signal has fired, as after Ctrl+C", async () => {
+    const dir = freshDir();
+    const model = fakeModel([]);
+    const stop = new AbortController();
+    stop.abort();
+    await evalWith(dir, model, { signal: stop.signal });
+
+    assert.equal(model.requests.length, 0);
+    assert.deepEqual(readRows(dir), []);
+    assert.ok(!existsSync(join(dir, "errors.jsonl")));
+  });
+
+  it("refuses to add runs once the agent's instructions or tools have changed", async () => {
+    const c = findCase("c01");
+    const dir = freshDir();
+    writeFileSync(
+      join(dir, "results.jsonl"),
+      `${JSON.stringify({ prompt_id: c.id, rep: 0, model: "fake-model", meta: { ended: "chart", case: fingerprint(c), agent: "an-older-agent" } })}\n`,
+    );
+
+    await assert.rejects(
+      evalWith(dir, fakeModel([]), { runCases: [c] }),
+      (error: unknown) =>
+        error instanceof EvalSetupError &&
+        /instructions or tools have changed/.test(error.message),
     );
   });
 

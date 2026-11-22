@@ -12,7 +12,7 @@ AI_MODEL=claude-haiku-5-5 npm run eval -- --fresh          # from scratch
 
 - **It calls the model for real,** billed to your Claude credits: about $0.05 for all 54 runs. So people run it, never agents.
 - **It needs the test Postgres** that `make check` starts, or `docker compose --file compose.test.yaml up --detach --wait`.
-- **Results go to `.claude/hillclimb/agent/baseline/`,** out of git. A second run goes on where the last one stopped, but it refuses results from another model, or from a case that has changed since: then start over with `--fresh`, or use another `--variant`.
+- **Results go to `.claude/hillclimb/agent/baseline/`,** out of git. A second run goes on where the last one stopped, but it refuses results from another model, from a case that has changed since, or from an agent whose instructions or tools have changed: then start over with `--fresh`, or use another `--variant`. That check doesn't see the model's own settings, like its output cap, so after a change there, use another `--variant` yourself.
 - **`--fresh` moves the variant's old results to `<variant>.before-fresh`,** for every case, so it can't go with `--cases`. A run that fails, as with an expired key, never costs them.
 - **It exits with 1 when a run is left unscored,** as when the model's API or the database fails: run it again to retry those runs.
 - **To try a change to the agent,** run it with `--variant v1`, and compare the 2 scores.
@@ -47,6 +47,7 @@ What counts as right:
 - **"The last 24 hours" must be hourly,** by the tool's own rule: "For today or the last day, use 1 with hourly buckets".
 - **The title is the model's own words,** so it isn't checked.
 - **A reply cut off at the output cap is a failure,** since visitors see "No answer this time". The run is scored, and its `cut_off` is 1.
+- **A run that takes too long is a failure too,** since visitors see "That took too long": the agent's own 25 seconds ran out. It's scored as wrong.
 - **A run that ends `unavailable` isn't an answer,** since the model's API or the database failed. It goes to `errors.jsonl`, out of the score, and the next `npm run eval` tries it again.
 
 ## The cases
