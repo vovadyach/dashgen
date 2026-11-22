@@ -14,7 +14,8 @@ import { Textarea } from "./ui/textarea.tsx";
 
 /** What the page can do with the box: put a question in it, or focus it. */
 export interface QuestionBoxHandle {
-  show: (question: string) => void;
+  /** Puts a question in the box, and focuses it, or with `focus: false`, lets go of focus. */
+  show: (question: string, options?: { focus: boolean }) => void;
   focus: () => void;
 }
 
@@ -36,9 +37,10 @@ export function QuestionBox({ ref, onAsk, onStop, busy, offline }: Props) {
   useImperativeHandle(
     ref,
     () => ({
-      show: (text) => {
+      show: (text, { focus } = { focus: true }) => {
         setQuestion(text);
-        box.current?.focus();
+        if (focus) box.current?.focus();
+        else box.current?.blur();
       },
       focus: () => {
         box.current?.focus();
@@ -84,6 +86,8 @@ export function QuestionBox({ ref, onAsk, onStop, busy, offline }: Props) {
         ref={box}
         id="question"
         rows={1}
+        // Enter asks, so a phone's keyboard says Send rather than new line.
+        enterKeyHint="send"
         value={question}
         onChange={(event) => {
           setQuestion(event.target.value);
@@ -122,7 +126,8 @@ export function QuestionBox({ ref, onAsk, onStop, busy, offline }: Props) {
           aria-keyshortcuts="Escape"
         >
           <Square aria-hidden />
-          Stop
+          {/* Only the icon on a phone, so the question gets the room. */}
+          <span className="sr-only sm:not-sr-only">Stop</span>
         </Button>
       ) : (
         <Button
@@ -137,7 +142,7 @@ export function QuestionBox({ ref, onAsk, onStop, busy, offline }: Props) {
             aria-hidden
             className="motion-safe:transition-transform motion-safe:group-hover:-translate-y-0.5"
           />
-          Ask
+          <span className="sr-only sm:not-sr-only">Ask</span>
         </Button>
       )}
     </form>

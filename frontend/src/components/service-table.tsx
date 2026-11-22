@@ -57,7 +57,10 @@ export function ServiceTable({ chart }: { chart: Chart }) {
   const keyed = rows.length > 1 && (overTime || chart.type === "pie");
   const head = "py-1.5 pl-4 text-right font-medium";
   return (
-    <div className="overflow-x-auto">
+    // relative, so the cells' sr-only labels, absolutely placed, scroll with
+    // the table: without it they place themselves on the page, past this
+    // box's edge, and widen the page on a phone.
+    <div className="relative overflow-x-auto">
       <table className="w-full text-sm tabular-nums">
         <caption className="sr-only">By service</caption>
         <thead className="text-muted-foreground">
@@ -146,7 +149,7 @@ function Row({
           )}
         </td>
       )}
-      <td className="py-1.5 pl-4 text-right">
+      <td className="py-1.5 pl-4 text-right whitespace-nowrap">
         {row.size === undefined ? (
           row.value
         ) : (
@@ -170,7 +173,9 @@ function Row({
       {row.peak && <When {...row.peak} />}
       {row.latest && <When {...row.latest} />}
       {row.share !== undefined && (
-        <td className="py-1.5 pl-4 text-right">{row.share}</td>
+        <td className="py-1.5 pl-4 text-right whitespace-nowrap">
+          {row.share}
+        </td>
       )}
     </tr>
   );
@@ -179,7 +184,7 @@ function Row({
 /** A value, with when it was on a quieter line under it. */
 function When({ value, when }: { value: string; when: string }) {
   return (
-    <td className="py-1.5 pl-4 text-right">
+    <td className="py-1.5 pl-4 text-right whitespace-nowrap">
       {value}
       {/* Heard as "94, Oct 29": the comma isn't needed on screen. */}
       <span className="sr-only">, </span>

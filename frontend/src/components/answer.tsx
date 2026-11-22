@@ -1,6 +1,7 @@
 import type { ApiErrorCode, Chart } from "@dashgen/contracts";
 import type { AgChartInstance } from "ag-charts-community";
 import {
+  Check,
   CircleAlert,
   MessageCircleQuestion,
   RotateCcw,
@@ -10,8 +11,10 @@ import {
 import { lazy, type ReactNode, Suspense, useId, useState } from "react";
 
 import { formatValue, formatX, xValuesOf } from "../chart/format.ts";
+import { chartHeight } from "../chart/legend.ts";
 import { summary } from "../chart/summary.ts";
 import { cn } from "../lib/utils.ts";
+import { describeStep } from "../steps.ts";
 import type { Pins } from "../pins.ts";
 import type {
   Answer as RunAnswer,
@@ -91,24 +94,29 @@ export function Answer({ run, onAsk, pins, offline }: Props) {
     );
   }
   const working = run.status === "asking" || run.status === "streaming";
+  // The latest step, shown in the waiting sign, so a phone sees progress
+  // while the steps themselves are below the fold.
+  const latest = run.status === "streaming" ? run.steps.at(-1) : undefined;
+  const step = latest && describeStep(latest);
   const shown = run.status === "answered" ? run.answer : run.previous;
-  if (!shown) return working ? <Waiting /> : null;
+  if (!shown) return working ? <Waiting step={step} /> : null;
   // While the next question runs, the last answer stays, dimmed and out of
   // reach, so the page doesn't go blank, with the waiting sign over it.
   // Stopping brings it back. A short answer's card, like a question back,
-  // stretches to hold the sign.
+  // stretches to hold the sign. grid-cols-1, so a wide table in the card
+  // scrolls in its box rather than widen the grid's column, and the page.
   return (
     <div className="relative">
       <div
         inert={working}
         className={cn(
-          "grid transition-opacity",
+          "grid grid-cols-1 transition-opacity",
           working && "min-h-48 opacity-40",
         )}
       >
         <ShownCard shown={shown} onAsk={onAsk} pins={pins} offline={offline} />
       </div>
-      {working && <WaitingOver />}
+      {working && <WaitingOver step={step} />}
     </div>
   );
 }
@@ -170,7 +178,7 @@ function Outcome({
   }
 }
 
-function Waiting() {
+function Waiting({ step }: { step?: string | undefined }) {
   return (
     <Card
       aria-busy
@@ -180,7 +188,22 @@ function Waiting() {
       <p className="text-sm text-muted-foreground">
         The chart appears here when the agent is done.
       </p>
+      <LatestStep step={step} />
     </Card>
+  );
+}
+
+/** The latest step, for the eye only: the steps panel already reads each one out. */
+function LatestStep({ step }: { step?: string | undefined }) {
+  if (!step) return null;
+  return (
+    <p
+      aria-hidden
+      className="flex max-w-72 items-start gap-1.5 px-4 text-xs wrap-anywhere text-muted-foreground"
+    >
+      <Check className="mt-px size-3.5 shrink-0 text-success" />
+      {step}
+    </p>
   );
 }
 
@@ -189,17 +212,19 @@ function Waiting() {
  * stays at full strength. On a small card of its own, so the answer under
  * it doesn't show through the words.
  */
-function WaitingOver() {
+function WaitingOver({ step }: { step?: string | undefined }) {
+  // On a phone, at the top of the last answer: its middle is off the screen.
   return (
     <div
       role="status"
-      className="absolute inset-0 flex items-center justify-center p-2 motion-safe:animate-in motion-safe:fade-in"
+      className="absolute inset-0 flex items-start justify-center p-2 pt-6 motion-safe:animate-in motion-safe:fade-in sm:items-center sm:pt-2"
     >
       <div className="flex flex-col items-center gap-3 rounded-xl border bg-card/95 px-6 py-4 text-center">
         <DrawingChart />
         <p className="text-sm text-muted-foreground">
           The new chart appears here when the agent is done.
         </p>
+        <LatestStep step={step} />
       </div>
     </div>
   );
@@ -288,7 +313,7 @@ function ChartCard({
   return (
     <Card className="motion-safe:animate-in motion-safe:fade-in">
       <CardHeader>
-        <CardTitle className="leading-snug">
+        <CardTitle className="leading-snug wrap-anywhere">
           <h2>{chart.title}</h2>
         </CardTitle>
         <CardDescription>
@@ -299,8 +324,11 @@ function ChartCard({
       </CardHeader>
       <CardContent className="space-y-4">
         <Summary chart={chart} />
-        <ChartBoundary fallback={<ChartFailed />} resetKey={chart}>
-          <Suspense fallback={<ChartLoading />}>
+        <ChartBoundary
+          fallback={<ChartFailed chart={chart} />}
+          resetKey={chart}
+        >
+          <Suspense fallback={<ChartLoading chart={chart} />}>
             <ChartView chart={chart} ref={setDrawn} />
           </Suspense>
         </ChartBoundary>
@@ -364,9 +392,13 @@ function Summary({ chart }: { chart: Chart }) {
  * Where the chart will be, the chart's height, while its code downloads: a
  * pinned chart or a link can open before it's there.
  */
-function ChartLoading() {
+function ChartLoading({ chart }: { chart: Chart }) {
+  const height = chartHeight(chart);
   return (
-    <div className="flex h-72 items-center justify-center sm:h-96">
+    <div
+      className={cn("flex items-center justify-center", height.className)}
+      style={height.style}
+    >
       <DrawingChart />
       <p role="status" className="sr-only">
         Loading the chart…
@@ -376,11 +408,16 @@ function ChartLoading() {
 }
 
 /** Where the chart would be, when its code didn't load. */
-function ChartFailed() {
+function ChartFailed({ chart }: { chart: Chart }) {
+  const height = chartHeight(chart);
   return (
     <p
       role="alert"
-      className="flex h-72 items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground sm:h-96"
+      className={cn(
+        "flex items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground",
+        height.className,
+      )}
+      style={height.style}
     >
       <CircleAlert className="size-4 shrink-0 text-destructive" aria-hidden />
       The chart couldn't load. Reload the page to try again. Its numbers are
@@ -444,12 +481,18 @@ function DataTable({ chart }: { chart: Chart }) {
   }
   const xs = xValuesOf(chart);
   return (
-    <div className="overflow-x-auto text-sm">
+    // relative, like the service table's box, so no label inside widens the page.
+    <div className="relative overflow-x-auto text-sm">
       <table className="w-full tabular-nums">
         <caption className="sr-only">{EVERY_VALUE[chart.x]}</caption>
         <thead className="text-muted-foreground">
           <tr className="border-b">
-            <th scope="col" className="py-1.5 pr-4 text-left font-medium">
+            {/* The day or hour stays on 1 line, so a phone's rows stay short:
+                the table scrolls sideways instead. */}
+            <th
+              scope="col"
+              className="py-1.5 pr-4 text-left font-medium whitespace-nowrap"
+            >
               {X_HEADINGS[chart.x]}
             </th>
             {chart.series.map((series) => (
@@ -466,13 +509,19 @@ function DataTable({ chart }: { chart: Chart }) {
         <tbody>
           {xs.map((x) => (
             <tr key={x} className="border-b last:border-0">
-              <th scope="row" className="py-1.5 pr-4 text-left font-normal">
+              <th
+                scope="row"
+                className="py-1.5 pr-4 text-left font-normal whitespace-nowrap"
+              >
                 {formatX(x, chart.x)}
               </th>
               {chart.series.map((series) => {
                 const point = rows.get(x)?.get(series.name);
                 return (
-                  <td key={series.name} className="py-1.5 pl-4 text-right">
+                  <td
+                    key={series.name}
+                    className="py-1.5 pl-4 text-right whitespace-nowrap"
+                  >
                     {point ? formatValue(point.y, chart.unit) : "–"}
                     {point?.partial && " (partial)"}
                   </td>
@@ -506,7 +555,7 @@ function Choices({
     <Card className="motion-safe:animate-in motion-safe:fade-in">
       <CardHeader className="flex items-start gap-3 [&_svg]:mt-0.5 [&_svg]:size-5 [&_svg]:shrink-0 [&_svg]:text-primary">
         {icon}
-        <h2 className="leading-snug font-semibold">{message}</h2>
+        <h2 className="leading-snug font-semibold wrap-anywhere">{message}</h2>
       </CardHeader>
       {questions.length > 0 && (
         <CardContent className="space-y-3">
@@ -517,7 +566,7 @@ function Choices({
                 // The model could repeat a question, so its text isn't a unique key.
                 key={index}
                 variant="outline"
-                className="h-auto py-2 text-left whitespace-normal"
+                className="h-auto max-w-full py-2 text-left whitespace-normal wrap-anywhere"
                 disabled={offline}
                 onClick={() => {
                   onAsk(question);

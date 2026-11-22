@@ -20,6 +20,7 @@ import {
   formatX,
   xValuesOf,
 } from "./format.ts";
+import { hasLegend, LEGEND_ROW, legendEntries } from "./legend.ts";
 import { type Colors, type Mode, PALETTE, seriesColor } from "./palette.ts";
 import { peak } from "./summary.ts";
 
@@ -56,38 +57,104 @@ const MIN_DOT_ROOM = 14;
 export const dayLabelsFor = (width: number): number =>
   Math.max(2, Math.floor((width - Y_AXIS_WIDTH) / 60));
 
+/**
+ * The legend, under the chart. Left to its default height, AG Charts pages it
+ * on a phone, 2 services at a time, or drops it, and a pie's slices have no
+ * other names. So it gets a line per entry, and the chart gets taller for them
+ * there (chartHeight()). On a wider chart, the entries share lines.
+ */
+const legend = (chart: Chart) =>
+  ({
+    enabled: hasLegend(chart),
+    position: "bottom",
+    maxHeight: legendEntries(chart) * LEGEND_ROW + 40,
+  }) as const;
+
+/** Narrower than this, bars that compare services lie across. */
+const ACROSS_BELOW = 480;
+
+/** The width a chart is drawn for before it's measured. */
+const DEFAULT_WIDTH = 640;
+
+/**
+ * Whether bars that compare services lie across: on a phone, upright ones
+ * leave room for only some of their names. A width not measured yet counts
+ * as wide.
+ */
+export const liesAcross = (chart: Chart, width = DEFAULT_WIDTH) =>
+  chart.type === "bar" && chart.x === "category" && width < ACROSS_BELOW;
+
+/** A name over 12 characters, broken onto 2 lines at the hyphen nearest its middle. */
+function twoLines(name: string): string {
+  if (name.length <= 12) return name;
+  let best = -1;
+  for (let i = name.indexOf("-"); i !== -1; i = name.indexOf("-", i + 1)) {
+    if (
+      best === -1 ||
+      Math.abs(i - name.length / 2) < Math.abs(best - name.length / 2)
+    )
+      best = i;
+  }
+  return best === -1
+    ? name
+    : `${name.slice(0, best + 1)}\n${name.slice(best + 1)}`;
+}
+
+/** Room for the names' longest line, at about 7 px a character, up to 45% of the chart. */
+const nameRoom = (names: string[], width: number) =>
+  Math.min(
+    Math.round(width * 0.45),
+    Math.max(
+      ...names.flatMap((name) => name.split("\n")).map((line) => line.length),
+    ) *
+      7 +
+      16,
+  );
+
+/** About a phone's plot height, which bars that lie across share. */
+const PHONE_PLOT_HEIGHT = 240;
+
 /** The AG Charts options that draw `chart` in the `mode` theme, `width` pixels wide. */
 export function chartOptions(
   chart: Chart,
   mode: Mode,
-  width = 640,
+  width = DEFAULT_WIDTH,
 ): AgChartOptions {
   const colors = PALETTE[mode];
   const common = {
     theme: theme(colors, mode),
     background: { fill: colors.surface },
+    // AG Charts' own minimum, 300 px each way, is wider than a 360 px phone
+    // leaves the chart (278 px), and taller than its height there (288 px),
+    // so the chart would stick out of its card. 200 fits phones from 320 px.
+    minWidth: 200,
+    minHeight: 200,
   };
   if (chart.type === "pie") {
     return {
       ...common,
       // Each slice is a service, and the legend names them.
-      legend: { enabled: true, position: "bottom" },
+      legend: legend(chart),
       series: [pie(chart, colors)],
     };
   }
   const plotWidth = width - Y_AXIS_WIDTH;
   const categories = xValuesOf(chart);
+  // Upright bars leave a phone room for only some services' names, so there
+  // bars that compare services lie across, with the names down the left.
+  // ChartView draws a chart anew when it turns, so no setting carries over.
+  const across = liesAcross(chart, width);
   return {
     ...common,
     // A single series needs no legend: the title names it.
-    legend: { enabled: chart.series.length > 1, position: "bottom" },
+    legend: legend(chart),
     // One tooltip lists every series at the x it points to.
     tooltip: { mode: "shared" },
     axes: {
       x: xAxis(chart, width),
       y: {
         type: "number",
-        position: "left",
+        position: across ? "bottom" : "left",
         label: {
           formatter: ({ value }: { value: unknown }) =>
             formatTick(Number(value), chart.unit),
@@ -105,11 +172,19 @@ export function chartOptions(
       }
       // AG Charts splits each band between the series. Without a fixed
       // width, which would make it cut off bars that don't fit, a share of
-      // the band keeps each bar thin.
+      // the band keeps each bar thin. Bars that lie across share the
+      // plot's height instead.
+      const room = across ? PHONE_PLOT_HEIGHT : plotWidth;
       const share =
-        ((plotWidth / categories.length) * (1 - BAR_PADDING)) /
-        chart.series.length;
-      return bar(chart, series, color, categories, MAX_BAR_WIDTH / share);
+        ((room / categories.length) * (1 - BAR_PADDING)) / chart.series.length;
+      return bar(
+        chart,
+        series,
+        color,
+        categories,
+        MAX_BAR_WIDTH / share,
+        across,
+      );
     }),
   };
 }
@@ -131,13 +206,23 @@ function xAxis(chart: Chart, width: number): AgCartesianAxisOptions {
   // its exact time, since two hours can share a label on the night the
   // clocks go back, and labeled with our own labels, which keep days in UTC.
   if (chart.type === "bar" || chart.x === "category") {
+    const across = liesAcross(chart, width);
+    // Down the left, AG Charts would give the names about a third of the
+    // chart and cut off the rest. So a long name breaks at a hyphen, and the
+    // axis gets room for the longest line.
+    const name = (value: unknown) => {
+      const label = formatX(String(value), chart.x);
+      return across ? twoLines(label) : label;
+    };
     return {
       type: "category",
-      position: "bottom",
+      position: across ? "left" : "bottom",
       paddingInner: BAR_PADDING,
+      ...(across
+        ? { thickness: nameRoom(xValuesOf(chart).map(name), width) }
+        : {}),
       label: {
-        formatter: ({ value }: { value: unknown }) =>
-          formatX(String(value), chart.x),
+        formatter: ({ value }: { value: unknown }) => name(value),
       },
     };
   }
@@ -227,10 +312,12 @@ function bar(
   color: string,
   categories: string[],
   widthRatio: number,
+  across: boolean,
 ): AgBarSeriesOptions<Datum> {
   const points = new Map(toData(series, chart).map((d) => [d.x, d]));
   return {
     type: "bar",
+    direction: across ? "horizontal" : "vertical",
     // Every series lists every category, in order, since AG Charts orders
     // the axis by first appearance. A point it lacks draws no bar.
     data: categories.map(

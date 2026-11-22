@@ -74,8 +74,11 @@ describe("the page", () => {
     act(() => {
       stream.send(STEPS[0]);
     });
-    // A plain title, then the tool's own name, time and result.
-    screen.getByText("Looked up the services and metrics");
+    // A plain title, then the tool's own name, time and result. The waiting
+    // sign shows the title too, hidden from screen readers.
+    screen.getByText("Looked up the services and metrics", {
+      ignore: "[aria-hidden]",
+    });
     screen.getByText("list_services · 15 ms");
     screen.getByText("5 services, 2 metrics");
     screen.getByText("Choosing the next step…");
@@ -339,6 +342,49 @@ describe("the page", () => {
     screen.getByRole("button", { name: "Ask" });
   });
 
+  it("shows Send on a phone keyboard's Enter key, since Enter asks", () => {
+    started();
+    renderPage();
+    expect(
+      screen.getByLabelText("Your question").getAttribute("enterkeyhint"),
+    ).toBe("send");
+  });
+
+  it("lets go of focus after asking on a touch screen, so its keyboard doesn't cover the answer", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      (query: string) =>
+        ({
+          matches: query === "(pointer: coarse)",
+          media: query,
+        }) as MediaQueryList,
+    );
+    try {
+      started();
+      const user = renderPage();
+      const box = screen.getByLabelText("Your question");
+      await user.click(
+        screen.getByRole("button", { name: "Share of errors, as a pie" }),
+      );
+      expect(document.activeElement).not.toBe(box);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("shows the latest step in the waiting sign, so a phone sees progress above the fold", async () => {
+    started();
+    const user = renderPage();
+    await ask(user);
+    const stream = await waitFor(lastStream);
+    act(() => {
+      stream.send(STEPS[0]);
+    });
+    // The steps panel says it too, so the sign's copy is hidden from screen readers.
+    const shown = screen.getAllByText("Looked up the services and metrics");
+    expect(shown.some((e) => e.closest("[aria-hidden]"))).toBe(true);
+  });
+
   it("asks with Enter, and starts a new line with Shift+Enter", async () => {
     const fetch = started();
     const user = renderPage();
@@ -354,6 +400,27 @@ describe("the page", () => {
         body: JSON.stringify({ question: "Show errors\nthis week" }),
       }),
     );
+  });
+
+  it("says that questions are saved", () => {
+    started();
+    renderPage();
+    screen.getByText("We save questions to test and improve DashGen.");
+  });
+
+  it("hides the examples on a phone once there's an answer, so it starts higher up", async () => {
+    started();
+    const user = renderPage();
+    // jsdom has no media queries, so this checks the phone-only class.
+    const examples = () => screen.getByText("Try:").closest(".max-w-3xl");
+    expect(examples()?.classList.contains("max-sm:hidden")).toBe(false);
+    await ask(user);
+    const stream = await waitFor(lastStream);
+    act(() => {
+      stream.send(CHART_OUTCOME);
+    });
+    await screen.findByRole("heading", { name: CHART.title });
+    expect(examples()?.classList.contains("max-sm:hidden")).toBe(true);
   });
 
   it("names the sample data, and asks an example question when it's clicked", async () => {

@@ -19,6 +19,7 @@ import {
   dashedPartials,
   type Datum,
 } from "../src/chart/options.ts";
+import { chartHeight } from "../src/chart/legend.ts";
 import { PALETTE } from "../src/chart/palette.ts";
 import { CHART } from "./fixtures/run.ts";
 
@@ -68,6 +69,15 @@ const TWO_SERVICES: Chart = {
       ],
     },
   ],
+};
+
+/** As many services as a chart can have. */
+const TEN_SERVICES: Chart = {
+  ...CHART,
+  series: Array.from({ length: 10 }, (_, i) => ({
+    name: `service-${String(i + 1)}`,
+    points: CHART.series[0]?.points ?? [],
+  })),
 };
 
 const BY_SERVICE: Chart = {
@@ -297,12 +307,87 @@ describe("chartOptions", () => {
     expect(options.legend?.enabled).toBe(true);
   });
 
+  it("lets a chart shrink to a small phone's width, under AG Charts' own 300 px", () => {
+    for (const options of [
+      cartesian(CHART),
+      chartOptions({ ...BY_SERVICE, type: "pie" }, "light"),
+    ]) {
+      expect(options.minWidth).toBe(200);
+      expect(options.minHeight).toBe(200);
+    }
+  });
+
+  it("gives the legend a line for each entry, so a phone never pages or drops it", () => {
+    expect(cartesian(TWO_SERVICES).legend?.maxHeight).toBe(2 * 24 + 40);
+    expect(
+      chartOptions({ ...BY_SERVICE, type: "pie" }, "light").legend?.maxHeight,
+    ).toBe(2 * 24 + 40);
+    expect(cartesian(TEN_SERVICES).legend?.maxHeight).toBe(10 * 24 + 40);
+  });
+
+  it("lays bars that compare services across on a phone, so each name gets its own line", () => {
+    const narrow = cartesian(BY_SERVICE, "light", 300);
+    expect(barsOf(BY_SERVICE, 300)[0]?.direction).toBe("horizontal");
+    expect(narrow.axes?.x?.position).toBe("left");
+    expect(narrow.axes?.y?.position).toBe("bottom");
+
+    const wide = cartesian(BY_SERVICE, "light", 640);
+    expect(barsOf(BY_SERVICE, 640)[0]?.direction).toBe("vertical");
+    expect(wide.axes?.x?.position).toBe("bottom");
+    expect(wide.axes?.y?.position).toBe("left");
+  });
+
+  it("breaks a long name lying across at its hyphen, and makes room for the longest line", () => {
+    const narrow = cartesian(BY_SERVICE, "light", 300).axes?.x as {
+      thickness?: number;
+      label: { formatter: (params: { value: unknown }) => string };
+    };
+    expect(narrow.label.formatter({ value: "notifications-worker" })).toBe(
+      "notifications-\nworker",
+    );
+    expect(narrow.label.formatter({ value: "checkout-api" })).toBe(
+      "checkout-api",
+    );
+    // The longest line is checkout-api, which at 12 characters stays whole.
+    expect(narrow.thickness).toBe(12 * 7 + 16);
+    expect(xLabel(BY_SERVICE, "notifications-worker")).toBe(
+      "notifications-worker",
+    );
+  });
+
+  it("keeps bars over time upright on a phone, with the days along the bottom", () => {
+    const daily: Chart = { ...CHART, type: "bar" };
+    expect(barsOf(daily, 300)[0]?.direction).toBe("vertical");
+    expect(cartesian(daily, "light", 300).axes?.x?.position).toBe("bottom");
+  });
+
   it("takes the dark theme's colors in the dark theme", () => {
     const options = cartesian(CHART, "dark");
     expect(options.background?.fill).toBe(PALETTE.dark.surface);
     expect((options.series?.[0] as AgLineSeriesOptions).stroke).toBe(
       PALETTE.dark.series[0],
     );
+  });
+});
+
+describe("chartHeight", () => {
+  it("grows a chart with a legend by a line per entry on a phone, so the legend doesn't squeeze it", () => {
+    for (const [chart, entries] of [
+      [TWO_SERVICES, 2],
+      [{ ...BY_SERVICE, type: "pie" }, 2],
+      [TEN_SERVICES, 10],
+    ] as const) {
+      const height = chartHeight(chart);
+      expect(height.className).toBe(
+        "h-[calc(18rem_+_var(--legend-entries)_*_1.5rem)] sm:h-96",
+      );
+      expect(height.style).toEqual({ "--legend-entries": entries });
+    }
+  });
+
+  it("keeps a chart with no legend shorter on a phone", () => {
+    expect(chartHeight(CHART)).toEqual({ className: "h-72 sm:h-96" });
+    expect(chartHeight(BY_SERVICE)).toEqual({ className: "h-72 sm:h-96" });
   });
 });
 
