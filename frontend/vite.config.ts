@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 import type { ProxyOptions } from "vite";
 import { defineConfig } from "vitest/config";
 
+import { firstPaint } from "./first-paint.ts";
+
 // The page calls /api, the paths CloudFront will forward to the backend
 // (ADR-0003). Locally, Vite forwards them to the backend on :3000.
 const api: ProxyOptions = {
@@ -21,7 +23,7 @@ const api: ProxyOptions = {
 const proxy = { "/api": api };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), firstPaint()],
   server: { proxy },
   preview: { proxy },
   // AG Charts is about 1.3 MB minified, 390 KB gzipped, so Vite's 500 KB

@@ -10,7 +10,7 @@
     <title>DashGen</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpolyline points='7,21 13,15 18,19 25,10' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232069c4'/%3E%3Cpolyline points='7,21 13,15 18,19 25,10' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
     />
     <script>
       // Picks the theme before the page draws, so a dark page never flashes
@@ -29,9 +29,317 @@
         document.documentElement.classList.toggle("dark", dark);
       })();
     </script>
+    <style>
+      /* Until the page's code arrives: the theme's colors, from src/index.css,
+         and a mini chart like a pinned card's (src/components/sparkline.tsx),
+         drawn one at a time: a line, then bars, then a pie, each fading out
+         for the next, with the cards' own timings. It shows only after 0.4 s,
+         so a fast connection never sees it, and for reduced motion it's the
+         line alone, drawn. It appears at once rather than fading in:
+         browsers don't count a fade from nothing as the page's first paint. */
+      html {
+        color-scheme: light;
+        background: #f9f9f7;
+        color: #52514e;
+      }
+      html.dark {
+        color-scheme: dark;
+        background: #0d0d0d;
+        color: #c3c2b7;
+      }
+      .loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.25rem;
+        font:
+          0.875rem system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        visibility: hidden;
+        animation: loader-in 0s 0.4s forwards;
+      }
+      .loader svg {
+        width: 12rem;
+        height: 4rem;
+        overflow: visible;
+      }
+      .loader-line {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-dasharray: 1;
+      }
+      .loader-dot {
+        fill: #2069c4;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .loader-bar {
+        fill: currentColor;
+        opacity: 0.4;
+        transform-box: fill-box;
+        transform-origin: bottom;
+      }
+      .loader-slice {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 6;
+        opacity: 0.4;
+      }
+      .loader-bar.loader-top {
+        fill: #2069c4;
+        opacity: 1;
+      }
+      .loader-slice.loader-top {
+        stroke: #2069c4;
+        opacity: 1;
+      }
+      .loader-sweep {
+        fill: none;
+        stroke: #fff;
+        stroke-width: 8;
+        stroke-dasharray: 1;
+      }
+      .loader-bars,
+      .loader-pie {
+        opacity: 0;
+      }
+      @keyframes loader-in {
+        to {
+          visibility: visible;
+        }
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .loader-lines {
+          animation: loader-lines 5.4s linear infinite;
+        }
+        .loader-bars {
+          animation: loader-bars 5.4s linear infinite;
+        }
+        .loader-pie {
+          animation: loader-pie 5.4s linear infinite;
+        }
+        .loader-line {
+          animation: loader-line 5.4s ease-in-out infinite;
+        }
+        .loader-dot {
+          animation: loader-dot 5.4s ease-out infinite;
+        }
+        .loader-bar {
+          animation: loader-bar 5.4s ease-out infinite;
+        }
+        .loader-sweep {
+          animation: loader-sweep 5.4s linear infinite;
+        }
+      }
+      /* One cycle of 5.4 s: each chart shows, draws as on a pinned card, waits
+         a moment, and fades out for the next. */
+      @keyframes loader-lines {
+        0%,
+        27% {
+          opacity: 1;
+        }
+        32%,
+        100% {
+          opacity: 0;
+        }
+      }
+      @keyframes loader-bars {
+        0%,
+        33% {
+          opacity: 0;
+        }
+        35%,
+        60% {
+          opacity: 1;
+        }
+        65%,
+        100% {
+          opacity: 0;
+        }
+      }
+      @keyframes loader-pie {
+        0%,
+        66% {
+          opacity: 0;
+        }
+        67%,
+        93% {
+          opacity: 1;
+        }
+        98%,
+        100% {
+          opacity: 0;
+        }
+      }
+      /* The line draws in 0.9 s, and its dot lands as it ends. */
+      @keyframes loader-line {
+        0% {
+          stroke-dashoffset: 1;
+        }
+        16.7%,
+        100% {
+          stroke-dashoffset: 0;
+        }
+      }
+      @keyframes loader-dot {
+        0%,
+        15.3% {
+          transform: scale(0);
+        }
+        18% {
+          transform: scale(1.4);
+        }
+        20.4%,
+        100% {
+          transform: scale(1);
+        }
+      }
+      /* Each bar grows in 0.6 s, 60 ms after the one before. */
+      @keyframes loader-bar {
+        0%,
+        35% {
+          transform: scaleY(0.1);
+        }
+        46.1%,
+        100% {
+          transform: scaleY(1);
+        }
+      }
+      /* The ring sweeps round in 0.9 s, slice after slice. */
+      @keyframes loader-sweep {
+        0%,
+        68% {
+          stroke-dashoffset: 1;
+        }
+        84.7%,
+        100% {
+          stroke-dashoffset: 0;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- React replaces the loader as the page mounts. A slow connection sees it meanwhile. -->
+    <div id="root">
+      <div class="loader">
+        <!-- A pinned card's mini chart, twice its size: 96 by 32, with 4 to spare all round. -->
+        <svg viewBox="0 0 96 32" aria-hidden="true" focusable="false">
+          <defs>
+            <!-- The pie shows as this ring sweeps round from 12 o'clock. -->
+            <mask
+              id="loader-sweep"
+              maskUnits="userSpaceOnUse"
+              x="0"
+              y="0"
+              width="96"
+              height="32"
+            >
+              <circle
+                class="loader-sweep"
+                cx="48"
+                cy="16"
+                r="11"
+                pathLength="1"
+                transform="rotate(-90 48 16)"
+              />
+            </mask>
+          </defs>
+          <g class="loader-lines">
+            <polyline
+              class="loader-line"
+              points="4,24 18.7,17 33.3,20 48,10 62.7,14 77.3,12 92,6"
+              pathLength="1"
+            />
+            <circle class="loader-dot" cx="92" cy="6" r="3" />
+          </g>
+          <g class="loader-bars">
+            <rect
+              class="loader-bar"
+              x="7.5"
+              y="18"
+              width="10.6"
+              height="10"
+              rx="1.5"
+            />
+            <rect
+              class="loader-bar"
+              x="25.1"
+              y="10"
+              width="10.6"
+              height="18"
+              rx="1.5"
+              style="animation-delay: 60ms"
+            />
+            <rect
+              class="loader-bar"
+              x="42.7"
+              y="14"
+              width="10.6"
+              height="14"
+              rx="1.5"
+              style="animation-delay: 120ms"
+            />
+            <rect
+              class="loader-bar loader-top"
+              x="60.3"
+              y="4"
+              width="10.6"
+              height="24"
+              rx="1.5"
+              style="animation-delay: 180ms"
+            />
+            <rect
+              class="loader-bar"
+              x="77.9"
+              y="16"
+              width="10.6"
+              height="12"
+              rx="1.5"
+              style="animation-delay: 240ms"
+            />
+          </g>
+          <g class="loader-pie" mask="url(#loader-sweep)">
+            <g transform="rotate(-90 48 16)">
+              <circle
+                class="loader-slice loader-top"
+                cx="48"
+                cy="16"
+                r="11"
+                pathLength="1"
+                stroke-dasharray="0.43 1"
+              />
+              <circle
+                class="loader-slice"
+                cx="48"
+                cy="16"
+                r="11"
+                pathLength="1"
+                stroke-dasharray="0.28 1"
+                stroke-dashoffset="-0.45"
+              />
+              <circle
+                class="loader-slice"
+                cx="48"
+                cy="16"
+                r="11"
+                pathLength="1"
+                stroke-dasharray="0.23 1"
+                stroke-dashoffset="-0.75"
+              />
+            </g>
+          </g>
+        </svg>
+        <p>Loading DashGen…</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

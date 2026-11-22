@@ -9,5 +9,5 @@
     "types": ["vite/client"],
     "jsx": "react-jsx"
   },
-  "include": ["src", "test", "vite.config.ts"]
+  "include": ["src", "test", "first-paint.ts", "vite.config.ts"]
 }
