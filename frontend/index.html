@@ -266,19 +266,25 @@
           health.answer = answer;
         });
         window.dashgenHealth = health;
-        // If the page's code can't load, the loader says so, rather than
-        // run forever. Only while it's there: React replaces it.
+        // If the page's code can't load, or fails as it starts, the loader
+        // says so, rather than run forever. Only while it's there: React
+        // replaces it. A script that fails to load tells its own element;
+        // one that throws, or that the browser can't read, sends the window
+        // an ErrorEvent.
         addEventListener(
           "error",
           (event) => {
             const loader = document.querySelector(".loader");
-            if (!(event.target instanceof HTMLScriptElement) || !loader) return;
+            const failed =
+              event instanceof ErrorEvent ||
+              event.target instanceof HTMLScriptElement;
+            if (!failed || !loader) return;
             loader.classList.add("loader-failed");
             loader.querySelector(".loader-text").textContent =
               "DashGen couldn't load. Reload the page.";
           },
-          // A script that fails to load tells only its own element, so
-          // the window hears it on the way down.
+          // An element's error doesn't bubble, so the window hears it on
+          // the way down.
           true,
         );
       })();

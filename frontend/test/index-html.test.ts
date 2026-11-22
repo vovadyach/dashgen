@@ -77,6 +77,16 @@ describe("index.html, while the page's code downloads", () => {
     expect(document.querySelector(".loader-failed")).not.toBeNull();
   });
 
+  it("says so too when the page's script fails as it starts, or can't be read", () => {
+    load(never);
+    window.dispatchEvent(
+      new ErrorEvent("error", { message: "Unexpected token '?'" }),
+    );
+    expect(screen.getByRole("status").textContent).toBe(
+      "DashGen couldn't load. Reload the page.",
+    );
+  });
+
   it("leaves the loader alone when something else fails to load", () => {
     load(never);
     const image = document.createElement("img");
