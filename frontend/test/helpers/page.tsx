@@ -40,10 +40,10 @@ export function stubTheBrowser() {
   });
 }
 
-/** The page, with what main.tsx gives it. */
-export function renderPage(): User {
+/** The page, with what main.tsx gives it: a query client, which a test can prepare as main.tsx does. */
+export function renderPage(client = new QueryClient()): User {
   render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={client}>
       <ThemeProvider>
         <App />
       </ThemeProvider>

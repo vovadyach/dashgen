@@ -40,11 +40,16 @@
       html {
         color-scheme: light;
         background: #f9f9f7;
-        color: #52514e;
       }
       html.dark {
         color-scheme: dark;
         background: #0d0d0d;
+      }
+      /* Its own ink, since in a build the page's CSS sets the body's. */
+      .loader {
+        color: #52514e;
+      }
+      .dark .loader {
         color: #c3c2b7;
       }
       .loader {
@@ -62,6 +67,9 @@
           sans-serif;
         visibility: hidden;
         animation: loader-in 0s 0.4s forwards;
+      }
+      .loader-failed svg {
+        display: none;
       }
       .loader svg {
         width: 12rem;
@@ -225,6 +233,56 @@
         }
       }
     </style>
+    <noscript>
+      <style>
+        .loader svg,
+        .loader-text {
+          display: none;
+        }
+      </style>
+    </noscript>
+    <script>
+      // While the page's code downloads: asks whether DashGen's backend is
+      // up, so the first render knows, and an offline banner is in the
+      // page's first frame (src/health.ts reads the answer). It's the
+      // page's own check, with the same 3 seconds to answer.
+      (() => {
+        const timeout = new AbortController();
+        setTimeout(() => {
+          timeout.abort();
+        }, 3000);
+        const health = {
+          check: fetch("/api/health", {
+            cache: "no-store",
+            signal: timeout.signal,
+          })
+            .then(async (response) => ({
+              status: response.status,
+              body: await response.json(),
+            }))
+            .catch(() => null),
+        };
+        void health.check.then((answer) => {
+          health.answer = answer;
+        });
+        window.dashgenHealth = health;
+        // If the page's code can't load, the loader says so, rather than
+        // run forever. Only while it's there: React replaces it.
+        addEventListener(
+          "error",
+          (event) => {
+            const loader = document.querySelector(".loader");
+            if (!(event.target instanceof HTMLScriptElement) || !loader) return;
+            loader.classList.add("loader-failed");
+            loader.querySelector(".loader-text").textContent =
+              "DashGen couldn't load. Reload the page.";
+          },
+          // A script that fails to load tells only its own element, so
+          // the window hears it on the way down.
+          true,
+        );
+      })();
+    </script>
   </head>
   <body>
     <!-- React replaces the loader as the page mounts. A slow connection sees it meanwhile. -->
@@ -337,7 +395,10 @@
             </g>
           </g>
         </svg>
-        <p>Loading DashGen…</p>
+        <p class="loader-text" role="status">Loading DashGen…</p>
+        <noscript>
+          <p>DashGen needs JavaScript. Turn it on, then reload the page.</p>
+        </noscript>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

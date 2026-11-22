@@ -61,15 +61,19 @@ describe("index.html's loader", () => {
     const color = (theme: string, name: string) =>
       new RegExp(`${theme} \\{[^}]*--${name}: (#\\w+);`).exec(css)?.[1] ??
       "missing";
-    for (const [selector, theme] of [
-      ["html", ":root"],
-      ["html.dark", ".dark"],
+    const rule = (selector: string) =>
+      new RegExp(`\\n {6}${selector} \\{([^}]*)\\}`).exec(html)?.[1];
+    for (const [page, ink, theme] of [
+      ["html", "\\.loader", ":root"],
+      ["html\\.dark", "\\.dark \\.loader", ".dark"],
     ] as const) {
-      const rule = new RegExp(`\\n {6}${selector} \\{([^}]*)\\}`).exec(
-        html,
-      )?.[1];
-      expect(rule).toContain(`background: ${color(theme, "background")};`);
-      expect(rule).toContain(`color: ${color(theme, "muted-foreground")};`);
+      expect(rule(page)).toContain(
+        `background: ${color(theme, "background")};`,
+      );
+      // On the loader itself: in a build, the page's CSS sets the body's.
+      expect(rule(ink)).toContain(
+        `color: ${color(theme, "muted-foreground")};`,
+      );
     }
     // The accent, the same in both themes.
     expect(/\.loader-dot \{[^}]*fill: (#\w+);/.exec(html)?.[1]).toBe(
