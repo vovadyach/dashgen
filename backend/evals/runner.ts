@@ -436,39 +436,70 @@ function trace(
 
 /** The variant's graded runs so far. */
 export function readRows(dir: string): Row[] {
-  const path = join(dir, "results.jsonl");
-  if (!existsSync(path)) return [];
-  return readFileSync(path, "utf8")
-    .split("\n")
-    .flatMap((line, i) =>
-      line.trim() ? [parseRow(line, `Line ${String(i + 1)} of ${path}`)] : [],
-    );
+  return readJsonl(join(dir, "results.jsonl"), StoredRow) as Row[];
 }
 
-/** What checkRows reads first, so a row this runner didn't write stops the eval with a clear message. */
+/**
+ * Whether the variant has graded runs, or rows it can't read, which may be
+ * worth keeping too: --fresh moves such a folder aside, and deletes the rest.
+ */
+export function hasRows(dir: string): boolean {
+  try {
+    return readRows(dir).length > 0;
+  } catch {
+    return true;
+  }
+}
+
+/** What checkRows and summarize read from a row. */
 const StoredRow = z.looseObject({
   prompt_id: z.string(),
   rep: z.number(),
   model: z.string(),
+  grade: z.record(z.string(), z.number()),
+  explanation: z.record(z.string(), z.string()),
   meta: z.looseObject({ ended: z.string() }),
 });
 
-/** One row of results.jsonl, or an EvalSetupError that says why the line isn't one. */
-function parseRow(line: string, where: string): Row {
+/** What summarize reads from a failed attempt. */
+const StoredError = z.looseObject({
+  prompt_id: z.string(),
+  rep: z.number(),
+  failure_class: z.string(),
+  message: z.string(),
+});
+
+/**
+ * Each line of a .jsonl file this runner wrote, checked against SHAPE. A
+ * line that isn't one stops the eval with a clear message, rather than being
+ * skipped, which would quietly change the count.
+ */
+function readJsonl(path: string, shape: z.ZodType): unknown[] {
+  if (!existsSync(path)) return [];
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .flatMap((line, i) =>
+      line.trim()
+        ? [parseLine(line, `Line ${String(i + 1)} of ${path}`, shape)]
+        : [],
+    );
+}
+
+function parseLine(line: string, where: string, shape: z.ZodType): unknown {
   let value: unknown;
   try {
     value = JSON.parse(line);
   } catch {
     throw new EvalSetupError(
-      `${where} can't be read, as when a run is stopped while writing it. Run with --fresh to start over: the old results move aside.`,
+      `${where} can't be read, as when a run is stopped while writing it. Run with --fresh to start over: it keeps graded results as a backup.`,
     );
   }
-  if (!StoredRow.safeParse(value).success) {
+  if (!shape.safeParse(value).success) {
     throw new EvalSetupError(
-      `${where} isn't a row this eval runner wrote. Run with --fresh to start over: the old results move aside.`,
+      `${where} isn't in the form this eval runner writes. Run with --fresh to start over: it keeps graded results as a backup.`,
     );
   }
-  return value as Row;
+  return value;
 }
 
 /** Writes why a run wasn't scored, with what its calls cost, since a failed run is billed too. */
@@ -520,13 +551,9 @@ export function summarize(
 
   // errors.jsonl keeps every failed attempt; a later success replaces it.
   const errorsPath = join(dir, "errors.jsonl");
-  const attempts = existsSync(errorsPath)
-    ? readFileSync(errorsPath, "utf8")
-        .split("\n")
-        .filter((line) => line.trim())
-        .map((line) => JSON.parse(line) as ErrorLine)
-        .filter((e) => asked(e.prompt_id, e.rep))
-    : [];
+  const attempts = (readJsonl(errorsPath, StoredError) as ErrorLine[]).filter(
+    (e) => asked(e.prompt_id, e.rep),
+  );
   const scored = new Set(rows.map((row) => key(row.prompt_id, row.rep)));
   const failures = attempts.filter((e) => !scored.has(key(e.prompt_id, e.rep)));
   // Every failed attempt was billed, even one that a later run replaced.

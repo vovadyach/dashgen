@@ -26,7 +26,7 @@ import { consoleLogger } from "../src/logger.ts";
 import { seedMetrics } from "../src/metrics/seed.ts";
 import { createTestDb, type TestDb } from "../test/helpers/db.ts";
 import { CASES, NOW } from "./cases.ts";
-import { EvalSetupError, readRows, runEval, summarize } from "./runner.ts";
+import { EvalSetupError, hasRows, runEval, summarize } from "./runner.ts";
 
 function fail(message: string, cause?: unknown): never {
   console.error(message);
@@ -143,13 +143,4 @@ try {
   process.exitCode = 1;
 } finally {
   await dropDb();
-}
-
-/** Whether the variant has graded runs, or rows it can't read, which may be worth keeping too. */
-function hasRows(dir: string): boolean {
-  try {
-    return readRows(dir).length > 0;
-  } catch {
-    return true;
-  }
 }

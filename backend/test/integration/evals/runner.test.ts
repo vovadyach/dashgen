@@ -304,7 +304,7 @@ describe("runEval", () => {
     const dir = freshDir();
     writeFileSync(
       join(dir, "results.jsonl"),
-      `${JSON.stringify({ prompt_id: findCase("c01").id, rep: 0, model: "fake-model", meta: { ended: "chart" } })}\n`,
+      `${JSON.stringify({ prompt_id: findCase("c01").id, rep: 0, model: "fake-model", grade: {}, explanation: {}, meta: { ended: "chart" } })}\n`,
     );
 
     await assert.rejects(
@@ -332,7 +332,7 @@ describe("runEval", () => {
     const dir = freshDir();
     writeFileSync(
       join(dir, "results.jsonl"),
-      `${JSON.stringify({ prompt_id: c.id, rep: 0, model: "fake-model", meta: { ended: "chart", case: fingerprint(c), code: "older-code" } })}\n`,
+      `${JSON.stringify({ prompt_id: c.id, rep: 0, model: "fake-model", grade: {}, explanation: {}, meta: { ended: "chart", case: fingerprint(c), code: "older-code" } })}\n`,
     );
 
     await assert.rejects(
