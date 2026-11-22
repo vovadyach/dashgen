@@ -440,4 +440,28 @@ describe("summarize", () => {
       "Correct: 3 of 4 runs (75%), on fake-model. 95% sure the true rate is 20% to 97%.",
     );
   });
+
+  it("names the cases wrong in every run, which fail the eval, but not one wrong only once", async () => {
+    const dir = freshDir();
+    const three = [findCase("c25"), findCase("c26"), findCase("c27")];
+    await evalWith(
+      dir,
+      // c25 is right twice, c26 wrong twice, with no tool call, and c27 wrong once.
+      fakeModel([
+        declineReply(),
+        declineReply(),
+        emptyReply(),
+        emptyReply(),
+        emptyReply(),
+        emptyReply(),
+        declineReply(),
+        emptyReply(),
+        emptyReply(),
+      ]),
+      { runCases: three, reps: 2 },
+    );
+
+    const { alwaysWrong } = summarize(dir, three, 2, "fake-model");
+    assert.deepEqual(alwaysWrong, [findCase("c26").id]);
+  });
 });

@@ -1,0 +1,67 @@
+name: Evals
+
+# The agent's evals on the real model (ADR-0019), for pull requests that
+# change what decides an answer or its grade: the files the eval's fingerprint
+# covers (backend/evals/runner.ts), and this workflow. About $0.05 of the
+# Claude credits per run.
+on:
+  pull_request:
+    paths:
+      - backend/src/agent/**
+      - backend/src/metrics/**
+      - backend/evals/**
+      - packages/contracts/src/**
+      # A package upgrade, like zod or the Claude SDK, can change what the
+      # model gets.
+      - package-lock.json
+      - .github/workflows/evals.yml
+
+# The evals only read the code, so the token can't write anything.
+permissions:
+  contents: read
+
+# A newer push to the pull request cancels the run that's still going, so
+# only the latest code spends the credits.
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    # Pull requests from forks get no secrets, so the job skips them rather
+    # than fail without the key: only the repo's own branches spend the credits.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Pinned to a commit, as in ci.yml.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund --loglevel=error
+      # The eval makes its database on the test Postgres.
+      - run: docker compose --file compose.test.yaml up --detach --wait --quiet-pull postgres
+      # bash with pipefail, so the eval's exit code fails the step past tee: a
+      # case wrong in both runs, or a run left unscored, as with an expired key.
+      - name: Run the evals
+        shell: bash
+        run: npm run --silent eval 2>&1 | tee eval.txt
+        env:
+          AI_MODEL: claude-haiku-5-5
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # The score on the run's page, whether the evals passed or not. The
+      # traces stay on the runner: to read them, run the eval locally.
+      - name: Show the score
+        if: ${{ !cancelled() }}
+        run: |
+          [ -f eval.txt ] || exit 0
+          {
+            echo '```'
+            cat eval.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
