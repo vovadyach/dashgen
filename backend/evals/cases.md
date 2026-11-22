@@ -19,7 +19,7 @@ AI_MODEL=claude-haiku-5-5 npm run eval -- --fresh          # from scratch
 
 ## Baseline
 
-On 2026-11-21, on `claude-haiku-5-5`: **47 of 54 runs right (87%)**, likely 70% to 95%, counted by case, since a case's 2 runs mostly agree. Wrong every time: c17, c20 and c23. Wrong once: c13.
+On 2026-11-21, on `claude-haiku-5-5`: **46 of 54 runs right (85%)**, likely 68% to 94%, counted by case, since a case's 2 runs mostly agree. Wrong every time: c17, c20, c23 and c24. An earlier run got 47 of 54, with c24 right and c13 wrong once: those 2 cases vary.
 
 ## The rules behind the answers
 

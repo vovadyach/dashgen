@@ -118,7 +118,7 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 - [x] `AI_MODEL` picks the model, Gemini or Claude Haiku 5.5 ([ADR-0016](decisions/0016-ai-model-setting.md)), so the evals can run on both
 - [x] 20–30 test questions, each with the expected outcome, chart type and chart data: values, dates and units, which show whether the right tool calls were made ([cases](../backend/evals/cases.md))
 - [x] Ambiguous questions where the right answer is a clarifying question
-- [x] Scored for accuracy; runs from the command line, calling the agent loop directly ([ADR-0018](decisions/0018-agent-evals.md)): 47 of 54 runs right on Claude Haiku 5.5, the first baseline
+- [x] Scored for accuracy; runs from the command line, calling the agent loop directly ([ADR-0018](decisions/0018-agent-evals.md)): 46 of 54 runs right on Claude Haiku 5.5, the first baseline
 - [ ] The evals in CI too, which then spend the Claude credits on each run
 - [ ] `eval-runner` subagent on Haiku that runs the evals and returns only the score and the failures
 - [ ] Model routing: a cheaper model first, a stronger one when its answer fails validation, kept only if evals show it saves money without losing accuracy
