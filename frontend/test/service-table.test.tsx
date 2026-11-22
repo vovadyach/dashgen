@@ -35,6 +35,20 @@ const byService = (type: "bar" | "pie", name: string): Chart => ({
 });
 
 describe("ServiceTable", () => {
+  it("scrolls in a relative box, so the cells' hidden labels can't widen a phone's page", () => {
+    render(
+      <ThemeProvider>
+        <ServiceTable chart={CHART} />
+      </ThemeProvider>,
+    );
+    // jsdom has no layout, so this checks the class that keeps the sr-only
+    // labels, absolutely placed, inside the box that scrolls (frontend/AGENTS.md).
+    const box = screen.getByRole("table").parentElement;
+    expect([...(box?.classList ?? [])]).toEqual(
+      expect.arrayContaining(["relative", "overflow-x-auto"]),
+    );
+  });
+
   it("dates a trend by its first and last points, even when it skips days", () => {
     const sparse: Chart = {
       ...CHART,

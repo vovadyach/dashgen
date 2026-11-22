@@ -50,7 +50,7 @@ export function Watchlist({ pins, onOpen, onUnpin, busy, stored }: Props) {
         )}
       </div>
       {pins.length > 0 && (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {pins.map((pin) => (
             // One pin that can't be shown leaves the others, and the page.
             <ChartBoundary
@@ -106,7 +106,7 @@ function PinCard({
       >
         {/* Room on the right for the unpin button, which sits over the
             card's corner. Only the title needs it. */}
-        <span className="line-clamp-2 pr-8 text-sm font-medium">
+        <span className="line-clamp-2 pr-8 text-sm font-medium wrap-anywhere">
           {pin.chart.title}
         </span>
         <span className="mt-2 flex items-end justify-between gap-3">

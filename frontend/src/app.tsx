@@ -14,6 +14,7 @@ import { ThemeToggle } from "./components/theme-toggle.tsx";
 import { Tips } from "./components/tips.tsx";
 import { Watchlist } from "./components/watchlist.tsx";
 import { useOffline } from "./health.ts";
+import { cn } from "./lib/utils.ts";
 import { type Pin, usePins } from "./pins.ts";
 import { useRun } from "./run.ts";
 import { chartFromLink, isChartLink } from "./share.ts";
@@ -32,9 +33,13 @@ export function App() {
 
   // A clicked choice or example goes into the box too, so the box always
   // shows what was asked. The button clicked goes away with its card, so
-  // focus moves to the box, or keyboard users would be left nowhere.
+  // focus moves to the box, or keyboard users would be left nowhere. On a
+  // touch screen the box lets go of focus instead: its keyboard would cover
+  // the answer.
   const askQuestion = (next: string) => {
-    box.current?.show(next);
+    box.current?.show(next, {
+      focus: !matchMedia("(pointer: coarse)").matches,
+    });
     setBadLink(false);
     preloadChart();
     ask(next);
@@ -114,7 +119,7 @@ export function App() {
           </p>
         </div>
         <div className="space-y-4">
-          <div className="mx-auto max-w-2xl">
+          <div className="mx-auto max-w-2xl space-y-2">
             <QuestionBox
               ref={box}
               onAsk={askQuestion}
@@ -122,9 +127,19 @@ export function App() {
               busy={busy}
               offline={offline}
             />
+            {/* The runs table keeps each question (docs/design.md). */}
+            <p className="text-center text-xs text-muted-foreground">
+              We save questions to test and improve DashGen.
+            </p>
           </div>
-          {/* Wider than the box, so the examples fit on one row. */}
-          <div className="mx-auto max-w-3xl">
+          {/* Wider than the box, so the examples fit on one row. On a phone
+              they go once there's an answer, so it starts higher up. */}
+          <div
+            className={cn(
+              "mx-auto max-w-3xl",
+              run.status !== "idle" && "max-sm:hidden",
+            )}
+          >
             <Tips onAsk={askQuestion} busy={busy} offline={offline} />
           </div>
         </div>
@@ -148,7 +163,7 @@ export function App() {
           // steps. Only the look changes: the steps panel has nothing to
           // focus, so keyboard order stays the same, and screen readers
           // still hear each step as it comes.
-          <div className="grid items-start gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] lg:[&>:only-child]:col-span-2">
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] lg:[&>:only-child]:col-span-2">
             <Steps run={run} />
             <div className="order-first min-w-0 lg:order-none">
               <Answer

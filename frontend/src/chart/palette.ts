@@ -7,7 +7,7 @@
 export const PALETTE = {
   light: {
     series: [
-      "#2a78d6",
+      "#2069c4",
       "#eb6834",
       "#1baf7a",
       "#eda100",

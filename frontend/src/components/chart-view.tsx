@@ -14,7 +14,9 @@ import {
 import { AgCharts } from "ag-charts-react";
 import { type Ref, useCallback, useMemo, useState } from "react";
 
-import { chartOptions } from "../chart/options.ts";
+import { chartHeight } from "../chart/legend.ts";
+import { chartOptions, liesAcross } from "../chart/options.ts";
+import { cn } from "../lib/utils.ts";
 import { useTheme } from "../theme.tsx";
 
 // Only the parts DashGen draws, so the rest of AG Charts stays out of the download.
@@ -60,9 +62,18 @@ export default function ChartView({ chart, ref }: Props) {
     () => chartOptions(chart, theme, width),
     [chart, theme, width],
   );
+  const height = chartHeight(chart);
   return (
     <div ref={measure}>
-      <AgCharts ref={ref} options={options} className="h-72 w-full sm:h-96" />
+      {/* A new chart when bars turn to lie across or upright, as a phone
+          turns, so no setting of the other way carries over. */}
+      <AgCharts
+        key={liesAcross(chart, width) ? "across" : "upright"}
+        ref={ref}
+        options={options}
+        className={cn("w-full", height.className)}
+        style={height.style}
+      />
     </div>
   );
 }

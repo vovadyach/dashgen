@@ -60,12 +60,12 @@ function StepRow({ step }: { step: Step }) {
           {step.tool} · {step.ms} ms
         </p>
         {!failed && (
-          <p className="font-mono text-xs break-words text-muted-foreground">
+          <p className="font-mono text-xs wrap-anywhere text-muted-foreground">
             {step.result}
           </p>
         )}
         {failed && (
-          <p className="text-sm break-words text-muted-foreground">
+          <p className="text-sm wrap-anywhere text-muted-foreground">
             {step.error}
           </p>
         )}
