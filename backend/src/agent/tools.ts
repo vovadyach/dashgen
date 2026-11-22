@@ -107,7 +107,7 @@ export function createTools(metrics: Metrics): Tool[] {
     defineTool({
       name: "create_chart",
       description:
-        "Draws the answer from result IDs, and ends the run. Over time, leave out aggregation: a line or bar chart, with a series per service. To compare services as one number each, set aggregation: a bar chart, or a pie of totals for 2 or more services. A chart shows one metric, from results over the same days and bucket. You never send numbers: they come from the results.",
+        "Draws the answer from result IDs, and ends the run, so the visitor sees only the first chart you draw. Chart over time unless the question asks for one number per service, like which is highest or lowest, a total or average for each, or a pie. Over time, leave out aggregation: a line or bar chart, with a series per service. For one number per service, set aggregation: a bar chart, or a pie of totals for 2 or more services. A chart shows one metric, from results over the same days and bucket. You never send numbers: they come from the results.",
       args: CreateChartArgs,
       run: (args) => {
         const chart = buildChart(args, results);

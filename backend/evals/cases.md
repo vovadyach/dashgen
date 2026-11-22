@@ -17,9 +17,16 @@ AI_MODEL=claude-haiku-5-5 npm run eval -- --fresh          # from scratch
 - **It exits with 1 when a run is left unscored,** as when the model's API or the database fails: run it again to retry those runs.
 - **To try a change to the agent,** run it with `--variant v1`, and compare the 2 scores.
 
-## Baseline
+## Scores
 
-On 2026-11-21, on `claude-haiku-5-5`: **46 of 54 runs right (85%)**, likely 68% to 94%, counted by case, since a case's 2 runs mostly agree. Wrong every time: c17, c20, c23 and c24. An earlier run got 47 of 54, with c24 right and c13 wrong once: those 2 cases vary.
+On 2026-11-21, on `claude-haiku-5-5`. The range is counted by case, since a case's 2 runs mostly agree.
+
+| Agent                                             | Right                    | Likely      | Wrong                             |
+| ------------------------------------------------- | ------------------------ | ----------- | --------------------------------- |
+| The first baseline                                | 46 of 54 runs (85%)      | 68% to 94%  | c17, c20, c23 and c24, every time |
+| v1: one chart of one metric, over time by default | **54 of 54 runs (100%)** | 88% to 100% | None                              |
+
+An earlier baseline run got 47 of 54, with c24 right and c13 wrong once: those 2 cases vary. v1's 2 rules were written after reading its 4 failing cases, so its score shows they fix those, not how far they carry to new questions.
 
 ## The rules behind the answers
 

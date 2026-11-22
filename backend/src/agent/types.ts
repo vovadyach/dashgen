@@ -49,7 +49,7 @@ export const CreateChartArgs = z.strictObject({
     'What is plotted, like "Errors per day, payments-service, last 7 days". Never a conclusion.',
   ),
   aggregation: Aggregation.optional().describe(
-    "Only to compare services, as one number each: total (for metrics that add up), avg, max, min or latest, over the hours of each result. Leave it out for a chart over time.",
+    "Only when the question asks for one number per service: total (for metrics that add up), avg, max, min or latest, over the hours of each result. Leave it out for a chart over time.",
   ),
 });
 export type CreateChartArgs = z.infer<typeof CreateChartArgs>;
