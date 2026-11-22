@@ -7,7 +7,7 @@ How DashGen should be built, and why. [architecture.md](architecture.md) describ
 ### What it does
 
 - Turns a plain-English question about the sample metrics into one chart (line, bar or pie), with the steps the agent took.
-- Asks a clarifying question, with clickable choices, when the question is vague, and refuses off-topic questions with a few examples. A question that names only a chart type, like "show me a pie chart", gets every service's errors over the last 7 days, in that type.
+- Asks a clarifying question, with clickable choices, when the question is vague: one about both errors and latency, since a chart shows one metric, or one that names no metric and no chart type. Refuses off-topic questions with a few examples. A question that names only a chart type, like "show me a pie chart", gets every service's errors over the last 7 days, in that type. A chart shows change over time, unless the question asks for one number per service, like which service is slowest.
 - Lets visitors pin charts to a dashboard saved in their browser. There are no accounts.
 - Later, each as its own step: CSV upload, after the frontend works, and an MCP server.
 

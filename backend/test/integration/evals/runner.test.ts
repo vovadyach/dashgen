@@ -241,26 +241,6 @@ describe("runEval", () => {
     assert.equal(unscored, 0);
   });
 
-  it("says what failed when no run was graded", async () => {
-    const dir = freshDir();
-    await evalWith(dir, fakeModel([busyError(), busyError()]), {
-      runCases: [findCase("c20")],
-    });
-
-    const { lines, unscored } = summarize(
-      dir,
-      [findCase("c20")],
-      1,
-      "fake-model",
-    );
-    assert.equal(unscored, 1);
-    assert.equal(lines[0], "No graded runs yet.");
-    assert.match(
-      lines[1] ?? "",
-      /^Not scored yet: 1 runs.*api_error, Gemini answered 503/,
-    );
-  });
-
   it("refuses to add another model's runs to these results", async () => {
     const dir = freshDir();
     await evalWith(dir, fakeModel(firstScript()));
@@ -324,7 +304,7 @@ describe("runEval", () => {
     const dir = freshDir();
     writeFileSync(
       join(dir, "results.jsonl"),
-      `${JSON.stringify({ prompt_id: findCase("c01").id, rep: 0, model: "fake-model", meta: { ended: "chart" } })}\n`,
+      `${JSON.stringify({ prompt_id: findCase("c01").id, rep: 0, model: "fake-model", grade: {}, explanation: {}, meta: { ended: "chart" } })}\n`,
     );
 
     await assert.rejects(
@@ -332,6 +312,97 @@ describe("runEval", () => {
       (error: unknown) =>
         error instanceof EvalSetupError &&
         /older version of the eval runner/.test(error.message),
+    );
+  });
+
+  it("starts no run once the signal has fired, as after Ctrl+C", async () => {
+    const dir = freshDir();
+    const model = fakeModel([]);
+    const stop = new AbortController();
+    stop.abort();
+    await evalWith(dir, model, { signal: stop.signal });
+
+    assert.equal(model.requests.length, 0);
+    assert.deepEqual(readRows(dir), []);
+    assert.ok(!existsSync(join(dir, "errors.jsonl")));
+  });
+
+  it("refuses to add runs once the code behind the answers has changed", async () => {
+    const c = findCase("c01");
+    const dir = freshDir();
+    writeFileSync(
+      join(dir, "results.jsonl"),
+      `${JSON.stringify({ prompt_id: c.id, rep: 0, model: "fake-model", grade: {}, explanation: {}, meta: { ended: "chart", case: fingerprint(c), code: "older-code" } })}\n`,
+    );
+
+    await assert.rejects(
+      evalWith(dir, fakeModel([]), { runCases: [c] }),
+      (error: unknown) =>
+        error instanceof EvalSetupError &&
+        /code behind the answers or their grades has changed/.test(
+          error.message,
+        ),
+    );
+  });
+
+  it("refuses to reuse a case's rows once the case has changed", async () => {
+    const dir = freshDir();
+    await evalWith(dir, fakeModel(firstScript()));
+    const edited = cases.map((c) =>
+      c.id === findCase("c01").id
+        ? { ...c, question: `${c.question}, please` }
+        : c,
+    );
+
+    await assert.rejects(
+      evalWith(dir, fakeModel([]), { runCases: edited }),
+      (error: unknown) =>
+        error instanceof EvalSetupError &&
+        error.message.startsWith(`Case ${findCase("c01").id} has changed`),
+    );
+  });
+});
+
+describe("summarize", () => {
+  it("says what failed when no run was graded", async () => {
+    const dir = freshDir();
+    await evalWith(dir, fakeModel([busyError(), busyError()]), {
+      runCases: [findCase("c20")],
+    });
+
+    const { lines, unscored } = summarize(
+      dir,
+      [findCase("c20")],
+      1,
+      "fake-model",
+    );
+    assert.equal(unscored, 1);
+    assert.equal(lines[0], "No graded runs yet.");
+    assert.match(
+      lines[1] ?? "",
+      /^Not scored yet: 1 runs.*api_error, Gemini answered 503/,
+    );
+  });
+
+  it("counts the cost of the runs that weren't scored, even when none was graded", async () => {
+    const dir = freshDir();
+    const c09 = findCase("c09");
+    await evalWith(
+      dir,
+      fakeModel([
+        reply(["list_services"]),
+        new ModelError("Claude answered 400: invalid request", {
+          retryable: false,
+          status: 400,
+        }),
+      ]),
+      { runCases: [c09] },
+    );
+
+    const { lines } = summarize(dir, [c09], 1, "fake-model");
+    assert.equal(
+      lines[0],
+      "No graded runs yet. Cost: $0.0021, in runs that weren't scored.",
     );
   });
 
@@ -367,51 +438,6 @@ describe("runEval", () => {
     assert.equal(
       lines[0],
       "Correct: 3 of 4 runs (75%), on fake-model. 95% sure the true rate is 20% to 97%.",
-    );
-  });
-
-  it("starts no run once the signal has fired, as after Ctrl+C", async () => {
-    const dir = freshDir();
-    const model = fakeModel([]);
-    const stop = new AbortController();
-    stop.abort();
-    await evalWith(dir, model, { signal: stop.signal });
-
-    assert.equal(model.requests.length, 0);
-    assert.deepEqual(readRows(dir), []);
-    assert.ok(!existsSync(join(dir, "errors.jsonl")));
-  });
-
-  it("refuses to add runs once the agent's instructions or tools have changed", async () => {
-    const c = findCase("c01");
-    const dir = freshDir();
-    writeFileSync(
-      join(dir, "results.jsonl"),
-      `${JSON.stringify({ prompt_id: c.id, rep: 0, model: "fake-model", meta: { ended: "chart", case: fingerprint(c), agent: "an-older-agent" } })}\n`,
-    );
-
-    await assert.rejects(
-      evalWith(dir, fakeModel([]), { runCases: [c] }),
-      (error: unknown) =>
-        error instanceof EvalSetupError &&
-        /instructions or tools have changed/.test(error.message),
-    );
-  });
-
-  it("refuses to reuse a case's rows once the case has changed", async () => {
-    const dir = freshDir();
-    await evalWith(dir, fakeModel(firstScript()));
-    const edited = cases.map((c) =>
-      c.id === findCase("c01").id
-        ? { ...c, question: `${c.question}, please` }
-        : c,
-    );
-
-    await assert.rejects(
-      evalWith(dir, fakeModel([]), { runCases: edited }),
-      (error: unknown) =>
-        error instanceof EvalSetupError &&
-        error.message.startsWith(`Case ${findCase("c01").id} has changed`),
     );
   });
 });

@@ -26,7 +26,7 @@ import { consoleLogger } from "../src/logger.ts";
 import { seedMetrics } from "../src/metrics/seed.ts";
 import { createTestDb, type TestDb } from "../test/helpers/db.ts";
 import { CASES, NOW } from "./cases.ts";
-import { EvalSetupError, readRows, runEval, summarize } from "./runner.ts";
+import { EvalSetupError, hasRows, runEval, summarize } from "./runner.ts";
 
 function fail(message: string, cause?: unknown): never {
   console.error(message);
@@ -104,7 +104,7 @@ try {
   // A folder with no graded runs, like one such failed run left, just goes,
   // so it never takes the place of a good backup.
   if (options.fresh && existsSync(dir)) {
-    if (readRows(dir).length > 0) {
+    if (hasRows(dir)) {
       const backup = `${dir}.before-fresh`;
       rmSync(backup, { recursive: true, force: true });
       renameSync(dir, backup);
