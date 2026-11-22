@@ -46,7 +46,7 @@ const freshDir = () => {
 };
 
 // A right chart, a reply cut off twice, a refusal, the model's API failing
-// twice, and a request the provider refused.
+// twice, and a request the provider refused after a first reply.
 const CASE_IDS = ["c01", "c05", "c25", "c20", "c09"];
 const cases = CASE_IDS.map(findCase);
 
@@ -69,6 +69,8 @@ const firstScript = () => [
   declineReply(),
   busyError(),
   busyError(),
+  // After a reply, a refused request is the run's own failure, so it's scored.
+  reply(["list_services"]),
   new ModelError("Claude answered 400: invalid request", {
     retryable: false,
     status: 400,
@@ -245,6 +247,30 @@ describe("runEval", () => {
         error instanceof EvalSetupError &&
         /come from fake-model, not another-model/.test(error.message),
     );
+  });
+
+  it("keeps a run whose calls got no reply at all out of the score, as with a wrong key", async () => {
+    const dir = freshDir();
+    await evalWith(
+      dir,
+      fakeModel([
+        new ModelError("Claude answered 401: invalid x-api-key", {
+          retryable: false,
+          status: 401,
+        }),
+      ]),
+      { runCases: [findCase("c01")] },
+    );
+
+    assert.deepEqual(readRows(dir), []);
+    const { lines, unscored } = summarize(
+      dir,
+      [findCase("c01")],
+      1,
+      "fake-model",
+    );
+    assert.equal(unscored, 1);
+    assert.match(lines[1] ?? "", /api_error, Claude answered 401/);
   });
 
   it("refuses to reuse a case's rows once the case has changed", async () => {

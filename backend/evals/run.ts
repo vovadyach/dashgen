@@ -59,13 +59,13 @@ if (options.fresh && options.cases) {
     "--fresh deletes the variant's results for every case, so it can't go with --cases. Use another --variant to try a few cases from scratch.",
   );
 }
+const matches = (id: string, w: string) => id === w || id.startsWith(`${w}-`);
 const wanted = options.cases?.split(",").map((id) => id.trim());
+const unknown = wanted?.filter((w) => !CASES.some((c) => matches(c.id, w)));
+if (unknown?.length) fail(`No case matches ${unknown.join(", ")}.`);
 const cases = wanted
-  ? CASES.filter((c) =>
-      wanted.some((w) => c.id === w || c.id.startsWith(`${w}-`)),
-    )
+  ? CASES.filter((c) => wanted.some((w) => matches(c.id, w)))
   : CASES;
-if (cases.length === 0) fail(`No case matches --cases ${options.cases ?? ""}.`);
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const dir = join(root, ".claude/hillclimb/agent", options.variant);
@@ -87,7 +87,10 @@ try {
   );
 }
 // Ctrl+C would skip the finally below, and leave the eval's database behind.
+// The signal stops new runs first, and makes a run still going write nothing.
+const stop = new AbortController();
 process.once("SIGINT", () => {
+  stop.abort();
   void testDb.drop().finally(() => process.exit(130));
 });
 
@@ -105,6 +108,7 @@ try {
     concurrency,
     dir,
     log: consoleLogger("error"),
+    signal: stop.signal,
     onStart: (todo, done) => {
       console.log(
         `${String(todo)} runs to do on ${settings.name}: ${String(cases.length)} cases × ${String(reps)}, ${String(done)} already done.`,

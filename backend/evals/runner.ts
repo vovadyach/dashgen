@@ -45,6 +45,8 @@ export interface EvalOptions {
   onStart?: (todo: number, done: number) => void;
   /** After each run. */
   onRun?: (finished: number) => void;
+  /** Fires on Ctrl+C: no run starts after it, and a run still going writes nothing. */
+  signal?: AbortSignal;
 }
 
 /** Results that can't be added to, like another model's: the message says what to do. */
@@ -118,7 +120,11 @@ export async function runEval(options: EvalOptions): Promise<void> {
 
   let finished = 0;
   const work = async () => {
-    for (let job = jobs.shift(); job; job = jobs.shift()) {
+    for (
+      let job = jobs.shift();
+      job && !options.signal?.aborted;
+      job = jobs.shift()
+    ) {
       await runOne(options, job.c, job.rep, metrics);
       finished += 1;
       options.onRun?.(finished);
@@ -189,22 +195,31 @@ async function runOne(
       }),
     );
   } catch (error) {
+    // After Ctrl+C, the run fails on the closed database: nothing to keep.
+    if (options.signal?.aborted) return;
     writeTrace();
     const failure = error instanceof CeilingError ? "timeout" : "harness_error";
     appendError(dir, c, rep, failure, errorText(error));
     return;
   }
+  if (options.signal?.aborted) return;
 
-  // The provider failing a call, and its one retry, is its own trouble, not
-  // the agent's. Any other failure, like a request the provider refused or a
-  // tool that broke, is the agent's or DashGen's, so it's scored.
+  // The provider failing, not the agent: a call that failed even after its
+  // one retry, or a run in which no call got any reply, as with a wrong key or
+  // spent credits. Any other failure, like a request refused after replies
+  // came, or a tool that broke, is the agent's or DashGen's, so it's scored.
   const failedStep = result.steps.findLast(isFailed);
   const lastTwo = result.steps.slice(-2);
+  const modelSteps = result.steps.filter((s) => s.type === "model");
+  const noReply =
+    modelSteps.length > 0 && modelSteps.every((s) => "error" in s);
+  const failedTwice =
+    lastTwo.length === 2 &&
+    lastTwo.every((s) => s.type === "model" && "error" in s);
   if (
     result.end.type === "error" &&
     result.end.code === "unavailable" &&
-    lastTwo.length === 2 &&
-    lastTwo.every((s) => s.type === "model" && "error" in s)
+    (failedTwice || noReply)
   ) {
     writeTrace(result);
     appendError(dir, c, rep, "api_error", failedStep?.error, result);
@@ -215,11 +230,13 @@ async function runOne(
   try {
     graded = await gradeRun(c, result, metrics);
   } catch (error) {
+    if (options.signal?.aborted) return;
     // Like the database failing while the grader builds the right chart.
     writeTrace(result);
     appendError(dir, c, rep, "harness_error", errorText(error), result);
     return;
   }
+  if (options.signal?.aborted) return;
   const { grade, explanation } = graded;
   if (result.end.type === "error" && failedStep && explanation.outcome) {
     explanation.outcome = `${explanation.outcome} The ${failedStep.type === "model" ? "model call" : `${failedStep.tool} call`} failed: ${failedStep.error}`;
@@ -417,7 +434,10 @@ export function summarize(
     const count = (id: string) =>
       rows.filter((row) => row.grade[id] === 1).length;
     const right = count("correct");
-    const [low, high] = wilson(right, rows.length);
+    // Counted by case, not by run: a case's runs mostly agree, so 54 runs of
+    // 27 cases say about as much as 27 answers.
+    const caseCount = new Set(rows.map((row) => row.prompt_id)).size;
+    const [low, high] = wilson((right / rows.length) * caseCount, caseCount);
     const pct = (x: number) => `${String(Math.round(x * 100))}%`;
     const seconds = rows.map((row) => row.latency_s).sort((a, b) => a - b);
     lines.push(

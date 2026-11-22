@@ -13,14 +13,14 @@ How DashGen should be built, and why. [architecture.md](architecture.md) describ
 
 ### How well
 
-|          | Requirement                                                                                           |
-| -------- | ----------------------------------------------------------------------------------------------------- |
-| Users    | Demo visitors: tens to a few hundred questions a day, with short spikes when the project is shared    |
-| Uptime   | Up only while it's being worked on or demoed. A demo video covers the rest; there's no uptime promise |
-| Budget   | Under $25 a month for AWS and Gemini together                                                         |
-| Speed    | A chart within about 10 seconds                                                                       |
-| Data     | Sample data only. Visitors can't change it                                                            |
-| Security | Public and anonymous. The main risks are cost abuse and prompt injection. No personal data is stored  |
+| | Requirement |
+|---|---|
+| Users | Demo visitors: tens to a few hundred questions a day, with short spikes when the project is shared |
+| Uptime | Up only while it's being worked on or demoed. A demo video covers the rest; there's no uptime promise |
+| Budget | Under $25 a month for AWS and Gemini together |
+| Speed | A chart within about 10 seconds |
+| Data | Sample data only. Visitors can't change it |
+| Security | Public and anonymous. The main risks are cost abuse and prompt injection. No personal data is stored |
 
 ### Out of scope for now
 
@@ -40,22 +40,22 @@ How DashGen should be built, and why. [architecture.md](architecture.md) describ
 - 3–4 model calls: listing services, one or two queries, and creating the chart, which ends the run.
 - About 8,000 input and 1,500 output tokens in total, because each call resends the conversation so far, including the tool descriptions and results. Thinking tokens are billed as output, so a model that thinks costs more.
 
-| Model                                  | Per 1M tokens, input / output | Per question | 300 questions |
-| -------------------------------------- | ----------------------------- | ------------ | ------------- |
-| `gemini-3.1-flash-lite`                | $0.25 / $1.50                 | ~$0.004      | ~$1.30        |
-| `gemini-3.8-flash`, until Dec 31, 2026 | $0.75 / $3.75                 | ~$0.012      | ~$3.50        |
-| `gemini-3.8-flash`, from Jan 1, 2027   | $1.50 / $7.50                 | ~$0.023      | ~$7.00        |
+| Model | Per 1M tokens, input / output | Per question | 300 questions |
+|---|---|---|---|
+| `gemini-3.1-flash-lite` | $0.25 / $1.50 | ~$0.004 | ~$1.30 |
+| `gemini-3.8-flash`, until Dec 31, 2026 | $0.75 / $3.75 | ~$0.012 | ~$3.50 |
+| `gemini-3.8-flash`, from Jan 1, 2027 | $1.50 / $7.50 | ~$0.023 | ~$7.00 |
 
 Prices are from [Google's pricing page](https://ai.google.dev/gemini-api/docs/pricing), checked on 2026-10-26. Both models also have a rate-limited free tier, which is enough for development.
 
 ### Other providers, per question
 
-| Model                                       | Per 1M tokens, input / output | Per question | 300 questions |
-| ------------------------------------------- | ----------------------------- | ------------ | ------------- |
-| Claude Haiku 5.5, prompts up to 100K tokens | $0.10 / $0.50                 | ~$0.0016     | ~$0.50        |
-| OpenAI `gpt-6-luna`                         | $0.10 / $0.50                 | ~$0.0016     | ~$0.50        |
-| Claude Sonnet 5.5                           | $2 / $10                      | ~$0.031      | ~$9.30        |
-| OpenAI `gpt-6-sol`                          | $2 / $10                      | ~$0.031      | ~$9.30        |
+| Model | Per 1M tokens, input / output | Per question | 300 questions |
+|---|---|---|---|
+| Claude Haiku 5.5, prompts up to 100K tokens | $0.10 / $0.50 | ~$0.0016 | ~$0.50 |
+| OpenAI `gpt-6-luna` | $0.10 / $0.50 | ~$0.0016 | ~$0.50 |
+| Claude Sonnet 5.5 | $2 / $10 | ~$0.031 | ~$9.30 |
+| OpenAI `gpt-6-sol` | $2 / $10 | ~$0.031 | ~$9.30 |
 
 Prices are from [Anthropic's](https://platform.claude.com/docs/en/about-claude/pricing) and [OpenAI's](https://developers.openai.com/api/docs/pricing) pricing pages, checked on 2026-10-26. At list prices, the smallest Claude and OpenAI models cost about a third of Gemini 3.1 Flash-Lite. Every small model fits the budget, though, so the choice comes down to how reliably each one calls tools, which step 6's evals measure, plus Gemini's free tier during development. The backend keeps the model behind one small interface, and `AI_MODEL` switches between Gemini and Claude Haiku 5.5 ([ADR-0016](decisions/0016-ai-model-setting.md)).
 
@@ -63,14 +63,14 @@ Prices are from [Anthropic's](https://platform.claude.com/docs/en/about-claude/p
 
 Approximate on-demand prices in us-east-1. Check them in the AWS pricing calculator before step 5.
 
-| Part                                         | Per hour                       |
-| -------------------------------------------- | ------------------------------ |
-| NAT gateway                                  | $0.045                         |
-| Load balancer                                | $0.0225, plus a little per use |
-| Postgres (db.t4g.micro)                      | $0.016                         |
-| One Fargate task (0.25 vCPU, 0.5 GB), on ARM | $0.0099                        |
-| Three public IPv4 addresses                  | $0.015                         |
-| **Total**                                    | **about $0.11**                |
+| Part | Per hour |
+|---|---|
+| NAT gateway | $0.045 |
+| Load balancer | $0.0225, plus a little per use |
+| Postgres (db.t4g.micro) | $0.016 |
+| One Fargate task (0.25 vCPU, 0.5 GB), on ARM | $0.0099 |
+| Three public IPv4 addresses | $0.015 |
+| **Total** | **about $0.11** |
 
 - A 4-hour session costs about $0.45, so ten sessions a month cost about $5.
 - Left running all month, the same stack would cost about $80.
@@ -140,15 +140,15 @@ flowchart LR
     backend -->|"SQL through Drizzle"| db
 ```
 
-| Part             | Its job                                                                                               | Why it exists                                                                         |
-| ---------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| CloudFront + S3  | The one address visitors use: serves the React app's files and forwards `/api/*` to the load balancer | Static files need no server, and one address means no CORS and no domain              |
-| Load balancer    | Health checks, routing to the backend                                                                 | The backend's only door, open only to our CloudFront                                  |
-| Backend          | The agent loop, the metrics queries, the rate limit, the daily cap, all validation                    | Keeps the model's key and every decision on the server                                |
-| Postgres         | The metric time series and the log of runs, in one database                                           | The data is tiny, and SQL answers questions nobody planned for                        |
-| DynamoDB         | The daily cap's count                                                                                 | It has to outlive each session's database                                             |
-| Browser storage  | Pinned charts                                                                                         | No accounts, so there's nothing to keep on the server                                 |
-| Gemini or Claude | Picks the tools and writes the chart spec                                                             | An outside service, behind one small interface in the backend, picked with `AI_MODEL` |
+| Part | Its job | Why it exists |
+|---|---|---|
+| CloudFront + S3 | The one address visitors use: serves the React app's files and forwards `/api/*` to the load balancer | Static files need no server, and one address means no CORS and no domain |
+| Load balancer | Health checks, routing to the backend | The backend's only door, open only to our CloudFront |
+| Backend | The agent loop, the metrics queries, the rate limit, the daily cap, all validation | Keeps the model's key and every decision on the server |
+| Postgres | The metric time series and the log of runs, in one database | The data is tiny, and SQL answers questions nobody planned for |
+| DynamoDB | The daily cap's count | It has to outlive each session's database |
+| Browser storage | Pinned charts | No accounts, so there's nothing to keep on the server |
+| Gemini or Claude | Picks the tools and writes the chart spec | An outside service, behind one small interface in the backend, picked with `AI_MODEL` |
 
 ### Inside the backend
 
@@ -451,9 +451,9 @@ The day's first question creates the item, and later ones add 1 only while it's 
 
 The agent's tools are its only callers. It replaces the first version, a Go service with 7 hardcoded days, and adds 30 days, hourly or daily buckets, units, a summary, and timestamps instead of dates. Its `index.ts` offers two functions, with their inputs and results as Zod schemas in `@dashgen/contracts`:
 
-| Function                                   | Result                                                                                                                                                                                                                                                                     |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `listServices()`                           | the services, plus each metric's unit and rollup                                                                                                                                                                                                                           |
+| Function | Result |
+|---|---|
+| `listServices()` | the services, plus each metric's unit and rollup |
 | `query({ service, metric, days, bucket })` | one series and its summary. `days` runs from 1 to 30, 7 by default. `bucket` is `hour` or `day`: hourly up to 2 days and daily beyond, unless the agent asks for the other. Daily buckets cover that many UTC days, today included; hourly ones the last `days` × 24 hours |
 
 For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
@@ -466,11 +466,11 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
   "days": 3,
   "bucket": "day",
   "points": [
-    { "t": "2026-10-25T00:00:00Z", "value": 38 },
-    { "t": "2026-10-26T00:00:00Z", "value": 55 },
-    { "t": "2026-10-27T00:00:00Z", "value": 16, "partial": true }
+    {"t": "2026-10-25T00:00:00Z", "value": 38},
+    {"t": "2026-10-26T00:00:00Z", "value": 55},
+    {"t": "2026-10-27T00:00:00Z", "value": 16, "partial": true}
   ],
-  "summary": { "total": 109, "avg": 1.85, "min": 1, "max": 4, "latest": 2 }
+  "summary": {"total": 109, "avg": 1.85, "min": 1, "max": 4, "latest": 2}
 }
 ```
 
@@ -481,13 +481,13 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 
 ### The agent's tools
 
-| Tool            | Arguments                                                                                             | What the backend does                                                                                                                                                                                 |
-| --------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_services` | none                                                                                                  | returns the services and metrics, with units                                                                                                                                                          |
-| `query_metrics` | `service`, `metric`, `days`, optional `bucket`                                                        | checks the names, calls `metrics.query()`, and keeps the result as `q1`, `q2` and so on. The model gets back the id, the unit, the number of points, the time range and the summary, never the points |
-| `create_chart`  | `type` (line, bar or pie), `sources` (result ids), `title`, and `aggregation` when comparing services | builds the chart from those results, which ends the run                                                                                                                                               |
-| `clarify`       | `message`, and 2–4 `choices`, each a complete question                                                | ends the run with the choices                                                                                                                                                                         |
-| `decline`       | `reason`                                                                                              | ends the run with a short refusal and fixed example questions                                                                                                                                         |
+| Tool | Arguments | What the backend does |
+|---|---|---|
+| `list_services` | none | returns the services and metrics, with units |
+| `query_metrics` | `service`, `metric`, `days`, optional `bucket` | checks the names, calls `metrics.query()`, and keeps the result as `q1`, `q2` and so on. The model gets back the id, the unit, the number of points, the time range and the summary, never the points |
+| `create_chart` | `type` (line, bar or pie), `sources` (result ids), `title`, and `aggregation` when comparing services | builds the chart from those results, which ends the run |
+| `clarify` | `message`, and 2–4 `choices`, each a complete question | ends the run with the choices |
+| `decline` | `reason` | ends the run with a short refusal and fixed example questions |
 
 - **Every answer is a tool call.** Gemini runs in its `ANY` function-calling mode, and Claude with `tool_choice` set to `any`, which rules out prose, so the backend never parses free text. A run ends with `create_chart`, `clarify` or `decline`. The model can still send a reply without a tool call. If a safety filter blocked the question or the answer, the run ends at once as a `decline`, with a fixed message and the example questions: asking again would get the same block. For any other reason, like a malformed call or no tokens left, the backend sends the same request once more, as one of the 6 calls. A second reply without a tool call ends the run with `agent_failed`.
 - **A bad argument,** such as an unknown service, goes back to the model as a tool error and counts toward the 6 calls. Arguments are strict: a misspelled one, like `day` for `days`, is an error too, never silently dropped, which would quietly change the chart.
@@ -501,21 +501,15 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 
 The React app calls the backend with REST and SSE under `/api` ([ADR-0011](decisions/0011-rest-and-sse.md)). TanStack Query runs `POST /api/ask`, and an `EventSource` reads the stream. The schemas and their types come from `@dashgen/contracts`, which the page and the backend share.
 
-| Call                                       | Does                                                                                                                                                                                         |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/ask` with `{"question": "..."}` | Checks the question (1 to 300 characters after trimming), the rate limit and the daily cap, starts a run, and answers `202 {"runId": "..."}`                                                 |
-| `GET /api/runs/:runId/events`              | Streams that run's events as SSE: a `step` per tool call, then `outcome` or `error`. Each event has an ID, and a reconnect gets only the events after its `Last-Event-ID`. Never starts work |
+| Call | Does |
+|---|---|
+| `POST /api/ask` with `{"question": "..."}` | Checks the question (1 to 300 characters after trimming), the rate limit and the daily cap, starts a run, and answers `202 {"runId": "..."}` |
+| `GET /api/runs/:runId/events` | Streams that run's events as SSE: a `step` per tool call, then `outcome` or `error`. Each event has an ID, and a reconnect gets only the events after its `Last-Event-ID`. Never starts work |
 
 Each event's data is one `RunEvent` from `@dashgen/contracts`, as JSON:
 
 ```json
-{
-  "type": "step",
-  "tool": "query_metrics",
-  "args": { "service": "payments-service", "metric": "errors", "days": 7 },
-  "result": "q1: 7 daily points",
-  "ms": 30
-}
+{"type": "step", "tool": "query_metrics", "args": {"service": "payments-service", "metric": "errors", "days": 7}, "result": "q1: 7 daily points", "ms": 30}
 ```
 
 ```json
@@ -528,10 +522,7 @@ Each event's data is one `RunEvent` from `@dashgen/contracts`, as JSON:
     "unit": "count",
     "x": "day",
     "series": [
-      {
-        "name": "payments-service",
-        "points": [{ "x": "2026-10-21T00:00:00Z", "y": 41 }]
-      }
+      {"name": "payments-service", "points": [{"x": "2026-10-21T00:00:00Z", "y": 41}]}
     ]
   }
 }
@@ -545,16 +536,16 @@ Each event's data is one `RunEvent` from `@dashgen/contracts`, as JSON:
 
 Every error carries our own code and a message that's safe to show visitors. Where it arrives depends on when it happens:
 
-| Our code           | Arrives as                                                          | When                                                                                                                                                                                      |
-| ------------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `invalid_question` | `POST /api/ask` fails, HTTP 422                                     | missing, empty, over 300 characters, or with a NUL character, which Postgres can't store                                                                                                  |
-| `rate_limited`     | `POST /api/ask` fails, HTTP 429                                     | the 11th question in a minute from one IP                                                                                                                                                 |
-| `daily_cap`        | `POST /api/ask` fails, HTTP 503, with `Retry-After`                 | the day's questions are used up                                                                                                                                                           |
-| `agent_failed`     | `error` event in the stream; HTTP stays 200                         | no chart, clarifying question or refusal within the [run's limits](#the-daily-cap)                                                                                                        |
-| `unavailable`      | `error` event in the stream, or `POST /api/ask` fails with HTTP 503 | the database or the model fails, after one retry if retrying can help. Before a run, DynamoDB can't count the question                                                                    |
-| `timeout`          | `error` event in the stream                                         | the run took over 25 seconds                                                                                                                                                              |
-| `internal_error`   | HTTP 500, or the stream's `error` event                             | a bug in DashGen. A run it ends is still saved, with its steps and tokens so far                                                                                                          |
-| `run_not_found`    | the stream fails, HTTP 404                                          | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page opens the stream once more, then says the answer was interrupted and offers to ask again |
+| Our code | Arrives as | When |
+|---|---|---|
+| `invalid_question` | `POST /api/ask` fails, HTTP 422 | missing, empty, over 300 characters, or with a NUL character, which Postgres can't store |
+| `rate_limited` | `POST /api/ask` fails, HTTP 429 | the 11th question in a minute from one IP |
+| `daily_cap` | `POST /api/ask` fails, HTTP 503, with `Retry-After` | the day's questions are used up |
+| `agent_failed` | `error` event in the stream; HTTP stays 200 | no chart, clarifying question or refusal within the [run's limits](#the-daily-cap) |
+| `unavailable` | `error` event in the stream, or `POST /api/ask` fails with HTTP 503 | the database or the model fails, after one retry if retrying can help. Before a run, DynamoDB can't count the question |
+| `timeout` | `error` event in the stream | the run took over 25 seconds |
+| `internal_error` | HTTP 500, or the stream's `error` event | a bug in DashGen. A run it ends is still saved, with its steps and tokens so far |
+| `run_not_found` | the stream fails, HTTP 404 | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page opens the stream once more, then says the answer was interrupted and offers to ask again |
 
 - **Tests and Postman must read the stream:** a failed run is a 200 response whose last event is `error`.
 - **Run events live in the backend's memory** until 5 minutes after the run ends. The outcome is also saved in `runs`.

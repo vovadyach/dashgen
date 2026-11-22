@@ -23,7 +23,7 @@ Roadmap step 6 asks for evals: questions with their right answers, run on the re
 
 - Grading is free and instant, and never disagrees with itself. A judge would cost money, and could be wrong.
 - The first baseline, on Claude Haiku 5.5, is 47 of 54 runs right (87%). It found 4 real mistakes, like showing only errors for "How is checkout-api doing?", which hides that service's latency spike.
-- 27 cases run twice can move by about 10 points by chance, so the eval catches big breaks, not small gains. More cases or runs narrow that.
+- 27 cases run twice can move by about 13 points by chance, since a case's 2 runs mostly agree, so the eval catches big breaks, not small gains. More cases or runs narrow that.
 - Nothing runs it by itself: a change that hurts the agent shows only when someone runs it. Running it in CI would spend the credits on every pull request, which is a later decision.
 - Each new case needs its right answer written by hand, and a decision whenever the model's different answer is just as right.
 - "This week" is always the week before 2026-11-18, since the clock is fixed.

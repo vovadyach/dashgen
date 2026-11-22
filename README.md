@@ -11,15 +11,14 @@ Natural-language dashboard generator. Type a question in plain English, an LLM a
 
 ## What it will do
 
-You type: _"Show errors for payments-service this week"_
+You type: *"Show errors for payments-service this week"*
 
 The agent:
-
 1. Calls `query_metrics(service="payments-service", metric="errors", days=7)`
 2. Calls `create_chart(type="line", sources=["q1"], title="Payments errors this week")`, naming the query result to draw. The backend fills in the real numbers, so the model never copies data.
 3. Streams each step to the page as it happens, then the chart, which the page draws with AG Charts.
 
-Different questions lead to different tool calls. Ask _"What's the slowest service?"_ and the agent calls `list_services`, then `query_metrics` for each service, then picks a chart type for the result.
+Different questions lead to different tool calls. Ask *"What's the slowest service?"* and the agent calls `list_services`, then `query_metrics` for each service, then picks a chart type for the result.
 
 Each question gets one chart. A vague question gets a few complete questions to pick from instead of a guess. Charts you pin form a watchlist saved in your browser, and a copied link carries its chart, so both open even while the backend is offline ([why not a chat](docs/decisions/0002-question-box.md)).
 
@@ -53,7 +52,6 @@ Where it's headed (the [status](#status) table says what exists today):
 ```
 
 **Two parts, each doing one job:**
-
 - **Frontend:** question box, the steps as they happen, the chart, pinned charts
 - **Backend:** one service that runs the agent, answers its metric queries and enforces the limits. Its modules talk as function calls, and could become separate services if they ever need to ([why one backend](docs/decisions/0005-one-backend.md))
 
@@ -61,15 +59,15 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 
 ## Status
 
-| Part                   | Tech                                                                                   | Today                                                                                                                                                                                                                                                                                                                          |
-| ---------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Backend (`backend/`)   | Node.js 26, Fastify, TypeScript, Zod                                                   | Takes a question, runs the agent, streams its steps over SSE and saves the run, with a per-IP rate limit and a daily cap of 150 questions ([API](docs/architecture.md#backend-api))                                                                                                                                            |
-| Database               | Postgres 18, Docker Compose                                                            | Runs locally: one `dashgen` database, with tables from Drizzle migrations                                                                                                                                                                                                                                                      |
-| Daily cap              | DynamoDB Local, Docker Compose                                                         | Runs locally: today's count of questions ([why DynamoDB](docs/decisions/0014-daily-cap-in-dynamodb.md))                                                                                                                                                                                                                        |
-| Data access            | Drizzle                                                                                | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data))                                                                                                                                                                                             |
-| Agent                  | Gemini (`@google/genai`) or Claude Haiku 5.5 (`@anthropic-ai/sdk`), as `AI_MODEL` says | The [five tools](docs/design.md#the-agents-tools), an adapter for each provider, and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md), [why one setting](docs/decisions/0016-ai-model-setting.md))                                                                                               |
-| Frontend (`frontend/`) | React, TypeScript, Vite, Tailwind, shadcn/ui, AG Charts, TanStack Query                | Runs locally: the question box, the steps as they stream in, and the chart, with a data table, in light and dark themes. Charts can be pinned to a watchlist, shared as a link, or downloaded as a PNG                                                                                                                         |
-| Hosting                | AWS, Terraform                                                                         | Under way (step 5): the budget alerts, Terraform's state in S3, the daily cap's table, and the page on CloudFront with the function in front of `/api/*`, which GitHub Actions deploys after each merge to `main`, and the session stack's network, up only during work sessions ([roadmap](docs/roadmap.md#5-docker-and-aws)) |
+| Part | Tech | Today |
+|---|---|---|
+| Backend (`backend/`) | Node.js 26, Fastify, TypeScript, Zod | Takes a question, runs the agent, streams its steps over SSE and saves the run, with a per-IP rate limit and a daily cap of 150 questions ([API](docs/architecture.md#backend-api)) |
+| Database | Postgres 18, Docker Compose | Runs locally: one `dashgen` database, with tables from Drizzle migrations |
+| Daily cap | DynamoDB Local, Docker Compose | Runs locally: today's count of questions ([why DynamoDB](docs/decisions/0014-daily-cap-in-dynamodb.md)) |
+| Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
+| Agent | Gemini (`@google/genai`) or Claude Haiku 5.5 (`@anthropic-ai/sdk`), as `AI_MODEL` says | The [five tools](docs/design.md#the-agents-tools), an adapter for each provider, and the loop that runs them ([why hand-written](docs/decisions/0010-agent-loop.md), [why one setting](docs/decisions/0016-ai-model-setting.md)) |
+| Frontend (`frontend/`) | React, TypeScript, Vite, Tailwind, shadcn/ui, AG Charts, TanStack Query | Runs locally: the question box, the steps as they stream in, and the chart, with a data table, in light and dark themes. Charts can be pinned to a watchlist, shared as a link, or downloaded as a PNG |
+| Hosting | AWS, Terraform | Under way (step 5): the budget alerts, Terraform's state in S3, the daily cap's table, and the page on CloudFront with the function in front of `/api/*`, which GitHub Actions deploys after each merge to `main`, and the session stack's network, up only during work sessions ([roadmap](docs/roadmap.md#5-docker-and-aws)) |
 
 ## Running locally
 

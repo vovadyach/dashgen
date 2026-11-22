@@ -19,7 +19,7 @@ AI_MODEL=claude-haiku-5-5 npm run eval -- --fresh          # from scratch
 
 ## Baseline
 
-On 2026-11-21, on `claude-haiku-5-5`: **47 of 54 runs right (87%)**, likely 76% to 94%. Wrong every time: c17, c20 and c23. Wrong once: c13.
+On 2026-11-21, on `claude-haiku-5-5`: **47 of 54 runs right (87%)**, likely 70% to 95%, counted by case, since a case's 2 runs mostly agree. Wrong every time: c17, c20 and c23. Wrong once: c13.
 
 ## The rules behind the answers
 
@@ -51,7 +51,7 @@ What counts as right:
 
 ## The cases
 
-Where it came from: **example** is one of the page's 4 examples, **real** is a question from your local runs, and **new** is a variation I wrote.
+Where it came from: **example** is one of the page's 4 examples, **real** is a question asked while testing DashGen locally, and **new** is a variation written for the eval.
 
 | #   | Source  | Question                                                     | Expected answer                                                                  |
 | --- | ------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------- |
@@ -87,5 +87,5 @@ That's 27 cases: 18 charts, 5 questions back and 4 refusals.
 
 ## Left out, on purpose
 
-- **The near-duplicates in your runs:** "show me pie char" and "just pie chart", which are the same as cases 5 and 6.
+- **The near-duplicates among the testing questions:** "show me pie char" and "just pie chart", which are the same as cases 5 and 6.
 - **Questions about a single hour or minute,** like "at 15:00 two days ago". The tools fetch whole days, so the answer would be the same chart as case 10.
