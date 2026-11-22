@@ -104,7 +104,7 @@ try {
   // A folder with no graded runs, like one such failed run left, just goes,
   // so it never takes the place of a good backup.
   if (options.fresh && existsSync(dir)) {
-    if (readRows(dir).length > 0) {
+    if (hasRows(dir)) {
       const backup = `${dir}.before-fresh`;
       rmSync(backup, { recursive: true, force: true });
       renameSync(dir, backup);
@@ -143,4 +143,13 @@ try {
   process.exitCode = 1;
 } finally {
   await dropDb();
+}
+
+/** Whether the variant has graded runs, or rows it can't read, which may be worth keeping too. */
+function hasRows(dir: string): boolean {
+  try {
+    return readRows(dir).length > 0;
+  } catch {
+    return true;
+  }
 }

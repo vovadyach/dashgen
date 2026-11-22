@@ -6,7 +6,9 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -14,8 +16,6 @@ import { join } from "node:path";
 import { z } from "zod";
 
 import { type RunResult, runAgent } from "../src/agent/index.ts";
-import { instructions } from "../src/agent/instructions.ts";
-import { createTools } from "../src/agent/tools.ts";
 import type {
   Model,
   ModelReply,
@@ -75,11 +75,11 @@ export interface Row {
   max_out_tokens: number;
   cost_usd: number;
   /**
-   * `case` and `agent`: fingerprints of the case and of the agent, so an
-   * edited case, or new instructions or tools, can't reuse old rows. Rows that
-   * an older runner wrote lack them.
+   * `case` and `code`: fingerprints of the case and of the code behind its
+   * answer and grade, so an edited case, or changed code, can't reuse old
+   * rows. Rows that an older runner wrote lack them.
    */
-  meta: { ended: string; case?: string; agent?: string };
+  meta: { ended: string; case?: string; code?: string };
 }
 
 /** A model call that got a reply, with its tokens and why it stopped. */
@@ -101,24 +101,39 @@ export function fingerprint(c: EvalCase): string {
     .slice(0, 12);
 }
 
+/** The backend folder, where the fingerprinted paths start. */
+const BACKEND = join(import.meta.dirname, "..");
+
+/** What decides a run's answer and its grade: the agent, the metrics and their seed, the shared schemas and the grader. */
+const BEHIND_THE_ANSWERS = [
+  "src/agent",
+  "src/metrics",
+  "../packages/contracts/src",
+  "evals/grade.ts",
+];
+
+/** The .ts files behind the answers and their grades, as paths from the backend folder. */
+export function fingerprintedFiles(): string[] {
+  return BEHIND_THE_ANSWERS.flatMap((path) =>
+    statSync(join(BACKEND, path)).isDirectory()
+      ? readdirSync(join(BACKEND, path), { encoding: "utf8", recursive: true })
+          .filter((name) => name.endsWith(".ts"))
+          .map((name) => join(path, name))
+      : [path],
+  ).sort();
+}
+
 /**
- * The agent as the model meets it, hashed: its instructions and its tools'
- * descriptions and arguments. A change to either makes old rows stale.
+ * Those files and the eval's clock, hashed. Any change to them, even to a
+ * comment, makes old rows stale: that false alarm costs one --fresh, while a
+ * change it missed would show an old score as a new one.
  */
-export function agentFingerprint(): string {
-  const notRun = () =>
-    Promise.reject(new Error("The fingerprint runs no tool."));
-  const tools = createTools({ listServices: notRun, query: notRun }).map(
-    (tool) => ({
-      name: tool.name,
-      description: tool.description,
-      args: z.toJSONSchema(tool.args),
-    }),
-  );
-  return createHash("sha256")
-    .update(JSON.stringify([instructions(NOW), tools]))
-    .digest("hex")
-    .slice(0, 12);
+export function codeFingerprint(): string {
+  const hash = createHash("sha256").update(NOW.toISOString());
+  for (const file of fingerprintedFiles()) {
+    hash.update(`\0${file}\0`).update(readFileSync(join(BACKEND, file)));
+  }
+  return hash.digest("hex").slice(0, 12);
 }
 
 const key = (id: string, rep: number) => `${id}#${String(rep)}`;
@@ -126,15 +141,15 @@ const key = (id: string, rep: number) => `${id}#${String(rep)}`;
 /**
  * Runs each case `reps` times, CONCURRENCY at a time, and writes a row per
  * graded run. Runs already in results.jsonl are skipped, so a second call
- * goes on where the last one stopped. Results from another model, from a
- * changed agent, or from a case since edited stop it with an EvalSetupError.
+ * goes on where the last one stopped. Results from another model, from
+ * changed code, or from a case since edited stop it with an EvalSetupError.
  */
 export async function runEval(options: EvalOptions): Promise<void> {
   const { cases, reps, concurrency, dir } = options;
   mkdirSync(join(dir, "traces"), { recursive: true });
   const rows = readRows(dir);
-  const agent = agentFingerprint();
-  checkRows(rows, cases, options.model.name, agent);
+  const code = codeFingerprint();
+  checkRows(rows, cases, options.model.name, code);
   const metrics = createMetrics(options.db, {
     now: () => NOW,
     log: options.log,
@@ -154,7 +169,7 @@ export async function runEval(options: EvalOptions): Promise<void> {
       job && !options.signal?.aborted;
       job = jobs.shift()
     ) {
-      await runOne(options, job.c, job.rep, metrics, agent);
+      await runOne(options, job.c, job.rep, metrics, code);
       finished += 1;
       options.onRun?.(finished);
     }
@@ -162,12 +177,12 @@ export async function runEval(options: EvalOptions): Promise<void> {
   await Promise.all(Array.from({ length: concurrency }, work));
 }
 
-/** Refuses to add to rows that another model, another version of the agent, or an edited case's old version wrote. */
+/** Refuses to add to rows that another model, other code, or an edited case's old version wrote. */
 function checkRows(
   rows: Row[],
   cases: EvalCase[],
   modelName: string,
-  agent: string,
+  code: string,
 ): void {
   const other = rows.find((row) => row.model !== modelName);
   if (other) {
@@ -175,14 +190,14 @@ function checkRows(
       `These results come from ${other.model}, not ${modelName}. Run with --fresh to start over, or keep them and use another --variant.`,
     );
   }
-  if (rows.some((row) => !row.meta.case || !row.meta.agent)) {
+  if (rows.some((row) => !row.meta.case || !row.meta.code)) {
     throw new EvalSetupError(
-      "These results were written by an older version of the eval runner, which didn't fingerprint each case and the agent. Run with --fresh to start over.",
+      "These results were written by an older version of the eval runner, which didn't fingerprint each case and the code. Run with --fresh to start over.",
     );
   }
-  if (rows.some((row) => row.meta.agent !== agent)) {
+  if (rows.some((row) => row.meta.code !== code)) {
     throw new EvalSetupError(
-      "The agent's instructions or tools have changed since these results were written. Run with --fresh to start over, or use another --variant to compare the two.",
+      "The code behind the answers or their grades has changed since these results were written: the agent, the metrics, the shared schemas or the grader. Run with --fresh to start over, or use another --variant to compare the two.",
     );
   }
   for (const c of cases) {
@@ -204,7 +219,7 @@ async function runOne(
   c: EvalCase,
   rep: number,
   metrics: Metrics,
-  agent: string,
+  code: string,
 ): Promise<void> {
   const { db, dir, log, price, retryDelayMs } = options;
   // What the model saw and said, for the trace: the last request, and its
@@ -315,7 +330,7 @@ async function runOne(
     cut_off: answered.some((s) => /^max_tokens$/i.test(s.finishReason)) ? 1 : 0,
     max_out_tokens: Math.max(0, ...answered.map((s) => s.outputTokens)),
     cost_usd: costOf(result, price),
-    meta: { ended: endOf(result), case: fingerprint(c), agent },
+    meta: { ended: endOf(result), case: fingerprint(c), code },
   };
   appendFileSync(join(dir, "results.jsonl"), `${JSON.stringify(row)}\n`);
 }
@@ -425,8 +440,35 @@ export function readRows(dir: string): Row[] {
   if (!existsSync(path)) return [];
   return readFileSync(path, "utf8")
     .split("\n")
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line) as Row);
+    .flatMap((line, i) =>
+      line.trim() ? [parseRow(line, `Line ${String(i + 1)} of ${path}`)] : [],
+    );
+}
+
+/** What checkRows reads first, so a row this runner didn't write stops the eval with a clear message. */
+const StoredRow = z.looseObject({
+  prompt_id: z.string(),
+  rep: z.number(),
+  model: z.string(),
+  meta: z.looseObject({ ended: z.string() }),
+});
+
+/** One row of results.jsonl, or an EvalSetupError that says why the line isn't one. */
+function parseRow(line: string, where: string): Row {
+  let value: unknown;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    throw new EvalSetupError(
+      `${where} can't be read, as when a run is stopped while writing it. Run with --fresh to start over: the old results move aside.`,
+    );
+  }
+  if (!StoredRow.safeParse(value).success) {
+    throw new EvalSetupError(
+      `${where} isn't a row this eval runner wrote. Run with --fresh to start over: the old results move aside.`,
+    );
+  }
+  return value as Row;
 }
 
 /** Writes why a run wasn't scored, with what its calls cost, since a failed run is billed too. */
@@ -491,7 +533,11 @@ export function summarize(
   const failedCost = attempts.reduce((sum, e) => sum + (e.cost_usd ?? 0), 0);
 
   if (rows.length === 0) {
-    lines.push("No graded runs yet.");
+    lines.push(
+      failedCost > 0
+        ? `No graded runs yet. Cost: $${failedCost.toFixed(4)}, in runs that weren't scored.`
+        : "No graded runs yet.",
+    );
   } else {
     const count = (id: string) =>
       rows.filter((row) => row.grade[id] === 1).length;
