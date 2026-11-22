@@ -26,7 +26,7 @@ import { consoleLogger } from "../src/logger.ts";
 import { seedMetrics } from "../src/metrics/seed.ts";
 import { createTestDb, type TestDb } from "../test/helpers/db.ts";
 import { CASES, NOW } from "./cases.ts";
-import { EvalSetupError, runEval, summarize } from "./runner.ts";
+import { EvalSetupError, readRows, runEval, summarize } from "./runner.ts";
 
 function fail(message: string, cause?: unknown): never {
   console.error(message);
@@ -54,10 +54,10 @@ if (!Number.isInteger(concurrency) || concurrency < 1) {
 if (!/^(baseline|v\d+)$/.test(options.variant)) {
   fail("--variant must be baseline, or v1, v2 and so on.");
 }
-// --fresh deletes every result of the variant, and --cases runs only a few.
+// --fresh starts the whole variant over, and --cases runs only a few.
 if (options.fresh && options.cases) {
   fail(
-    "--fresh deletes the variant's results for every case, so it can't go with --cases. Use another --variant to try a few cases from scratch.",
+    "--fresh starts the variant over for every case, moving its old results aside, so it can't go with --cases. Use another --variant to try a few cases from scratch.",
   );
 }
 const matches = (id: string, w: string) => id === w || id.startsWith(`${w}-`);
@@ -99,13 +99,19 @@ process.once("SIGINT", () => {
 });
 
 try {
-  // The old results move aside rather than go, so a run that fails, as with
-  // an expired key, never costs them: they're in <variant>.before-fresh.
+  // Old graded results move aside rather than go, so a run that fails, as
+  // with an expired key, never costs them: they're in <variant>.before-fresh.
+  // A folder with no graded runs, like one such failed run left, just goes,
+  // so it never takes the place of a good backup.
   if (options.fresh && existsSync(dir)) {
-    const backup = `${dir}.before-fresh`;
-    rmSync(backup, { recursive: true, force: true });
-    renameSync(dir, backup);
-    console.log(`The old results are in ${backup}.`);
+    if (readRows(dir).length > 0) {
+      const backup = `${dir}.before-fresh`;
+      rmSync(backup, { recursive: true, force: true });
+      renameSync(dir, backup);
+      console.log(`The old results are in ${backup}.`);
+    } else {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
   await seedMetrics(testDb.db, NOW);
   await runEval({
