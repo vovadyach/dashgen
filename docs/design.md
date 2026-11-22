@@ -550,7 +550,7 @@ Every error carries our own code and a message that's safe to show visitors. Whe
 - **Tests and Postman must read the stream:** a failed run is a 200 response whose last event is `error`.
 - **Run events live in the backend's memory** until 5 minutes after the run ends. The outcome is also saved in `runs`.
 - **The limit counts questions:** each `POST /api/ask` is one. Reading a stream isn't limited, since it never starts work.
-- **The evals call the agent loop directly** in code, without HTTP.
+- **The evals call the agent loop directly** in code, without HTTP, on sample data seeded at a fixed time, and code grades each answer ([ADR-0018](decisions/0018-agent-evals.md)).
 - **Between sessions,** CloudFront answers `503 {"status": "offline"}` itself.
 
 **`GET /api/health`** answers `200 {"status": "ok"}`, with `Cache-Control: no-store`. It doesn't touch the database, so a database blip doesn't make ECS replace a healthy task.

@@ -27,6 +27,7 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 - `npm run db:migrate` and `npm run db:seed` create the tables and the sample data. After a schema change, `npm run db:generate --workspace backend -- --name <change>` writes the SQL migration to commit with it. Never run `npx drizzle-kit` itself: it reads `backend/.env`, which `generate` doesn't need. Never edit a migration that has been merged; add a new one.
 - `npm run cost` prints each UTC day's questions and what they cost, from the `runs` table (`docs/runbooks/costs.md`).
 - `npm run model:check` sends two real requests to the model that `AI_MODEL` names, Gemini or Claude, to check the key, the model and the request format. Only the user runs it (see Rules).
+- `npm run eval` runs the agent on its 27 eval cases, twice each, on the model that `AI_MODEL` names, and prints the score ([ADR-0018](docs/decisions/0018-agent-evals.md), `backend/evals/cases.md`). It calls the model for real, about $0.05 for all 54 runs, so only the user runs it (see Rules). It needs the test Postgres that `make check` starts, and its results stay in `.claude/hillclimb/agent/`, out of git.
 - `make check` also starts a throwaway test Postgres on port 5433 and DynamoDB Local on 8001 (`compose.test.yaml`), so Docker must be running. `npm run test:unit` runs only the tests that need neither.
 
 ## Rules
@@ -34,7 +35,7 @@ These rules are for every coding agent. Claude Code reads them through `CLAUDE.m
 - Never commit, push or open PRs. The user reviews and commits everything, so leave changes uncommitted and list what changed.
 - Ask before adding a dependency, in any language.
 - Never read or edit `.env` files, not even through a script: they hold secrets. Put every new setting in `.env.example` with a placeholder.
-- Never call Gemini or Claude: every request is billed to the user's key. Only the user runs `npm run model:check` or sends questions to a running backend. Tests use the fake model in `backend/test/helpers/model.ts`, and a fake of each provider's API.
+- Never call Gemini or Claude: every request is billed to the user's key. Only the user runs `npm run model:check` or `npm run eval`, or sends questions to a running backend. Tests use the fake model in `backend/test/helpers/model.ts`, and a fake of each provider's API.
 - The repo is public. No keys, secrets or personal details in any file.
 - A choice someone could question (a library, a data model, a trade-off) gets an ADR.
 

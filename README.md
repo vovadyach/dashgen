@@ -157,6 +157,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [15. The backend signs in to RDS as its admin user](docs/decisions/0015-backend-as-rds-admin.md)
 - [16. One AI_MODEL setting, for Gemini or Claude Haiku 5.5](docs/decisions/0016-ai-model-setting.md)
 - [17. The backend's image lives in the always-on stack, and CI builds it](docs/decisions/0017-image-registry-always-on.md)
+- [18. The agent's evals are graded by code, on fixed data, and only people run them](docs/decisions/0018-agent-evals.md)
 
 ## License
 
