@@ -40,6 +40,21 @@ describe("build-page.sh", () => {
     );
   });
 
+  it("builds with any site key Cloudflare can give: up to 32 characters, with no set prefix", () => {
+    const keys = [
+      // Cloudflare's own example, in its API reference.
+      "0x4AAF00AAAABn0R22HWm-YUc",
+      `0x4${"A".repeat(29)}`,
+      "AAAAexampleSiteKey",
+    ];
+    for (const key of keys) {
+      const { status, stdout } = build(key);
+
+      assert.equal(status, 0);
+      assert.equal(stdout, `npm run build --workspace frontend with ${key}\n`);
+    }
+  });
+
   it("stops before building without a site key, as when gh variable get fails", () => {
     for (const key of [undefined, ""]) {
       const { status, stdout } = build(key);
@@ -67,29 +82,31 @@ describe("build-page.sh", () => {
     }
   });
 
-  it("stops before building on the widget's secret key, which would be public in the page, and never prints it", () => {
-    // Shaped like a secret key: 0x4 and 32 more, 35 in all.
-    const secret = `0x4AAAAAAAexampleSiteKey${"s".repeat(11)}`;
-    const { status, stdout } = build(secret);
-
-    assert.equal(status, 1);
-    assert.match(stdout, /isn't a site key.*it has 35/);
-    assert.doesNotMatch(stdout, /npm run/);
-    assert.ok(!stdout.includes(secret));
-  });
-
-  it("stops before building on anything else not shaped like a site key, like a placeholder", () => {
-    const keys = [
-      "paste-the-site-key",
-      // One short, and one with a space pasted in front.
-      "0x4AAAAAAAexampleSiteKe",
-      " 0x4AAAAAAAexampleSiteKey",
-    ];
-    for (const key of keys) {
+  it("stops before building on a key longer than a site key's 32 characters, like the widget's secret key, and never prints it", () => {
+    // One over the limit, and the length of DashGen's secret key.
+    for (const length of [33, 35]) {
+      const key = `0x4${"s".repeat(length - 3)}`;
       const { status, stdout } = build(key);
 
       assert.equal(status, 1);
-      assert.match(stdout, /isn't a site key/);
+      assert.match(
+        stdout,
+        new RegExp(`has ${length} characters, so it isn't a site key`),
+      );
+      assert.doesNotMatch(stdout, /npm run/);
+      assert.ok(!stdout.includes(key));
+    }
+  });
+
+  it("stops before building on a key with a space or line break pasted in", () => {
+    for (const key of [
+      " 0x4AAAAAAAexampleSiteKey",
+      "0x4AAAAAAAexampleSiteKey\n",
+    ]) {
+      const { status, stdout } = build(key);
+
+      assert.equal(status, 1);
+      assert.match(stdout, /a space or a line break/);
       assert.doesNotMatch(stdout, /npm run/);
     }
   });

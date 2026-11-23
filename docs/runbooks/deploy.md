@@ -31,7 +31,7 @@ gh secret set AWS_PAGE_DEPLOY_ROLE_ARN --body "$(terraform -chdir=infra/aws/alwa
 gh secret set AWS_SITE_BUCKET --body "$(terraform -chdir=infra/aws/always-on output -raw site_bucket)"
 ```
 
-It also needs one repository variable, `TURNSTILE_SITE_KEY`: the site key of DashGen's Turnstile widget ([the Turnstile widget](#the-turnstile-widget)). It's public, so it's a variable, not a secret. Without it, or with one of Cloudflare's test keys, `scripts/build-page.sh` stops before anything deploys, in the job or by hand, since the backend's real secret turns down a test key's tokens. It also stops on anything not shaped like a site key, `0x4` and 24 characters, like the secret key, which would be public in the page.
+It also needs one repository variable, `TURNSTILE_SITE_KEY`: the site key of DashGen's Turnstile widget ([the Turnstile widget](#the-turnstile-widget)). It's public, so it's a variable, not a secret. Without it, or with one of Cloudflare's test keys, `scripts/build-page.sh` stops before anything deploys, in the job or by hand, since the backend's real secret turns down a test key's tokens. It also stops on a key longer than a site key's 32 characters, like the secret key, which would be public in the page, and on one with a space or line break in it.
 
 To deploy by hand, as when the job fails, from the repo root:
 
@@ -133,11 +133,11 @@ Cloudflare Turnstile checks that a person asks each question ([ADR-0021](../deci
 1. In Cloudflare's dashboard, open Turnstile, then add a widget.
 2. Name it DashGen, add the page's hostname, which `terraform -chdir=infra/aws/always-on output -raw url` prints after `https://`, and pick the Invisible mode, so visitors never see it. Cloudflare allows that mode only when the site's privacy text references its [Turnstile Privacy Addendum](https://www.cloudflare.com/turnstile-privacy-policy/), which the note under the question box links to (`frontend/src/app.tsx`).
 3. Keep its two keys:
-   - The site key is public, and the shorter one: 24 characters. Set it as a repository variable, which the `deploy-page` job builds the page with ([the page](#the-page)):
+   - The site key is public, and the shorter one: at most 32 characters. Set it as a repository variable, which the `deploy-page` job builds the page with ([the page](#the-page)):
      ```
      gh variable set TURNSTILE_SITE_KEY --body "the-site-key"
      ```
-   - The secret key isn't, and has 35 characters. `make aws-up` takes it from your shell as `TF_VAR_turnstile_secret_key`, like the model's key ([the session stack](#the-session-stack)).
+   - The secret key isn't, and is the longer one. `make aws-up` takes it from your shell as `TF_VAR_turnstile_secret_key`, like the model's key ([the session stack](#the-session-stack)).
 
 - **Locally there's no check,** unless `backend/.env` sets `TURNSTILE_SECRET_KEY`. The page uses Cloudflare's test site key, which passes everyone, and `backend/.env.example` names Cloudflare's test secret keys.
 - **To replace the secret key,** rotate it in the widget's settings, then end the session with `make aws-down` and start the next one with the new key.
