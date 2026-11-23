@@ -100,7 +100,13 @@ export interface Tool {
    * throws on the spot. Run a reply's calls in order, one at a time, so a later
    * call can use an earlier one's result, like a chart of the queries before it.
    */
-  call: (input: unknown) => Promise<ToolResult>;
+  call: (input: unknown, options?: CallOptions) => Promise<ToolResult>;
+}
+
+/** For one tool call. */
+export interface CallOptions {
+  /** Aborts the call's reads, as when an MCP client cancels it. */
+  signal?: AbortSignal | undefined;
 }
 
 // The model, behind an interface: the agent loop talks to this, so tests pass

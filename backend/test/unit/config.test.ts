@@ -4,9 +4,11 @@ import { describe, it } from "node:test";
 import { inspect } from "node:util";
 
 import {
+  LOCAL_PAGE_URL,
   loadConfig,
   loadDynamoTarget,
   loadModelSettings,
+  loadPageUrl,
   MODELS,
 } from "../../src/config.ts";
 import { VALID_ENV } from "../fixtures/config.ts";
@@ -310,5 +312,21 @@ describe("loadModelSettings", () => {
       "claude",
     );
     assert.throws(() => loadModelSettings({}), /GEMINI_API_KEY/);
+  });
+});
+
+describe("loadPageUrl", () => {
+  it("opens the MCP server's chart links on the local page, unless PAGE_URL names another", () => {
+    assert.equal(loadPageUrl({}), LOCAL_PAGE_URL);
+    assert.equal(
+      loadPageUrl({ PAGE_URL: "https://dashgen.example/" }),
+      "https://dashgen.example/",
+    );
+  });
+
+  it("stops on a PAGE_URL that isn't a web address", () => {
+    for (const value of ["dashgen.example", "ftp://dashgen.example/"]) {
+      assert.throws(() => loadPageUrl({ PAGE_URL: value }), /PAGE_URL/);
+    }
   });
 });

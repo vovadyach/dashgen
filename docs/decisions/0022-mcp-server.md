@@ -14,10 +14,10 @@ Roadmap step 8 asks for an MCP client, like Claude Code, that answers metrics qu
 
 ## Decision
 
-- **Stdio first, then HTTP.** `npm run mcp` serves the tools over stdio, against the local Postgres, for Claude Code on a developer's machine. Then the backend serves the same tools over Streamable HTTP during AWS sessions, for Claude chat. Only the transport differs.
+- **Stdio first, then HTTP.** `backend/src/scripts/mcp.ts` serves the tools over stdio, against the local Postgres, for Claude Code on a developer's machine, which starts it with `node`, since npm's banner would go to stdout. Then the backend serves the same tools over Streamable HTTP during AWS sessions, for Claude chat. Only the transport differs.
 - **The official SDK, 1.32.2,** as a dependency of the backend, not a dev dependency, since the HTTP version runs in the backend's image. The protocol's details, like its versions and messages, stay the SDK's job.
-- **Three tools: `list_services`, `query_metrics` and `create_chart`,** from the agent's own definitions, so their names, schemas and checks can't drift apart. `clarify` and `decline` stay out: the client's model can ask its user, or refuse, by itself.
-- **`create_chart` answers with a share link** ([ADR-0013](0013-share-links-carry-the-chart.md)), which draws the chart in DashGen's page with no backend, so it opens even between sessions.
+- **Three tools: `list_services`, `query_metrics` and `create_chart`,** from the agent's own definitions, so their names, schemas and checks can't drift apart. DashGen answers `tools/list` and `tools/call` itself, so every call reaches the agent's tool, which checks it and counts it, as in the agent. `clarify` and `decline` stay out: the client's model can ask its user, or refuse, by itself.
+- **`create_chart` answers with a share link** ([ADR-0013](0013-share-links-carry-the-chart.md)), which draws the chart in DashGen's page with no backend, so it opens even between sessions. The link opens on the page at `PAGE_URL`, the local one unless it's set. It uses the page's own format, which moves to `@dashgen/contracts`, so the two can't drift apart.
 - **The code is a module of the backend, `backend/src/mcp/`,** which reuses the metrics module, as the agent does ([ADR-0005](0005-one-backend.md)).
 
 ## Consequences
@@ -26,4 +26,4 @@ Roadmap step 8 asks for an MCP client, like Claude Code, that answers metrics qu
 - Stdio works only on a machine with the repo, Docker and the sample data, so it's for developers. Claude chat's users need the HTTP version, which is up only during sessions, and needs a rate limit of its own, since anyone can call it.
 - The SDK brings 17 direct dependencies into the backend's image, like express and hono, mostly for HTTP servers and sign-in. That's more to keep up to date, and more code that could have a security hole.
 - Over stdio, stdout carries the protocol's messages, so the server's logs must go to stderr.
-- The agent's limit on queries counts per question. An MCP client asks DashGen no question, so its tools need limits of their own.
+- The agent's 10 queries count per question, since each result goes back to its model with every later call. An MCP client's own model reads the results instead, so a session has no limit on queries, and keeps its newest 20 results for `create_chart`, so its memory stays small. Its results can also be days apart, so each one keeps the hours it asked for, and a chart takes only results over the same hours.

@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { buildChart } from "../../../src/agent/chart.ts";
 import type { CreateChartArgs } from "../../../src/agent/types.ts";
 import { RESULTS } from "../../fixtures/results.ts";
+import { errorsResult } from "../../helpers/results.ts";
 
 // Arguments of the wrong shape never get here: the create_chart tool checks them (tools.test.ts).
 const refusals: [string, CreateChartArgs, RegExp][] = [
@@ -191,5 +192,34 @@ describe("buildChart", () => {
     assert.equal(bar.type, "bar");
     assert.equal(line.type, "line");
     assert.equal(zeros.type, "bar");
+  });
+
+  it("refuses results over the same days and bucket that cover different hours, as from a long MCP session", () => {
+    const results = new Map([
+      ["q1", errorsResult("checkout-api")],
+      [
+        "q2",
+        // The same 3 days by day, fetched 2 days later.
+        errorsResult("payments-service", {
+          window: {
+            from: "2026-10-27T00:00:00.000Z",
+            to: "2026-10-29T10:00:00.000Z",
+          },
+        }),
+      ],
+    ]);
+
+    assert.throws(
+      () =>
+        buildChart(
+          { type: "line", sources: ["q1", "q2"], title: "t" },
+          results,
+        ),
+      {
+        name: "ToolError",
+        message:
+          /^Results on one chart need the same hours, but these were fetched at different times, so they cover 2026-10-25T00:00:00\.000Z to 2026-10-27T10:00:00\.000Z and 2026-10-27T00:00:00\.000Z to 2026-10-29T10:00:00\.000Z\. Query them again, together\.$/,
+      },
+    );
   });
 });

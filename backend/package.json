@@ -26,6 +26,7 @@
     "@fastify/rate-limit": "^11.2.1",
     "@fastify/swagger": "^9.9.2",
     "@google/genai": "^2.31.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@scalar/fastify-api-reference": "^1.76.2",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",

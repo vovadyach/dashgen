@@ -20,9 +20,15 @@ export class MetricsError extends Error {
 }
 
 /** The metrics module: read-only access to the sample time series. */
+/** For one read. */
+export interface ReadOptions {
+  /** Aborts the read, as when an MCP client cancels its call: then it gets no second try. */
+  signal?: AbortSignal | undefined;
+}
+
 export interface Metrics {
-  listServices(): Promise<ServiceCatalog>;
-  query(input: MetricsQuery): Promise<MetricsResult>;
+  listServices(options?: ReadOptions): Promise<ServiceCatalog>;
+  query(input: MetricsQuery, options?: ReadOptions): Promise<MetricsResult>;
 }
 
 const round = (value: number) => Math.round(value * 100) / 100;
@@ -54,7 +60,10 @@ export function createMetrics(
     return { services: serviceRows.map((s) => s.name), metrics: metricRows };
   }
 
-  async function query(input: MetricsQuery): Promise<MetricsResult> {
+  async function query(
+    input: MetricsQuery,
+    signal: AbortSignal | undefined,
+  ): Promise<MetricsResult> {
     // Arguments come from the model, so a bad one is a MetricsError it can correct, not a crash.
     const result = MetricsQuery.safeParse(input);
     if (!result.success) {
@@ -93,6 +102,9 @@ export function createMetrics(
       // Drizzle returns timestamps from raw SQL as text. The summary row's is null.
       (value: string | null) => (value === null ? null : new Date(value)),
     );
+    // The catalog's read took its time: a call cancelled meanwhile starts no
+    // second one.
+    signal?.throwIfAborted();
     const started = performance.now();
     const rows = await db
       .select({
@@ -106,6 +118,11 @@ export function createMetrics(
         avg: sql<number | null>`avg(${points.value})`,
         min: sql<number | null>`min(${points.value})`,
         max: sql<number | null>`max(${points.value})`,
+        maxAt:
+          sql`(array_agg(${points.recordedAt} order by ${points.value} desc, ${points.recordedAt}))[1]`.mapWith(
+            // As for t: Drizzle returns a timestamp from raw SQL as text.
+            (value: string | null) => (value === null ? null : new Date(value)),
+          ),
         latest: sql<
           number | null
         >`(array_agg(${points.value} order by ${points.recordedAt} desc))[1]`,
@@ -133,6 +150,7 @@ export function createMetrics(
       summary.avg == null ||
       summary.min == null ||
       summary.max == null ||
+      summary.maxAt == null ||
       summary.latest == null
     ) {
       throw new MetricsError(
@@ -164,6 +182,11 @@ export function createMetrics(
       unit: info.unit,
       days,
       bucket,
+      window: {
+        from: new Date(from).toISOString(),
+        // The last hour, for daily buckets too: today's bucket grows each hour.
+        to: new Date(lastHour).toISOString(),
+      },
       points: buckets.map((row) => ({
         t: row.t.toISOString(),
         value: round(row.value),
@@ -179,18 +202,38 @@ export function createMetrics(
         avg: round(summary.avg),
         min: round(summary.min),
         max: round(summary.max),
+        maxAt: summary.maxAt.toISOString(),
         latest: round(summary.latest),
       },
     };
   }
 
   // Reads are safe to repeat, so one that failed in a way trying again could
-  // fix gets one more try. A query the model got wrong fails at once.
-  const retried = <T>(read: () => Promise<T>) =>
-    retryOnce(read, { log, retryDelayMs, signal });
+  // fix gets one more try, unless the run or the read's own call is over. A
+  // query the model got wrong fails at once.
+  const retried = <T>(
+    read: (signal: AbortSignal | undefined) => Promise<T>,
+    options: ReadOptions = {},
+  ) => {
+    const either = eitherSignal(signal, options.signal);
+    return retryOnce(() => read(either), {
+      log,
+      retryDelayMs,
+      signal: either,
+    });
+  };
 
   return {
-    listServices: () => retried(listServices),
-    query: (input) => retried(() => query(input)),
+    listServices: (options) => retried(() => listServices(), options),
+    query: (input, options) =>
+      retried((either) => query(input, either), options),
   };
+}
+
+/** A signal that aborts when either one does, or the one that's set. */
+function eitherSignal(
+  a: AbortSignal | undefined,
+  b: AbortSignal | undefined,
+): AbortSignal | undefined {
+  return a && b ? AbortSignal.any([a, b]) : (a ?? b);
 }

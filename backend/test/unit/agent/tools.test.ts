@@ -4,16 +4,16 @@ import { describe, it } from "node:test";
 import { EXAMPLE_QUESTIONS, Outcome } from "@dashgen/contracts";
 import { z } from "zod";
 
-import { createTools } from "../../../src/agent/tools.ts";
+import { createTools, type ToolOptions } from "../../../src/agent/tools.ts";
 import { MAX_QUERIES } from "../../../src/agent/validation.ts";
 import { CHECKOUT_QUERY } from "../../fixtures/agent.ts";
 import { CATALOG } from "../../fixtures/metrics.ts";
 import { fakeMetrics } from "../../helpers/metrics.ts";
 
 /** One run's tools, and a way to call one by name, as the agent loop does. */
-function startRun() {
+function startRun(options?: ToolOptions) {
   const metrics = fakeMetrics();
-  const tools = createTools(metrics);
+  const tools = createTools(metrics, options);
   const call = (name: string, input: unknown) => {
     const tool = tools.find((t) => t.name === name);
     assert.ok(tool, `no tool named ${name}`);
@@ -123,10 +123,23 @@ describe("createTools", () => {
           unit: "count",
           days: 3,
           bucket: "day",
+          // The hours it covers, which a client in another time zone can't guess.
+          window: {
+            from: "2026-10-25T00:00:00.000Z",
+            to: "2026-10-27T10:00:00.000Z",
+          },
           points: 3,
           from: "2026-10-25T00:00:00.000Z",
           to: "2026-10-27T00:00:00.000Z",
-          summary: { total: 109, avg: 1.85, min: 1, max: 4, latest: 2 },
+          summary: {
+            total: 109,
+            avg: 1.85,
+            min: 1,
+            max: 4,
+            // When the worst hour was, which the points don't show the model.
+            maxAt: "2026-10-26T13:00:00.000Z",
+            latest: 2,
+          },
         },
         step: "q1: 3 daily points",
       });
@@ -170,8 +183,8 @@ describe("createTools", () => {
       assert.equal(metrics.queries.length, 0);
     });
 
-    it(`allows at most ${String(MAX_QUERIES)} queries per question`, async () => {
-      const { call, metrics } = startRun();
+    it(`allows at most ${String(MAX_QUERIES)} queries per question, and tells the model so`, async () => {
+      const { call, metrics, tools } = startRun();
 
       for (let i = 0; i < MAX_QUERIES; i++)
         await call("query_metrics", CHECKOUT_QUERY);
@@ -181,6 +194,45 @@ describe("createTools", () => {
         message: /used its 10 queries\. Chart the results you have: q1, q2,/,
       });
       assert.equal(metrics.queries.length, MAX_QUERIES);
+      const query = tools.find((t) => t.name === "query_metrics");
+      assert.match(
+        query?.description ?? "",
+        /Only names from list_services work, and a question can make 10 queries\.$/,
+      );
+    });
+
+    it("has no limit on queries when told so, as for an MCP session, whose client's model reads the results, and claims none", async () => {
+      const { call, metrics, tools } = startRun({
+        maxQueries: Number.POSITIVE_INFINITY,
+      });
+
+      for (let i = 0; i <= MAX_QUERIES; i++)
+        await call("query_metrics", CHECKOUT_QUERY);
+
+      assert.equal(metrics.queries.length, MAX_QUERIES + 1);
+      const query = tools.find((t) => t.name === "query_metrics");
+      assert.match(
+        query?.description ?? "",
+        /Only names from list_services work\.$/,
+      );
+      assert.doesNotMatch(query?.description ?? "", /a question can make/);
+    });
+
+    it("keeps only the newest results when told so, so a chart can't use an older one", async () => {
+      const { call } = startRun({ keepResults: 2 });
+
+      for (let i = 0; i < 3; i++) await call("query_metrics", CHECKOUT_QUERY);
+
+      await assert.rejects(
+        call("create_chart", { type: "line", sources: ["q1"], title: "t" }),
+        { name: "ToolError" },
+      );
+      const chart = await call("create_chart", {
+        type: "line",
+        sources: ["q3"],
+        title: "t",
+      });
+      assert.equal(chart.done, true);
     });
 
     it("gives result IDs in the order of the calls, failed ones included", async () => {
@@ -216,6 +268,57 @@ describe("createTools", () => {
   });
 
   describe("create_chart", () => {
+    it("answers with a link when it's given a way to make one, as for an MCP client, and ends no run", async () => {
+      const { call, tools } = startRun({
+        chartLink: (chart) =>
+          Promise.resolve(`https://dashgen.example/#${chart.type}`),
+      });
+      await call("query_metrics", CHECKOUT_QUERY);
+
+      const result = await call("create_chart", {
+        type: "line",
+        sources: ["q1"],
+        title: "Errors per day, last 3 days",
+      });
+
+      assert.deepEqual(result, {
+        done: false,
+        result: {
+          link: "https://dashgen.example/#line",
+          title: "Errors per day, last 3 days",
+          type: "line",
+        },
+        step: "line chart: Errors per day, last 3 days",
+      });
+      const chart = tools.find((t) => t.name === "create_chart");
+      assert.match(
+        chart?.description ?? "",
+        /^Draws a chart from result IDs, and returns a link/,
+      );
+    });
+
+    it("turns a chart too large for a link into an error the model can act on", async () => {
+      const { call } = startRun({
+        chartLink: () => Promise.resolve(undefined),
+      });
+      await call("query_metrics", CHECKOUT_QUERY);
+
+      await assert.rejects(
+        call("create_chart", { type: "line", sources: ["q1"], title: "t" }),
+        { name: "ToolError", message: /too large for a link/ },
+      );
+    });
+
+    it("tells DashGen's own agent that a chart ends its run", () => {
+      const { tools } = startRun();
+
+      const chart = tools.find((t) => t.name === "create_chart");
+      assert.match(
+        chart?.description ?? "",
+        /^Draws the answer from result IDs, and ends the run, so the visitor sees only the first chart you draw\. Chart over time/,
+      );
+    });
+
     it("draws from the run's own results, and ends the run", async () => {
       const { call } = startRun();
       await call("query_metrics", CHECKOUT_QUERY);

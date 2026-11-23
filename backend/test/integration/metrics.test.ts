@@ -4,11 +4,13 @@ import { after, before, describe, it } from "node:test";
 import { MetricsResult } from "@dashgen/contracts";
 import { and, eq, gte, lt, max } from "drizzle-orm";
 
-import { isRetryable } from "../../src/db.ts";
+import { createDb, isRetryable } from "../../src/db.ts";
+import type { Logger } from "../../src/logger.ts";
 import { createMetrics, MetricsError } from "../../src/metrics/index.ts";
 import { points } from "../../src/metrics/schema.ts";
 import { seedMetrics } from "../../src/metrics/seed.ts";
-import { DAY_MS } from "../../src/metrics/time.ts";
+import { buildChart } from "../../src/agent/chart.ts";
+import { DAY_MS, HOUR_MS } from "../../src/metrics/time.ts";
 import { NOW } from "../fixtures/metrics.ts";
 import { createTestDb, type TestDb, unreachableDb } from "../helpers/db.ts";
 import { type LogLine, recordingLogger } from "../helpers/logger.ts";
@@ -77,13 +79,59 @@ describe("metrics module", () => {
         unit: "count",
         days: 3,
         bucket: "day",
+        window: {
+          from: "2026-10-25T00:00:00.000Z",
+          to: "2026-10-27T10:00:00.000Z",
+        },
         points: [
           { t: "2026-10-25T00:00:00.000Z", value: 38 },
           { t: "2026-10-26T00:00:00.000Z", value: 55 },
           { t: "2026-10-27T00:00:00.000Z", value: 16, partial: true },
         ],
-        summary: { total: 109, avg: 1.85, min: 1, max: 4, latest: 2 },
+        summary: {
+          total: 109,
+          avg: 1.85,
+          min: 1,
+          max: 4,
+          maxAt: "2026-10-26T13:00:00.000Z",
+          latest: 2,
+        },
       });
+    });
+
+    it("ends a daily window at its last hour, so the same query made hours later the same day doesn't match, since today's bucket grows", async () => {
+      const query = { service: "checkout-api", metric: "errors", days: 3 };
+      const evening = createMetrics(db(), {
+        now: () => new Date(NOW.getTime() + 8 * HOUR_MS),
+      });
+
+      const atTen = await metrics().query(query);
+      const atSix = await evening.query({
+        ...query,
+        service: "payments-service",
+      });
+
+      assert.deepEqual(atTen.window, {
+        from: "2026-10-25T00:00:00.000Z",
+        to: "2026-10-27T10:00:00.000Z",
+      });
+      assert.deepEqual(atSix.window, {
+        from: "2026-10-25T00:00:00.000Z",
+        to: "2026-10-27T18:00:00.000Z",
+      });
+      // So a chart of the two is refused: today's point would hold 8 more
+      // hours for one service than for the other.
+      assert.throws(
+        () =>
+          buildChart(
+            { type: "line", sources: ["q1", "q2"], title: "t" },
+            new Map([
+              ["q1", atTen],
+              ["q2", atSix],
+            ]),
+          ),
+        { name: "ToolError", message: /need the same hours/ },
+      );
     });
 
     it("gives up to 2 days in hourly buckets", async () => {
@@ -136,6 +184,8 @@ describe("metrics module", () => {
         spikeDay && laterDays.every((day) => day.value < spikeDay.value),
       );
       assert.ok(result.summary.max > 4 * result.summary.avg);
+      // And its worst hour is that day's, so a client can say when.
+      assert.equal(result.summary.maxAt.slice(0, 10), spikeDay.t.slice(0, 10));
     });
 
     it("rejects unknown names, listing the known ones", async () => {
@@ -273,6 +323,58 @@ describe("metrics module", () => {
       try {
         await assert.rejects(ended.listServices(), (error) =>
           isRetryable(error),
+        );
+      } finally {
+        await down.$client.end();
+      }
+      assert.deepEqual(retries(lines), []);
+    });
+
+    it("starts no aggregation once its call is cancelled during the catalog's read", async () => {
+      assert.ok(testDb);
+      const cancel = new AbortController();
+      const statements: object[] = [];
+      // Cancels the call as its first read, the catalog's, starts.
+      const log: Logger = {
+        ...recordingLogger().log,
+        debug: (obj, msg) => {
+          if (msg !== "sql") return;
+          statements.push(obj);
+          cancel.abort();
+        },
+      };
+      const watched = createDb(testDb.url, { log });
+      try {
+        await assert.rejects(
+          createMetrics(watched, { now: () => NOW, log }).query(
+            { service: "auth-service", metric: "errors" },
+            { signal: cancel.signal },
+          ),
+          { name: "AbortError" },
+        );
+      } finally {
+        await watched.$client.end();
+      }
+      // The catalog's two reads, of services and metrics, and no aggregation.
+      assert.equal(statements.length, 2);
+      assert.doesNotMatch(JSON.stringify(statements), /date_trunc/);
+    });
+
+    it("doesn't try a read again once its own call is cancelled, as an MCP client can cancel one", async () => {
+      const { log, lines } = recordingLogger();
+      const down = unreachableDb(log);
+      const failing = createMetrics(down, { log, retryDelayMs: () => 0 });
+      try {
+        await assert.rejects(
+          failing.listServices({ signal: AbortSignal.abort() }),
+          (error) => isRetryable(error),
+        );
+        await assert.rejects(
+          failing.query(
+            { service: "auth-service", metric: "errors" },
+            { signal: AbortSignal.abort() },
+          ),
+          (error) => isRetryable(error),
         );
       } finally {
         await down.$client.end();

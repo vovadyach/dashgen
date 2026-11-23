@@ -1,9 +1,11 @@
 // The shapes DashGen's APIs send and receive. A service validates with these
 // schemas, and its clients get their types from the same place, so the two
 // can't drift apart. The same goes for the few values that both the backend
-// and the page show.
+// and the page show, and for the share link's format (link.ts).
 
 import { z } from "zod";
+
+export { CHART_LINK_PREFIX, chartHash, chartJsonFromHash } from "./link.ts";
 
 /** A question's longest length, after trimming, in characters. */
 export const QUESTION_MAX_LENGTH = 300;
@@ -152,6 +154,14 @@ export const MetricsResult = z.object({
   unit: z.string(),
   days: z.number(),
   bucket: Bucket,
+  /**
+   * The start of the first bucket the query asked for, and the last hour it
+   * covers, whether they have data or not. Results over the same days and
+   * bucket cover the same hours only when these match: queries made far apart,
+   * as in a long MCP session, don't, nor do daily ones made hours apart, since
+   * today's bucket grows each hour.
+   */
+  window: z.object({ from: z.iso.datetime(), to: z.iso.datetime() }),
   points: z.array(
     z.object({
       t: z.iso.datetime(),
@@ -159,11 +169,14 @@ export const MetricsResult = z.object({
       partial: z.literal(true).optional(),
     }),
   ),
+  // Over the window's hours, each an hour's value, whatever the bucket.
   summary: z.object({
     total: z.number().optional(),
     avg: z.number(),
     min: z.number(),
     max: z.number(),
+    /** The start of the hour with the max, the first one if several tie. */
+    maxAt: z.iso.datetime(),
     latest: z.number(),
   }),
 });
