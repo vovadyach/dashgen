@@ -66,4 +66,31 @@ describe("build-page.sh", () => {
       assert.doesNotMatch(stdout, /npm run/);
     }
   });
+
+  it("stops before building on the widget's secret key, which would be public in the page, and never prints it", () => {
+    // Shaped like a secret key: 0x4 and 32 more, 35 in all.
+    const secret = `0x4AAAAAAAexampleSiteKey${"s".repeat(11)}`;
+    const { status, stdout } = build(secret);
+
+    assert.equal(status, 1);
+    assert.match(stdout, /isn't a site key.*it has 35/);
+    assert.doesNotMatch(stdout, /npm run/);
+    assert.ok(!stdout.includes(secret));
+  });
+
+  it("stops before building on anything else not shaped like a site key, like a placeholder", () => {
+    const keys = [
+      "paste-the-site-key",
+      // One short, and one with a space pasted in front.
+      "0x4AAAAAAAexampleSiteKe",
+      " 0x4AAAAAAAexampleSiteKey",
+    ];
+    for (const key of keys) {
+      const { status, stdout } = build(key);
+
+      assert.equal(status, 1);
+      assert.match(stdout, /isn't a site key/);
+      assert.doesNotMatch(stdout, /npm run/);
+    }
+  });
 });
