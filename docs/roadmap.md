@@ -138,10 +138,11 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 
 ## 8. MCP server
 
-- [ ] MCP server that exposes DashGen's tools to any MCP client
+- [ ] MCP server that exposes DashGen's tools to any MCP client, over stdio ([ADR-0022](decisions/0022-mcp-server.md))
 - [ ] Demo from Claude Code
+- [ ] The same tools over HTTP from the backend, during sessions, for Claude chat's custom connectors
 
-**Done when:** Claude Code answers a metrics question through DashGen's MCP server.
+**Done when:** Claude Code answers a metrics question through DashGen's MCP server, and Claude chat does during a session.
 
 ## 9. Demo and write-up
 
