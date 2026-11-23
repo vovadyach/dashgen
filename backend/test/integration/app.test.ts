@@ -400,6 +400,89 @@ describe("HTTP API", () => {
       assert.equal(model.requests.length, 0);
     });
 
+    it("answers 403 bot_check_failed when the bot check fails, taking none of today's questions and calling no model", async (t) => {
+      const model = fakeModel([declineReply()]);
+      let reserved = 0;
+      const checked: { token: string | undefined; ip: string }[] = [];
+      const app = await startApp(
+        t,
+        {
+          model,
+          cap: {
+            limit: 150,
+            reserve: () => {
+              reserved += 1;
+              return Promise.resolve({ reserved: true });
+            },
+          },
+          botCheck: {
+            check: (token, ip) => {
+              checked.push({ token, ip });
+              return Promise.resolve("failed");
+            },
+          },
+        },
+        { env: { VIEWER_IP_HEADER: "x-viewer-ip" } },
+      );
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/ask",
+        headers: { "x-viewer-ip": "203.0.113.7" },
+        payload: { question: QUESTION, turnstileToken: "a-turnstile-token" },
+      });
+
+      assert.equal(response.statusCode, 403);
+      assert.deepEqual(response.json(), {
+        error: {
+          code: "bot_check_failed",
+          message:
+            "DashGen couldn't check that a person is asking. Try again, or reload the page.",
+        },
+      });
+      // The question's token, and the visitor's IP as the rate limit counts it.
+      assert.deepEqual(checked, [
+        { token: "a-turnstile-token", ip: "203.0.113.7" },
+      ]);
+      assert.equal(reserved, 0);
+      await sleep(20);
+      assert.equal(model.requests.length, 0);
+    });
+
+    it("answers 503 unavailable when the bot check's setup is wrong, since only the operator can fix it, and takes none of today's questions", async (t) => {
+      const model = fakeModel([declineReply()]);
+      let reserved = 0;
+      const app = await startApp(t, {
+        model,
+        cap: {
+          limit: 150,
+          reserve: () => {
+            reserved += 1;
+            return Promise.resolve({ reserved: true });
+          },
+        },
+        botCheck: { check: () => Promise.resolve("misconfigured") },
+      });
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/ask",
+        payload: { question: QUESTION, turnstileToken: "a-turnstile-token" },
+      });
+
+      assert.equal(response.statusCode, 503);
+      assert.deepEqual(response.json(), {
+        error: {
+          code: "unavailable",
+          message:
+            "DashGen can't take questions right now. Try again in a moment.",
+        },
+      });
+      assert.equal(reserved, 0);
+      await sleep(20);
+      assert.equal(model.requests.length, 0);
+    });
+
     it("takes one of today's questions for each run, and none for an invalid question", async (t) => {
       let reserved = 0;
       const app = await startApp(t, {

@@ -54,6 +54,7 @@ export const ApiErrorCode = z.enum([
   "invalid_question",
   "not_found",
   "rate_limited",
+  "bot_check_failed",
   "daily_cap",
   "unavailable",
   "run_not_found",
@@ -90,9 +91,15 @@ export const Offline = z.object({
 });
 export type Offline = z.infer<typeof Offline>;
 
+/** The longest token Cloudflare Turnstile gives. */
+export const TURNSTILE_TOKEN_MAX_LENGTH = 2048;
+
 /**
  * The body of the backend's `POST /api/ask`: a question of 1 to 300 characters,
- * after trimming, with no NUL character, which Postgres can't store.
+ * after trimming, with no NUL character, which Postgres can't store, and
+ * Cloudflare Turnstile's token, which shows a person asked (ADR-0021). The
+ * token is optional here, so a page without one gets `bot_check_failed`,
+ * rather than a word about its question.
  */
 export const AskRequest = z.object({
   question: z
@@ -103,6 +110,7 @@ export const AskRequest = z.object({
     .refine((question) => !question.includes("\u0000"), {
       error: "The question can't contain a NUL character.",
     }),
+  turnstileToken: z.string().max(TURNSTILE_TOKEN_MAX_LENGTH).optional(),
 });
 export type AskRequest = z.infer<typeof AskRequest>;
 

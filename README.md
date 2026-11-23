@@ -61,7 +61,7 @@ More detail: [docs/architecture.md](docs/architecture.md) covers what runs today
 
 | Part | Tech | Today |
 |---|---|---|
-| Backend (`backend/`) | Node.js 26, Fastify, TypeScript, Zod | Takes a question, runs the agent, streams its steps over SSE and saves the run, with a per-IP rate limit and a daily cap of 150 questions ([API](docs/architecture.md#backend-api)) |
+| Backend (`backend/`) | Node.js 26, Fastify, TypeScript, Zod | Takes a question, runs the agent, streams its steps over SSE and saves the run, with a per-IP rate limit, a Cloudflare Turnstile bot check and a daily cap of 150 questions ([API](docs/architecture.md#backend-api)) |
 | Database | Postgres 18, Docker Compose | Runs locally: one `dashgen` database, with tables from Drizzle migrations |
 | Daily cap | DynamoDB Local, Docker Compose | Runs locally: today's count of questions ([why DynamoDB](docs/decisions/0014-daily-cap-in-dynamodb.md)) |
 | Data access | Drizzle | The `metrics` module: 30 days of seeded hourly data, in daily or hourly buckets with a summary ([data](docs/architecture.md#data)) |
@@ -161,6 +161,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [18. The agent's evals are graded by code, on fixed data, and only people run them](docs/decisions/0018-agent-evals.md)
 - [19. The evals also run in CI, on pull requests that change the agent](docs/decisions/0019-evals-in-ci.md)
 - [20. The page's first paint comes from index.html alone](docs/decisions/0020-first-paint-in-index-html.md)
+- [21. A Cloudflare Turnstile check before each question](docs/decisions/0021-turnstile-bot-check.md)
 
 ## License
 

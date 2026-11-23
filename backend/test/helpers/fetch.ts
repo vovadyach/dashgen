@@ -6,8 +6,10 @@ export type Answer =
   | { status: number; text: string; type?: string }
   // A 204: no body at all.
   | "no-content"
-  // Headers arrive, then the connection drops partway through the body.
+  // Headers arrive, then the connection drops partway through the body: at a
+  // 200, or at the status given.
   | "cut-off"
+  | { status: number; cutOff: true }
   // Headers arrive, then the body stops partway; only an abort ends it.
   | "stall"
   // Never answers; only an abort, from the timeout or the run, ends it.
@@ -46,14 +48,18 @@ export function fakeFetch(fallback: unknown, answers: Answer[]) {
         init?.signal?.addEventListener("abort", abort);
       });
     }
-    if (answer === "cut-off") {
+    if (
+      answer === "cut-off" ||
+      (typeof answer === "object" && "cutOff" in answer)
+    ) {
       const body = new ReadableStream({
         start(controller) {
           controller.error(new TypeError("terminated"));
         },
       });
+      const status = answer === "cut-off" ? 200 : answer.status;
       return Promise.resolve(
-        new Response(body, { status: 200, headers: JSON_TYPE }),
+        new Response(body, { status, headers: JSON_TYPE }),
       );
     }
     if (answer === "stall") {

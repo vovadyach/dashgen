@@ -31,10 +31,12 @@ gh secret set AWS_PAGE_DEPLOY_ROLE_ARN --body "$(terraform -chdir=infra/aws/alwa
 gh secret set AWS_SITE_BUCKET --body "$(terraform -chdir=infra/aws/always-on output -raw site_bucket)"
 ```
 
+It also needs one repository variable, `TURNSTILE_SITE_KEY`: the site key of DashGen's Turnstile widget ([the Turnstile widget](#the-turnstile-widget)). It's public, so it's a variable, not a secret. Without it, or with one of Cloudflare's test keys, `scripts/build-page.sh` stops before anything deploys, in the job or by hand, since the backend's real secret turns down a test key's tokens.
+
 To deploy by hand, as when the job fails, from the repo root:
 
 ```
-npm run build --workspace frontend &&
+VITE_TURNSTILE_SITE_KEY=$(gh variable get TURNSTILE_SITE_KEY) scripts/build-page.sh &&
   BUCKET=$(terraform -chdir=infra/aws/always-on output -raw site_bucket) &&
   aws s3 sync frontend/dist/assets "s3://$BUCKET/assets" --cache-control "public, max-age=31536000, immutable" &&
   aws s3 cp frontend/dist/index.html "s3://$BUCKET/index.html" --cache-control "no-cache"
@@ -124,6 +126,25 @@ aws cloudfront test-function --name dashgen-api --stage LIVE --if-match "$ETAG" 
   --event-object fileb://functions/test-event.json --query 'TestResult.{Error: FunctionErrorMessage, Output: FunctionOutput}'
 ```
 
+## The Turnstile widget
+
+Cloudflare Turnstile checks that a person asks each question ([ADR-0021](../decisions/0021-turnstile-bot-check.md)). Its widget is made once, by hand, in Cloudflare, which Terraform doesn't manage. A free account is enough:
+
+1. In Cloudflare's dashboard, open Turnstile, then add a widget.
+2. Name it DashGen, add the page's hostname, which `terraform -chdir=infra/aws/always-on output -raw url` prints after `https://`, and pick the Invisible mode, so visitors never see it. Cloudflare allows that mode only when the site's privacy text references its [Turnstile Privacy Addendum](https://www.cloudflare.com/turnstile-privacy-policy/), which the note under the question box links to (`frontend/src/app.tsx`).
+3. Keep its two keys:
+   - The site key is public. Set it as a repository variable, which the `deploy-page` job builds the page with ([the page](#the-page)):
+     ```
+     gh variable set TURNSTILE_SITE_KEY --body "the-site-key"
+     ```
+   - The secret key isn't. `make aws-up` takes it from your shell as `TF_VAR_turnstile_secret_key`, like the model's key ([the session stack](#the-session-stack)).
+
+- **Locally there's no check,** unless `backend/.env` sets `TURNSTILE_SECRET_KEY`. The page uses Cloudflare's test site key, which passes everyone, and `backend/.env.example` names Cloudflare's test secret keys.
+- **To replace the secret key,** rotate it in the widget's settings, then end the session with `make aws-down` and start the next one with the new key.
+- **A wrong secret key turns every question down** with `unavailable`, and the backend's log says `bot check misconfigured`, with Cloudflare's `invalid-input-secret` ([read the backend's logs](#read-the-backends-logs)). So ask a test question after each `make aws-up`. To fix the key, run `make aws-down`, then `make aws-up` with the right one.
+- **Cloudflare's test keys don't work on AWS,** since a test secret turns down every real visitor's token, and the real secret turns down a test site key's. `make aws-up` and the backend stop on a test secret key, and CI on a test site key.
+- **A session made before the backend needed the key keeps its old backend.** On AWS the backend won't start without `TURNSTILE_SECRET_KEY`, so CI's deploy skips a session whose template has none, and says so in its log, and `make aws-deploy` and `make aws-start` stop before they change anything. Its next `make aws-up`, with the key, updates the template and deploys the new image.
+
 ## The session stack
 
 `infra/aws/session` holds what runs on AWS only while DashGen is being worked on, and costs money by the hour. So far it's the network, the database, the backend's secrets, the task that fills the database, and the backend itself, behind a load balancer ([design](../design.md#on-aws)):
@@ -137,9 +158,10 @@ aws cloudfront test-function --name dashgen-api --stage LIVE --if-match "$ETAG" 
 - No backups and no final snapshot: each session starts with a new, empty database, and `make aws-down` deletes it with its data.
 - The database's password, which RDS makes and keeps in a Secrets Manager secret of its own, named `rds!db-` and an ID. It's never in Terraform's state or the repo, and RDS deletes it with the database, at once, with no recovery window.
 - The model's key, in a Secrets Manager secret named for its provider: `dashgen/gemini-api-key` or `dashgen/anthropic-api-key`. `make aws-up` takes it from your shell, and only that key, even when your shell has both. Terraform passes it to AWS without keeping a copy in its state or plan. `make aws-down` deletes it at once, with no recovery window.
-- Two IAM roles. ECS takes `dashgen-task-execution` to start the backend's tasks: it can read these two secrets, pull the image and write the tasks' logs, and nothing else. The backend's own role, `dashgen-backend`, can only count the day's questions in the always-on stack's daily cap table, with `UpdateItem`.
+- Turnstile's secret key, in the secret `dashgen/turnstile-secret-key`, which the backend sends to Cloudflare to check each question's token ([the Turnstile widget](#the-turnstile-widget)). Like the model's key, `make aws-up` takes it from your shell, Terraform keeps no copy, and `make aws-down` deletes it at once.
+- Two IAM roles. ECS takes `dashgen-task-execution` to start the backend's tasks: it can read these three secrets, pull the image and write the tasks' logs, and nothing else. The backend's own role, `dashgen-backend`, can only count the day's questions in the always-on stack's daily cap table, with `UpdateItem`.
 - An ECS cluster, `dashgen`, and the one-off task `dashgen-migrate`, which each deploy copies from the template `dashgen-migrate-template` ([the backend's image](#the-backends-image)): the migrations, then the seed, on Fargate's smallest size (0.25 vCPU, 0.5 GB), on ARM. It connects to Postgres with TLS, checked against RDS's certificates in the image (`backend/certs/`), with the password from RDS's secret as `PGPASSWORD`. Its output goes to the log group `/dashgen/migrate`, kept for a day.
-- The backend's service, `dashgen-backend`, from the template `dashgen-backend-template`: exactly one task of the image's own command, `node src/server.ts`, on the same size. It gets the model's key as `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`, the database's password as `PGPASSWORD`, and `AI_MODEL` when `TF_VAR_ai_model` sets one ([ADR-0016](../decisions/0016-ai-model-setting.md)), uses AWS's own DynamoDB (`DYNAMODB_REGION`), and allows CloudFront's address for CORS. A deploy stops the old task before it starts the new one. Its output goes to `/dashgen/backend`, kept for a day.
+- The backend's service, `dashgen-backend`, from the template `dashgen-backend-template`: exactly one task of the image's own command, `node src/server.ts`, on the same size. It gets the model's key as `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`, Turnstile's secret key as `TURNSTILE_SECRET_KEY`, the database's password as `PGPASSWORD`, and `AI_MODEL` when `TF_VAR_ai_model` sets one ([ADR-0016](../decisions/0016-ai-model-setting.md)), uses AWS's own DynamoDB (`DYNAMODB_REGION`), and allows CloudFront's address for CORS. A deploy stops the old task before it starts the new one. Its output goes to `/dashgen/backend`, kept for a day.
 - The deploy lock, the DynamoDB table `dashgen-deploy-lock`, which holds one item while a deploy runs, so deploys take turns. On demand, it costs a fraction of a cent.
 - A load balancer, `dashgen`, in the public subnets: plain HTTP on port 80, to the task on port 3000. It forwards only requests that carry this session's secret in the `x-origin-verify` header, a random UUID that Terraform makes each session, and answers 403 to anything else. It checks `/api/health` every 10 seconds, and calls a new task healthy after 2 answers in a row.
 
@@ -153,6 +175,7 @@ While it's up, it costs about $0.11 an hour, so about $82 if it's left up for a 
 | Its 20 GB of storage, at $0.115 a GB a month | $0.003 |
 | The password's secret, at $0.40 a month | $0.0005 |
 | The model key's secret, at $0.40 a month | $0.0005 |
+| Turnstile's secret, at $0.40 a month | $0.0005 |
 | The migrations task, on ARM, only while it runs | $0.0099, so about $0.0002 a run |
 | The load balancer | $0.0225, plus a little per use |
 | The load balancer's two public IPs | $0.01 |
@@ -167,6 +190,7 @@ read -rs TF_VAR_gemini_api_key && export TF_VAR_gemini_api_key   # paste the Gem
 # or, for Claude Haiku 5.5 instead of Gemini:
 # export TF_VAR_ai_model=claude-haiku-5-5
 # read -rs TF_VAR_anthropic_api_key && export TF_VAR_anthropic_api_key   # paste the Claude key
+read -rs TF_VAR_turnstile_secret_key && export TF_VAR_turnstile_secret_key   # paste Turnstile's secret key
 make aws-up       # shows the plan, builds it once you answer yes, deploys the backend on CI's main image, then opens the API's door
 # or, to run your own code, as to test a branch before merging it:
 # TF_VAR_image_tag=dev make aws-up
@@ -177,7 +201,7 @@ make aws-down     # closes the door and lets questions in flight finish, then sh
 - **End every work session with `make aws-down`.**
 - **Pick the image with `TF_VAR_image_tag`:** `main`, the default, is CI's, so `make aws-up` builds nothing, and checks that it exists before Terraform does anything. `dev` is your own code's, which `make aws-up` builds and pushes ([the backend's image](#the-backends-image)). Like `TF_VAR_ai_model`, Terraform checks the name, and written before the command, it lasts for that command only. So in a `dev` session, a later `make aws-up`, as to switch models, needs `TF_VAR_image_tag=dev` again: without it, `make aws-up` stops rather than switch the session to `main`.
 - **`make aws-deploy` has three steps,** which `make aws-up` runs after Terraform, all under the deploy lock: in a session that runs `dev`, it builds your own code's image for ARM and pushes it to ECR as `dev`, then the migrations and the seed run as a one-off ECS task, and the backend starts, both on that build, pinned by its digest ([the backend's image](#the-backends-image)). So it deploys your build even when another checkout pushes `dev` meanwhile. In a session that runs `main`, it builds nothing, since CI builds that image, and only runs the migrations and restarts the backend on it. Each step also runs alone: `make aws-image` builds and pushes, and deploys nothing, and `make aws-migrate` and `make aws-start` each run the image that the session's tag points to when they run.
-- **`make aws-up` needs the model's key:** `TF_VAR_gemini_api_key` for the default Gemini model, or `TF_VAR_anthropic_api_key` when `TF_VAR_ai_model` names a Claude one, and it stops at once without it. `read -s` keeps the key off the screen and out of your shell's history, and it lasts until you close the terminal. A plan, `make aws-down` and the `terraform-reviewer` work without it.
+- **`make aws-up` needs the model's key and Turnstile's:** `TF_VAR_gemini_api_key` for the default Gemini model, or `TF_VAR_anthropic_api_key` when `TF_VAR_ai_model` names a Claude one, and `TF_VAR_turnstile_secret_key`. It stops at once without them. `read -s` keeps the key off the screen and out of your shell's history, and it lasts until you close the terminal. A plan, `make aws-down` and the `terraform-reviewer` work without it.
 - **Pick the AWS model in your shell.** Set `TF_VAR_ai_model` or leave it unset for the default Gemini model. Terraform checks the name before creating resources. To switch between the two Gemini models during a session, change `TF_VAR_ai_model` and run `make aws-up` again. Both use the same key.
 - **End the session before switching providers.** To switch from Gemini to Claude or back, run `make aws-down`, set the new model and its provider's key, then run `make aws-up`. If an `aws-up` plan shows that changing `name` would replace `aws_secretsmanager_secret.model_api_key`, decline the plan. ECS needs the current secret to restart the previous task if the deployment rolls back.
 - **What each step checks.** All three stop at once when the stack is down, and the last two also stop when the session's image isn't in ECR yet. The repository outlives sessions, though, so in a `dev` session, an image from an earlier one counts: `make aws-start` alone would run that older code, and `make aws-deploy` builds the current code first. They also stop when a `dev` image is over 6 days old, since ECR deletes it a week after its push, and could do it during the session. CI's newest 3 `main` images stay however old they are. Only `make aws-deploy` keeps the order, so `make aws-start` alone doesn't know whether the migrations ran.
@@ -188,7 +212,7 @@ make aws-down     # closes the door and lets questions in flight finish, then sh
 - **Only CloudFront reaches the backend.** From your Mac, `curl -m 5 "http://$(terraform -chdir=infra/aws/session output -raw load_balancer)/api/health"` gets no answer, since the load balancer's group lets in only CloudFront. Through CloudFront, `/api/health` answers `{"status":"ok"}` while the door is open, and `{"status":"offline"}` again once it's closed.
 - **Terraform in `make aws-up` and `make aws-down` touches only this stack.** `infra/aws/account` and `infra/aws/always-on` stay up, and nothing in the Makefile destroys them. The scripts only read the always-on stack's outputs, and write two things there: the store's session entry, and the backend's images, which `make aws-image` pushes to ECR.
 - **They run `terraform init` first,** so they work on a new machine too, once `infra/aws/backend.hcl` exists. The state is at `session/terraform.tfstate`, beside the other two stacks'.
-- **The first `make aws-up` adds 47 resources,** then deploys the backend and opens the door: about 13 minutes in all. The database takes the longest: about 5 minutes to create, and 2 to delete. The NAT gateway takes a minute or two each way.
+- **The first `make aws-up` adds 49 resources,** then deploys the backend and opens the door: about 13 minutes in all. The database takes the longest: about 5 minutes to create, and 2 to delete. The NAT gateway takes a minute or two each way.
 - **After `make aws-down`, the console can still list a few resources that are gone.** The tag search lists deleted resources for a while, a deleted NAT gateway shows as `deleted` for about an hour, and ECS keeps listing Terraform's old templates as `INACTIVE`, and each deploy's 2 copies as `ACTIVE`, since nothing deregisters those. None of them costs anything.
 - **Before applying a change to any stack,** check the plan for anything it would delete or replace. From the repo's root, `terraform -chdir=infra/aws/<stack> show -json tfplan | node scripts/plan-changes.js` prints only those, and the plan's summary. In Claude Code, the `terraform-reviewer` subagent runs it for you (`.claude/agents/terraform-reviewer.md`).
 

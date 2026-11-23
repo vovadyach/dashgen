@@ -70,9 +70,9 @@ resource "aws_vpc_security_group_egress_rule" "backend_to_database" {
 }
 
 # HTTPS, through the NAT gateway or a gateway endpoint: ECR for the image,
-# Secrets Manager, CloudWatch Logs, DynamoDB, and the model's API, Gemini or
-# Claude. DNS needs no rule, since a group never filters the VPC's own DNS
-# server.
+# Secrets Manager, CloudWatch Logs, DynamoDB, the model's API, Gemini or
+# Claude, and Cloudflare's Turnstile check. DNS needs no rule, since a group
+# never filters the VPC's own DNS server.
 resource "aws_vpc_security_group_egress_rule" "backend_to_https" {
   security_group_id = aws_security_group.backend.id
   cidr_ipv4         = "0.0.0.0/0"

@@ -1,5 +1,6 @@
 import { createModel } from "./agent/index.ts";
 import { buildApp } from "./app.ts";
+import { createBotCheck, NO_BOT_CHECK } from "./bots/index.ts";
 import { createCapTable, createDailyCap } from "./cap/index.ts";
 import { loadConfig, loadDatabaseUrl, loadDynamoTarget } from "./config.ts";
 import { createDb } from "./db.ts";
@@ -35,6 +36,9 @@ const app = await buildApp(config, {
   // Made here so the database's log lines go through the app's logger.
   runs: (log) => {
     const db = createDb(databaseUrl.reveal(), { log });
+    if (!config.turnstileSecret) {
+      log.info({ unset: "TURNSTILE_SECRET_KEY" }, "no bot check");
+    }
     return {
       model: createModel({
         ...config.model,
@@ -44,6 +48,9 @@ const app = await buildApp(config, {
         createMetrics(db, { now, log: runLog, signal: deadline }),
       save: (run, runLog) => saveRun(db, run, { log: runLog }),
       cap: createDailyCap(dynamo, { limit: config.dailyCap }),
+      botCheck: config.turnstileSecret
+        ? createBotCheck(config.turnstileSecret)
+        : NO_BOT_CHECK,
       close: async () => {
         await db.$client.end();
         dynamo.destroy();

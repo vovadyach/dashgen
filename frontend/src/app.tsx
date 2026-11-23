@@ -127,9 +127,21 @@ export function App() {
               busy={busy}
               offline={offline}
             />
-            {/* The runs table keeps each question (docs/design.md). */}
-            <p className="text-center text-xs text-muted-foreground">
+            {/* The runs table keeps each question (docs/design.md). Cloudflare
+                allows its invisible widget only with the link (ADR-0021). */}
+            <p className="text-center text-xs text-balance text-muted-foreground">
               We save questions to test and improve DashGen.
+              <br />
+              Cloudflare checks that a person is asking (
+              <a
+                href="https://www.cloudflare.com/turnstile-privacy-policy/"
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Turnstile Privacy Addendum
+              </a>
+              ).
             </p>
           </div>
           {/* Wider than the box, so the examples fit on one row. On a phone

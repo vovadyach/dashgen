@@ -23,6 +23,17 @@ variable "anthropic_api_key" {
   sensitive   = true
 }
 
+# From TF_VAR_turnstile_secret_key: the secret key of DashGen's Cloudflare
+# Turnstile widget, which the backend sends to Cloudflare to check each
+# question's token (ADR-0021). make aws-up needs it.
+variable "turnstile_secret_key" {
+  description = "The secret key of DashGen's Cloudflare Turnstile widget, for the backend's secret."
+  type        = string
+  default     = null
+  ephemeral   = true
+  sensitive   = true
+}
+
 # From TF_VAR_ai_model: the backend's AI_MODEL, like claude-haiku-5-5. Unset,
 # the backend runs its own default, a Gemini model (backend/src/config.ts).
 variable "ai_model" {

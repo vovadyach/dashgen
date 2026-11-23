@@ -365,6 +365,23 @@ tag_image() {
   rm -f "$manifest"
 }
 
+# Stops unless the backend's template family $1 gives its task
+# TURNSTILE_SECRET_KEY, which the backend needs to start on AWS (ADR-0021).
+# A session made before that has a template without it, and replacing a
+# backend that runs with one that won't start would leave the session with
+# none. Exits with $2: 0 for CI, whose image then waits for the next
+# make aws-up, and 1 for make.
+require_bot_check_key() {
+  local secrets
+  secrets=$(aws ecs describe-task-definition --task-definition "$1" \
+    --query 'taskDefinition.containerDefinitions[0].secrets[].name' \
+    --output text) || exit 1
+  if ! grep -qw TURNSTILE_SECRET_KEY <<<"$secrets"; then
+    echo "The session's backend template has no TURNSTILE_SECRET_KEY, which the backend needs to start on AWS, so the running backend stays. Run make aws-up with TF_VAR_turnstile_secret_key, which updates the template and deploys." >&2
+    exit "$2"
+  fi
+}
+
 # Registers a copy of the newest revision of template family $1 in family
 # $2, running image $3, pinned by digest, tagged ImageTag=$4, main or dev, and
 # prints its ARN. Only Terraform registers templates, a revision on each

@@ -54,7 +54,12 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci --no-audit --no-fund --loglevel=error
-      - run: npm run build --workspace frontend
+      # With the site key of DashGen's Turnstile widget (ADR-0021), a repo
+      # variable, since it's public. The script stops without it, or with one
+      # of Cloudflare's test keys, as a deploy by hand does.
+      - run: scripts/build-page.sh
+        env:
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ secrets.AWS_PAGE_DEPLOY_ROLE_ARN }}

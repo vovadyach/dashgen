@@ -74,6 +74,8 @@ INIT = $(SESSION) init -input=false -backend-config=../backend.hcl >/dev/null &&
 aws-up:
 	@case "$$TF_VAR_ai_model" in claude-*) key=TF_VAR_anthropic_api_key ;; *) key=TF_VAR_gemini_api_key ;; esac; \
 	test -n "$$(printenv $$key)" || { echo "Set $$key to the API key for $${TF_VAR_ai_model:-the default Gemini model} first: docs/runbooks/deploy.md#the-session-stack"; exit 1; }
+	@test -n "$$TF_VAR_turnstile_secret_key" || { echo "Set TF_VAR_turnstile_secret_key to the secret key of DashGen's Turnstile widget first: docs/runbooks/deploy.md#the-session-stack"; exit 1; }
+	@if printf '%s' "$$TF_VAR_turnstile_secret_key" | grep -qE '^[0-9]x0+AA$$'; then echo "TF_VAR_turnstile_secret_key is one of Cloudflare's test keys, which turn every real visitor down. Use the secret key of DashGen's own widget: docs/runbooks/deploy.md#the-turnstile-widget"; exit 1; fi
 	$(INIT)
 	@bash -c 'source scripts/aws-session.sh && keep_image_tag'
 	@bash -c 'source scripts/aws-session.sh && [[ $${TF_VAR_image_tag:-main} == dev ]] || require_image ecr/dashgen-backend main'

@@ -132,7 +132,7 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 - [x] A note under the question box says questions are saved
 - [x] On a slow connection, a pinned card's mini chart draws itself while the page loads, one at a time: a line, then bars, then a pie, from `index.html` itself, with the page's CSS inline: 2.6 s instead of a blank page until 6.6 s on Slow 3G ([ADR-0020](decisions/0020-first-paint-in-index-html.md))
 - [x] Works on a phone, from 320 px wide: every chart names all its services, nothing runs off the screen, and the examples make way for the answer
-- [ ] Invisible bot check (Cloudflare Turnstile)
+- [x] Invisible bot check: Cloudflare Turnstile's token goes with each question, and the backend checks it before the daily cap, so a bot takes none of the day's questions ([ADR-0021](decisions/0021-turnstile-bot-check.md))
 
 **Done when:** a first-time visitor on a phone can pick an example, pin the chart, and still see it after the backend goes offline.
 

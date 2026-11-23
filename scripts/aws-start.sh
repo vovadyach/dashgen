@@ -22,6 +22,8 @@ if ! lock_deploys "$lock_table"; then
 fi
 # Under the lock, so a switch between main and dev can't change it meanwhile.
 image_tag=$(output image_tag)
+# Before anything replaces the backend that runs (ADR-0021).
+require_bot_check_key "$template" 1
 require_image "$repo" "$image_tag"
 image=$(image_by_digest "$repo" "$image_tag")
 backend=$(pin_task_definition "$template" dashgen-backend "$image" "$image_tag")

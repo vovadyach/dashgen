@@ -106,6 +106,24 @@ export function seedOnline(client: QueryClient) {
 }
 
 /**
+ * Resolves the first time a check finds DashGen online: at once if one
+ * already has, or later, as when a session starts while the tab is open.
+ * Unlike useOffline(), it waits for a check, so it never resolves while
+ * DashGen is offline, and nobody can ask.
+ */
+export function onceOnline(client: QueryClient): Promise<void> {
+  return new Promise((resolve) => {
+    const check = () => {
+      if (client.getQueryData(online.queryKey) !== true) return;
+      stop();
+      resolve();
+    };
+    const stop = client.getQueryCache().subscribe(check);
+    check();
+  });
+}
+
+/**
  * Whether DashGen is offline, as the page last found it. Until the first
  * check answers, it counts as online, so the page doesn't open with its
  * question box off.
