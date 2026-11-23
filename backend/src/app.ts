@@ -163,6 +163,7 @@ export async function buildApp(config: Config, options: AppOptions) {
     ...runs,
     store: createRunStore<RunEvent>({ log: app.log }),
     price: config.model.price,
+    visitorIp: (request) => visitorIp(request, config.viewerIpHeader),
   });
 
   return app;

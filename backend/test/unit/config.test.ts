@@ -32,6 +32,76 @@ describe("loadConfig", () => {
     assert.equal(config.model.apiKey.reveal(), "test-key");
   });
 
+  it("gets Turnstile's secret key on AWS under the name it reads", () => {
+    const stack = readFileSync(
+      new URL("../../../infra/aws/session/secrets.tf", import.meta.url),
+      "utf8",
+    );
+    const block = /secret_env = \{([^}]*)\}/.exec(stack)?.[1];
+    assert.ok(block, "infra/aws/session/secrets.tf has no secret_env");
+    assert.match(
+      block,
+      /\bTURNSTILE_SECRET_KEY\s*=\s*aws_secretsmanager_secret\.turnstile_secret_key\.arn/,
+    );
+  });
+
+  it("reads Turnstile's secret key, hidden when printed, with no bot check without one", () => {
+    const config = loadConfig({
+      ...VALID_ENV,
+      TURNSTILE_SECRET_KEY: "turnstile-secret",
+    });
+
+    assert.equal(config.turnstileSecret?.reveal(), "turnstile-secret");
+    assert.ok(!inspect(config).includes("turnstile-secret"));
+    assert.ok(!JSON.stringify(config).includes("turnstile-secret"));
+    assert.equal(loadConfig(VALID_ENV).turnstileSecret, undefined);
+    assert.equal(
+      loadConfig({ ...VALID_ENV, TURNSTILE_SECRET_KEY: "" }).turnstileSecret,
+      undefined,
+    );
+  });
+
+  it("stops on AWS without Turnstile's secret key, so no task there runs without the bot check", () => {
+    const aws = { ...VALID_ENV, DYNAMODB_REGION: "us-east-1" };
+
+    for (const key of [{}, { TURNSTILE_SECRET_KEY: "" }]) {
+      assert.throws(
+        () => loadConfig({ ...aws, ...key }),
+        /On AWS, where DYNAMODB_REGION is set, the bot check needs TURNSTILE_SECRET_KEY/,
+      );
+    }
+    assert.equal(
+      loadConfig({
+        ...aws,
+        TURNSTILE_SECRET_KEY: "turnstile-secret",
+      }).turnstileSecret?.reveal(),
+      "turnstile-secret",
+    );
+  });
+
+  it("stops on AWS with Cloudflare's test secret keys, which turn every real visitor down, but takes them locally", () => {
+    const aws = { ...VALID_ENV, DYNAMODB_REGION: "us-east-1" };
+    // Cloudflare's three: passes, fails, and already spent.
+    const testKeys = ["1x", "2x", "3x"].map(
+      (start) => `${start}${"0".repeat(31)}AA`,
+    );
+
+    for (const key of testKeys) {
+      assert.throws(
+        () => loadConfig({ ...aws, TURNSTILE_SECRET_KEY: key }),
+        /can't be one of Cloudflare's test keys/,
+      );
+      // Locally they're how to try the check.
+      assert.equal(
+        loadConfig({
+          ...VALID_ENV,
+          TURNSTILE_SECRET_KEY: key,
+        }).turnstileSecret?.reveal(),
+        key,
+      );
+    }
+  });
+
   it("counts an empty value as missing", () => {
     assert.throws(
       () => loadConfig({ ...VALID_ENV, GEMINI_API_KEY: "" }),

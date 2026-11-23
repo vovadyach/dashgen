@@ -140,8 +140,54 @@ const Env = z
       .string()
       .regex(/^[a-z0-9-]+$/)
       .optional(),
+    // Cloudflare Turnstile's secret key, to check that a person asks each
+    // question (ADR-0021). Unset or empty, as locally, there's no check. On
+    // AWS it's required (checkBotCheckKey).
+    TURNSTILE_SECRET_KEY: z.string().optional(),
+    // Only the backend's task definition sets it, so it says the backend runs
+    // on AWS. loadDynamoTarget reads it for the daily cap.
+    DYNAMODB_REGION: z.string().optional(),
   })
-  .superRefine(checkModelKey);
+  .superRefine(checkModelKey)
+  .superRefine(checkBotCheckKey);
+
+/**
+ * Cloudflare's test secret keys, like 1x0000000000000000000000000000000AA,
+ * which take only the test widget's dummy token, and turn every real one
+ * down (https://developers.cloudflare.com/turnstile/troubleshooting/testing/).
+ */
+const TEST_SECRET_KEY = /^\dx0+AA$/;
+
+/**
+ * Stops the backend at startup on AWS without Turnstile's secret key, or with
+ * one of Cloudflare's test keys (ADR-0021). A task made from an older
+ * template would otherwise run with no bot check, and let bots use up the
+ * day's questions, and a test key would turn every visitor down.
+ */
+function checkBotCheckKey(
+  env: {
+    TURNSTILE_SECRET_KEY?: string | undefined;
+    DYNAMODB_REGION?: string | undefined;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (!env.DYNAMODB_REGION) return;
+  if (!env.TURNSTILE_SECRET_KEY) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["TURNSTILE_SECRET_KEY"],
+      message:
+        "On AWS, where DYNAMODB_REGION is set, the bot check needs TURNSTILE_SECRET_KEY.",
+    });
+  } else if (TEST_SECRET_KEY.test(env.TURNSTILE_SECRET_KEY)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["TURNSTILE_SECRET_KEY"],
+      message:
+        "On AWS, TURNSTILE_SECRET_KEY can't be one of Cloudflare's test keys, which turn every real visitor down.",
+    });
+  }
+}
 
 /** The model that answers questions: AI_MODEL's, with its provider's key. */
 export interface ModelSettings {
@@ -178,6 +224,8 @@ export interface Config {
   port: number;
   /** The header with the visitor's IP, for the rate limit; unset, the connection's address. */
   viewerIpHeader: string | undefined;
+  /** Cloudflare Turnstile's secret key, which checks each question's token; unset, no check. */
+  turnstileSecret: Secret | undefined;
 }
 
 /** Parses `env` with `schema`, and throws an error naming every missing or invalid variable. */
@@ -204,6 +252,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     HOST,
     PORT,
     VIEWER_IP_HEADER,
+    TURNSTILE_SECRET_KEY,
   } = parsed;
   return {
     model: modelSettings(parsed),
@@ -213,6 +262,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     host: HOST,
     port: PORT,
     viewerIpHeader: VIEWER_IP_HEADER,
+    turnstileSecret: TURNSTILE_SECRET_KEY
+      ? new Secret(TURNSTILE_SECRET_KEY)
+      : undefined,
   };
 }
 

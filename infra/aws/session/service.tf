@@ -100,7 +100,8 @@ resource "aws_ecs_task_definition" "backend" {
       # The model TF_VAR_ai_model names; without one, the backend's default.
       var.ai_model == null ? [] : [{ name = "AI_MODEL", value = var.ai_model }],
     )
-    # Both secrets: the model's key and the database's password (secrets.tf).
+    # Its secrets: the model's key, Turnstile's secret key, and the
+    # database's password (secrets.tf).
     secrets = [for name, from in local.secret_env : { name = name, valueFrom = from }]
 
     # On a stop, ECS sends SIGTERM, then waits this long before it kills the

@@ -1,5 +1,7 @@
 import { AskResponse, ErrorBody, Offline } from "@dashgen/contracts";
 
+import { botCheckToken } from "./bot-check.ts";
+
 /** A failed request: one of the API's error codes, and a message that's safe to show. */
 export class ApiError extends Error {
   readonly code: string;
@@ -11,14 +13,19 @@ export class ApiError extends Error {
   }
 }
 
-/** Starts a run that answers `question`, with `POST /api/ask`, and returns its ID. */
+/**
+ * Starts a run that answers `question`, with `POST /api/ask`, and returns its
+ * ID. Cloudflare Turnstile's token goes with it, which shows a person asks
+ * (ADR-0021). Without one, the backend turns the question down, if it checks.
+ */
 export async function ask(question: string): Promise<string> {
+  const turnstileToken = await botCheckToken();
   let response: Response;
   try {
     response = await fetch("/api/ask", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, turnstileToken }),
     });
   } catch {
     throw new ApiError(

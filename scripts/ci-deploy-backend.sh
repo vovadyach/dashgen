@@ -100,6 +100,10 @@ if [[ $runs != main ]]; then
   exit 0
 fi
 
+# A session made before the backend needed TURNSTILE_SECRET_KEY keeps its
+# backend, and the image waits for the next make aws-up (ADR-0021).
+require_bot_check_key dashgen-backend-template 0
+
 # The migrations, in the backend's own network, then the backend, both on
 # this commit's image. The migrations' output stays in their log group, since
 # this job's log is public.

@@ -7,6 +7,7 @@ import {
   ErrorBody,
   type RunEvent,
 } from "@dashgen/contracts";
+import type { FastifyRequest } from "fastify";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 
@@ -16,6 +17,7 @@ import {
   runAgent,
   type Usage,
 } from "../agent/index.ts";
+import type { BotCheck } from "../bots/index.ts";
 import type { DailyCap, Reservation } from "../cap/index.ts";
 import type { Price } from "../config.ts";
 import { withoutQueryValues } from "../db.ts";
@@ -28,7 +30,9 @@ import { RunParams, StreamedEvent } from "./types.ts";
 const MESSAGES = {
   capReached: (limit: number) =>
     `DashGen has answered its ${String(limit)} questions for today. Ask again after midnight UTC.`,
-  capDown: "DashGen can't take questions right now. Try again in a moment.",
+  unavailable: "DashGen can't take questions right now. Try again in a moment.",
+  botCheck:
+    "DashGen couldn't check that a person is asking. Try again, or reload the page.",
 };
 
 /** What runs need: the model, the database and the daily cap on the server, fakes in tests. */
@@ -37,12 +41,16 @@ export interface RunDeps extends Pick<RunOptions, "model" | "metrics"> {
   save: (run: NewRun, log: Logger) => Promise<void>;
   /** Today's count of questions, checked before each run starts. */
   cap: DailyCap;
+  /** Whether a person asks, from the question's Turnstile token, checked before the daily cap. */
+  botCheck: BotCheck;
 }
 
 export interface RunRoutesOptions extends RunDeps {
   store: RunStore<RunEvent>;
   /** The model's price, for each run's cost. */
   price: Price;
+  /** The visitor's IP, as the rate limit counts it, for the bot check. */
+  visitorIp: (request: FastifyRequest) => string;
 }
 
 /**
@@ -51,7 +59,7 @@ export interface RunRoutesOptions extends RunDeps {
  */
 export const runRoutes: FastifyPluginCallbackZod<RunRoutesOptions> = (
   app,
-  { store, price, model, metrics, save, cap },
+  { store, price, visitorIp, model, metrics, save, cap, botCheck },
   done,
 ) => {
   // Runs still going. Closing the app waits for them, so each is saved before
@@ -71,7 +79,7 @@ export const runRoutes: FastifyPluginCallbackZod<RunRoutesOptions> = (
       return await cap.reserve();
     } catch (err) {
       log.error({ err }, "daily cap unavailable");
-      throw new ApiError(503, "unavailable", MESSAGES.capDown);
+      throw new ApiError(503, "unavailable", MESSAGES.unavailable);
     }
   }
 
@@ -113,15 +121,33 @@ export const runRoutes: FastifyPluginCallbackZod<RunRoutesOptions> = (
         body: AskRequest,
         response: {
           202: AskResponse,
+          403: ErrorBody.describe(
+            "bot_check_failed: the question's Cloudflare Turnstile token is missing, or didn't pass (ADR-0021).",
+          ),
           422: ErrorBody,
           429: ErrorBody,
           503: ErrorBody.describe(
-            "Today's questions are used up (`daily_cap`, with `Retry-After`), or they can't be counted (`unavailable`).",
+            "Today's questions are used up (`daily_cap`, with `Retry-After`), or DashGen can't take questions (`unavailable`): DynamoDB can't count them, or the bot check's setup is wrong.",
           ),
         },
       },
     },
     async (request, reply) => {
+      // After the rate limit, so a flood never reaches Cloudflare, and before
+      // the daily cap, so a bot takes none of today's questions.
+      const verdict = await botCheck.check(
+        request.body.turnstileToken,
+        visitorIp(request),
+        request.log,
+      );
+      if (verdict === "failed") {
+        throw new ApiError(403, "bot_check_failed", MESSAGES.botCheck);
+      }
+      // Only DashGen's operator can fix it, as with a wrong secret key, so the
+      // visitor hears of an outage, and the log of the setup (bots/).
+      if (verdict === "misconfigured") {
+        throw new ApiError(503, "unavailable", MESSAGES.unavailable);
+      }
       const reservation = await reserve(request.log);
       if (!reservation.reserved) {
         void reply.header("retry-after", String(reservation.retryAfter));

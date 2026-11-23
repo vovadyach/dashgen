@@ -234,14 +234,23 @@ Each `break` box is a point where a question ends early. The arrow inside shows 
 sequenceDiagram
     participant F as Frontend
     participant B as Backend
+    participant T as Cloudflare Turnstile
     participant C as Daily cap (DynamoDB)
     participant LLM as Gemini or Claude
     participant DB as Postgres
 
-    F->>B: POST /api/ask, with the question
+    F->>B: POST /api/ask, with the question and Turnstile's token
     break more than 10 questions a minute from this IP
         B-->>F: HTTP 429, rate_limited
     end
+    B->>T: is the token a person's? 3 s timeout
+    break the token is missing or turned down
+        B-->>F: HTTP 403, bot_check_failed, and none of today's questions is taken
+    end
+    break the bot check's setup is wrong, as with a mistyped secret key
+        B-->>F: HTTP 503, unavailable, and none of today's questions is taken
+    end
+    Note over B,T: Cloudflare down (no answer, 5xx, 429): the question goes through (fail open)
     B->>C: reserve one of today's questions
     break the cap is reached
         B-->>F: HTTP 503, daily_cap, with Retry-After, and the model is never called
@@ -540,9 +549,10 @@ Every error carries our own code and a message that's safe to show visitors. Whe
 |---|---|---|
 | `invalid_question` | `POST /api/ask` fails, HTTP 422 | missing, empty, over 300 characters, or with a NUL character, which Postgres can't store |
 | `rate_limited` | `POST /api/ask` fails, HTTP 429 | the 11th question in a minute from one IP |
+| `bot_check_failed` | `POST /api/ask` fails, HTTP 403 | the question's Cloudflare Turnstile token is missing, or Cloudflare turns it down ([ADR-0021](decisions/0021-turnstile-bot-check.md)) |
 | `daily_cap` | `POST /api/ask` fails, HTTP 503, with `Retry-After` | the day's questions are used up |
 | `agent_failed` | `error` event in the stream; HTTP stays 200 | no chart, clarifying question or refusal within the [run's limits](#the-daily-cap) |
-| `unavailable` | `error` event in the stream, or `POST /api/ask` fails with HTTP 503 | the database or the model fails, after one retry if retrying can help. Before a run, DynamoDB can't count the question |
+| `unavailable` | `error` event in the stream, or `POST /api/ask` fails with HTTP 503 | the database or the model fails, after one retry if retrying can help. Before a run, DynamoDB can't count the question, or the bot check's setup is wrong, as with a mistyped secret key |
 | `timeout` | `error` event in the stream | the run took over 25 seconds |
 | `internal_error` | HTTP 500, or the stream's `error` event | a bug in DashGen. A run it ends is still saved, with its steps and tokens so far |
 | `run_not_found` | the stream fails, HTTP 404 | the run is unknown or expired: more than 5 minutes old, or lost in a deploy or restart. The page opens the stream once more, then says the answer was interrupted and offers to ask again |

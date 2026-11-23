@@ -402,10 +402,16 @@ describe("the page", () => {
     );
   });
 
-  it("says that questions are saved", () => {
+  it("says that questions are saved, and links Cloudflare's privacy addendum, which its invisible widget needs", () => {
     started();
     renderPage();
-    screen.getByText("We save questions to test and improve DashGen.");
+    screen.getByText(/^We save questions to test and improve DashGen\./);
+    const addendum = screen.getByRole("link", {
+      name: "Turnstile Privacy Addendum",
+    });
+    expect(addendum.getAttribute("href")).toBe(
+      "https://www.cloudflare.com/turnstile-privacy-policy/",
+    );
   });
 
   it("hides the examples on a phone once there's an answer, so it starts higher up", async () => {

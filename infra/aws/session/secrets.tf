@@ -62,18 +62,38 @@ resource "aws_secretsmanager_secret_version" "model_api_key" {
   secret_string_wo_version = 1
 }
 
+# The secret key of DashGen's Cloudflare Turnstile widget, which the backend
+# sends to Cloudflare to check each question's token (ADR-0021). Like the
+# model's key: make aws-up passes it from the shell, write-only, and make
+# aws-down deletes it at once. $0.40 a month, charged by the hour.
+resource "aws_secretsmanager_secret" "turnstile_secret_key" {
+  name                    = "dashgen/turnstile-secret-key"
+  description             = "DashGen's Cloudflare Turnstile secret key, for the backend"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "turnstile_secret_key" {
+  secret_id = aws_secretsmanager_secret.turnstile_secret_key.id
+
+  # A placeholder for a plan without the key, as for the model's key.
+  secret_string_wo         = coalesce(var.turnstile_secret_key, "no-key-given")
+  secret_string_wo_version = 1
+}
+
 # What ECS can pass to the backend's containers, by environment variable: the
-# model's key, and the password from RDS's own secret (database.tf) as
-# PGPASSWORD, which node-postgres reads when DATABASE_URL has no password
-# (ADR-0015). Each task definition takes only the ones it needs (ecs.tf).
+# model's key, Turnstile's secret key, and the password from RDS's own secret
+# (database.tf) as PGPASSWORD, which node-postgres reads when DATABASE_URL has
+# no password (ADR-0015). Each task definition takes only the ones it needs
+# (ecs.tf).
 locals {
   secret_env = {
     (local.model_key.env) = aws_secretsmanager_secret.model_api_key.arn
+    TURNSTILE_SECRET_KEY  = aws_secretsmanager_secret.turnstile_secret_key.arn
     PGPASSWORD            = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::"
   }
 }
 
-# The role ECS takes to start the backend's tasks. Here it may read these two
+# The role ECS takes to start the backend's tasks. Here it may read these three
 # secrets; ecs.tf lets it pull the image and write the logs too. Nothing else.
 resource "aws_iam_role" "task_execution" {
   name        = "dashgen-task-execution"
@@ -102,6 +122,7 @@ resource "aws_iam_role_policy" "task_execution" {
       Action = "secretsmanager:GetSecretValue"
       Resource = [
         aws_secretsmanager_secret.model_api_key.arn,
+        aws_secretsmanager_secret.turnstile_secret_key.arn,
         aws_db_instance.main.master_user_secret[0].secret_arn,
       ]
     }]
