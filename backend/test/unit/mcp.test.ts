@@ -4,6 +4,7 @@ import { setImmediate as tick } from "node:timers/promises";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import { MAX_QUERIES } from "../../src/agent/validation.ts";
@@ -136,18 +137,23 @@ describe("createMcpServer", () => {
     await client.close();
   });
 
-  it("answers a tool it doesn't offer, like the agent's clarify, with an error that names its tools", async () => {
+  it("refuses a tool it doesn't offer, like the agent's clarify, with MCP's protocol error, which names its tools", async () => {
     const { client } = await connect(fakeMetrics());
 
-    const { text, isError } = await call(client, "clarify", {
-      message: "Which one?",
-      choices: ["Errors", "Latency"],
-    });
-
-    assert.equal(isError, true);
-    assert.equal(
-      text,
-      "DashGen has no tool named clarify. Its tools: list_services, query_metrics.",
+    await assert.rejects(
+      client.callTool({
+        name: "clarify",
+        arguments: { message: "Which one?", choices: ["Errors", "Latency"] },
+      }),
+      (error) => {
+        assert.ok(error instanceof McpError);
+        assert.equal(error.code, ErrorCode.InvalidParams);
+        assert.match(
+          error.message,
+          /Unknown tool: clarify\. DashGen's tools: list_services, query_metrics\./,
+        );
+        return true;
+      },
     );
     await client.close();
   });

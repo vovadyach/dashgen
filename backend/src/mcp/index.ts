@@ -4,7 +4,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   type CallToolResult,
   CallToolRequestSchema,
+  ErrorCode,
   ListToolsRequestSchema,
+  McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
@@ -71,9 +73,12 @@ export function createMcpServer(
   }));
   mcp.server.setRequestHandler(CallToolRequestSchema, (request, { signal }) => {
     const tool = tools.find(({ name }) => name === request.params.name);
+    // A protocol error, as MCP's spec asks for an unknown tool. A tool's own
+    // failure is a result instead, which the client's model reads.
     if (!tool) {
-      return failed(
-        `DashGen has no tool named ${request.params.name}. Its tools: ${tools.map(({ name }) => name).join(", ")}.`,
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Unknown tool: ${request.params.name}. DashGen's tools: ${tools.map(({ name }) => name).join(", ")}.`,
       );
     }
     return callTool(tool, request.params.arguments, signal, log);

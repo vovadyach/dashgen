@@ -60,7 +60,10 @@ export function createMetrics(
     return { services: serviceRows.map((s) => s.name), metrics: metricRows };
   }
 
-  async function query(input: MetricsQuery): Promise<MetricsResult> {
+  async function query(
+    input: MetricsQuery,
+    signal: AbortSignal | undefined,
+  ): Promise<MetricsResult> {
     // Arguments come from the model, so a bad one is a MetricsError it can correct, not a crash.
     const result = MetricsQuery.safeParse(input);
     if (!result.success) {
@@ -99,6 +102,9 @@ export function createMetrics(
       // Drizzle returns timestamps from raw SQL as text. The summary row's is null.
       (value: string | null) => (value === null ? null : new Date(value)),
     );
+    // The catalog's read took its time: a call cancelled meanwhile starts no
+    // second one.
+    signal?.throwIfAborted();
     const started = performance.now();
     const rows = await db
       .select({
@@ -193,16 +199,22 @@ export function createMetrics(
   // Reads are safe to repeat, so one that failed in a way trying again could
   // fix gets one more try, unless the run or the read's own call is over. A
   // query the model got wrong fails at once.
-  const retried = <T>(read: () => Promise<T>, options: ReadOptions = {}) =>
-    retryOnce(read, {
+  const retried = <T>(
+    read: (signal: AbortSignal | undefined) => Promise<T>,
+    options: ReadOptions = {},
+  ) => {
+    const either = eitherSignal(signal, options.signal);
+    return retryOnce(() => read(either), {
       log,
       retryDelayMs,
-      signal: eitherSignal(signal, options.signal),
+      signal: either,
     });
+  };
 
   return {
-    listServices: (options) => retried(listServices, options),
-    query: (input, options) => retried(() => query(input), options),
+    listServices: (options) => retried(() => listServices(), options),
+    query: (input, options) =>
+      retried((either) => query(input, either), options),
   };
 }
 

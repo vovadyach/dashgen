@@ -4,7 +4,8 @@ import { after, before, describe, it } from "node:test";
 import { MetricsResult } from "@dashgen/contracts";
 import { and, eq, gte, lt, max } from "drizzle-orm";
 
-import { isRetryable } from "../../src/db.ts";
+import { createDb, isRetryable } from "../../src/db.ts";
+import type { Logger } from "../../src/logger.ts";
 import { createMetrics, MetricsError } from "../../src/metrics/index.ts";
 import { points } from "../../src/metrics/schema.ts";
 import { seedMetrics } from "../../src/metrics/seed.ts";
@@ -278,6 +279,36 @@ describe("metrics module", () => {
         await down.$client.end();
       }
       assert.deepEqual(retries(lines), []);
+    });
+
+    it("starts no aggregation once its call is cancelled during the catalog's read", async () => {
+      assert.ok(testDb);
+      const cancel = new AbortController();
+      const statements: object[] = [];
+      // Cancels the call as its first read, the catalog's, starts.
+      const log: Logger = {
+        ...recordingLogger().log,
+        debug: (obj, msg) => {
+          if (msg !== "sql") return;
+          statements.push(obj);
+          cancel.abort();
+        },
+      };
+      const watched = createDb(testDb.url, { log });
+      try {
+        await assert.rejects(
+          createMetrics(watched, { now: () => NOW, log }).query(
+            { service: "auth-service", metric: "errors" },
+            { signal: cancel.signal },
+          ),
+          { name: "AbortError" },
+        );
+      } finally {
+        await watched.$client.end();
+      }
+      // The catalog's two reads, of services and metrics, and no aggregation.
+      assert.equal(statements.length, 2);
+      assert.doesNotMatch(JSON.stringify(statements), /date_trunc/);
     });
 
     it("doesn't try a read again once its own call is cancelled, as an MCP client can cancel one", async () => {
