@@ -65,6 +65,8 @@ describe("createMcpServer", () => {
       query.description ?? "",
       /^Fetches one metric for one service/,
     );
+    // A session has no limit on queries, so the description names none.
+    assert.doesNotMatch(query.description ?? "", /a question can make/);
     await client.close();
   });
 

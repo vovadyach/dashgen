@@ -70,6 +70,11 @@ export function createTools(
   }: ToolOptions = {},
 ): Tool[] {
   const results = new Map<string, MetricsResult>();
+  // The model reads the description as its rules, so it names a limit only
+  // when there is one: over MCP there's none.
+  const limit = Number.isFinite(maxQueries)
+    ? `, and a question can make ${String(maxQueries)} queries`
+    : "";
 
   return [
     defineTool({
@@ -88,7 +93,7 @@ export function createTools(
     }),
     defineTool({
       name: "query_metrics",
-      description: `Fetches one metric for one service over the last 1 to 30 days. Returns a result ID, like q1, and a summary over the hours (a total for metrics that add up, plus avg, min, max and latest), but not the points: pass the ID to create_chart to plot them. To compare services, call it for each service in the same reply, with the same days and bucket. Only names from list_services work, and a question can make ${String(MAX_QUERIES)} queries.`,
+      description: `Fetches one metric for one service over the last 1 to 30 days. Returns a result ID, like q1, and a summary over the hours (a total for metrics that add up, plus avg, min, max and latest), but not the points: pass the ID to create_chart to plot them. To compare services, call it for each service in the same reply, with the same days and bucket. Only names from list_services work${limit}.`,
       args: QueryMetricsArgs,
       run: async (args, callNumber) => {
         // Every call takes the next ID, failed ones too, so IDs follow the

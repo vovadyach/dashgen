@@ -170,8 +170,8 @@ describe("createTools", () => {
       assert.equal(metrics.queries.length, 0);
     });
 
-    it(`allows at most ${String(MAX_QUERIES)} queries per question`, async () => {
-      const { call, metrics } = startRun();
+    it(`allows at most ${String(MAX_QUERIES)} queries per question, and tells the model so`, async () => {
+      const { call, metrics, tools } = startRun();
 
       for (let i = 0; i < MAX_QUERIES; i++)
         await call("query_metrics", CHECKOUT_QUERY);
@@ -181,10 +181,15 @@ describe("createTools", () => {
         message: /used its 10 queries\. Chart the results you have: q1, q2,/,
       });
       assert.equal(metrics.queries.length, MAX_QUERIES);
+      const query = tools.find((t) => t.name === "query_metrics");
+      assert.match(
+        query?.description ?? "",
+        /Only names from list_services work, and a question can make 10 queries\.$/,
+      );
     });
 
-    it("has no limit on queries when told so, as for an MCP session, whose client's model reads the results", async () => {
-      const { call, metrics } = startRun({
+    it("has no limit on queries when told so, as for an MCP session, whose client's model reads the results, and claims none", async () => {
+      const { call, metrics, tools } = startRun({
         maxQueries: Number.POSITIVE_INFINITY,
       });
 
@@ -192,6 +197,12 @@ describe("createTools", () => {
         await call("query_metrics", CHECKOUT_QUERY);
 
       assert.equal(metrics.queries.length, MAX_QUERIES + 1);
+      const query = tools.find((t) => t.name === "query_metrics");
+      assert.match(
+        query?.description ?? "",
+        /Only names from list_services work\.$/,
+      );
+      assert.doesNotMatch(query?.description ?? "", /a question can make/);
     });
 
     it("keeps only the newest results when told so, so a chart can't use an older one", async () => {
