@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { setImmediate as tick } from "node:timers/promises";
 
+import { Chart, chartJsonFromHash } from "@dashgen/contracts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
@@ -15,12 +16,15 @@ import { CATALOG } from "../fixtures/metrics.ts";
 import { recordingLogger } from "../helpers/logger.ts";
 import { downMetrics, fakeMetrics } from "../helpers/metrics.ts";
 
+/** Where the server's chart links open, in these tests. */
+const PAGE = "https://dashgen.example/";
+
 /** An MCP client connected to DashGen's server on `metrics`, in memory, as Claude Code is over stdio. */
 async function connect(metrics: Metrics) {
   const { log, lines } = recordingLogger();
   const client = new Client({ name: "test-client", version: "1.0.0" });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  await createMcpServer(metrics, { log }).connect(serverSide);
+  await createMcpServer(metrics, { log, pageUrl: PAGE }).connect(serverSide);
   await client.connect(clientSide);
   return { client, lines };
 }
@@ -46,18 +50,32 @@ async function call(
 /** A query_metrics answer: its result ID, and how many points it has. */
 const QueryAnswer = z.object({ id: z.string(), points: z.number() });
 
+/** A create_chart answer, over MCP: the chart's link, title and type. */
+const ChartAnswer = z.object({
+  link: z.string(),
+  title: z.string(),
+  type: z.string(),
+});
+
 describe("createMcpServer", () => {
-  it("offers list_services and query_metrics, with the agent's own descriptions", async () => {
+  it("offers list_services, query_metrics and create_chart, with the agent's own descriptions", async () => {
     const { client } = await connect(fakeMetrics());
 
     const { tools } = await client.listTools();
 
     assert.deepEqual(
       tools.map(({ name }) => name),
-      ["list_services", "query_metrics"],
+      ["list_services", "query_metrics", "create_chart"],
     );
-    const [list, query] = tools;
-    assert.ok(list && query);
+    const [list, query, chart] = tools;
+    assert.ok(list && query && chart);
+    // An MCP client gets a link, and no run to end.
+    assert.match(
+      chart.description ?? "",
+      /^Draws a chart from result IDs, and returns a link that opens it in DashGen's page/,
+    );
+    assert.doesNotMatch(chart.description ?? "", /ends the run/);
+    assert.match(chart.description ?? "", /You never send numbers/);
     assert.match(
       list.description ?? "",
       /^Lists the services and metrics you can query/,
@@ -150,7 +168,7 @@ describe("createMcpServer", () => {
         assert.equal(error.code, ErrorCode.InvalidParams);
         assert.match(
           error.message,
-          /Unknown tool: clarify\. DashGen's tools: list_services, query_metrics\./,
+          /Unknown tool: clarify\. DashGen's tools: list_services, query_metrics, create_chart\./,
         );
         return true;
       },
@@ -199,6 +217,32 @@ describe("createMcpServer", () => {
     assert.equal(answer.id, "q2");
     // A count: the points stay with DashGen, for create_chart.
     assert.ok(answer.points > 0);
+    await client.close();
+  });
+
+  it("answers create_chart with a link to the page that carries the chart, and keeps the session going", async () => {
+    const { client } = await connect(fakeMetrics());
+
+    await call(client, "query_metrics", CHECKOUT_QUERY);
+    const { text, isError } = await call(client, "create_chart", {
+      type: "line",
+      sources: ["q1"],
+      title: "Errors, checkout-api, last 3 days",
+    });
+
+    assert.equal(isError, false);
+    const answer = ChartAnswer.parse(JSON.parse(text));
+    assert.equal(answer.type, "line");
+    // A link to the page, as its own Copy link makes one: the chart itself
+    // is in the hash, so it opens with no backend.
+    const link = new URL(answer.link);
+    assert.equal(`${link.origin}${link.pathname}`, PAGE);
+    const json = await chartJsonFromHash(link.hash);
+    assert.ok(json !== undefined);
+    assert.equal(Chart.parse(JSON.parse(json)).title, answer.title);
+    // No run ends: the next query takes the next ID.
+    const next = await call(client, "query_metrics", CHECKOUT_QUERY);
+    assert.equal(QueryAnswer.parse(JSON.parse(next.text)).id, "q2");
     await client.close();
   });
 

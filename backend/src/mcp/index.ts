@@ -1,5 +1,5 @@
 // DashGen's tools for MCP clients, like Claude Code (ADR-0022).
-import { MAX_SERIES } from "@dashgen/contracts";
+import { type Chart, chartHash, MAX_SERIES } from "@dashgen/contracts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   type CallToolResult,
@@ -24,6 +24,7 @@ import type { Metrics } from "../metrics/index.ts";
 const SHARED_TOOLS: ReadonlySet<string> = new Set([
   "list_services",
   "query_metrics",
+  "create_chart",
 ]);
 
 /**
@@ -34,6 +35,8 @@ const KEEP_RESULTS = 2 * MAX_SERIES;
 
 export interface McpServerOptions {
   log: Logger;
+  /** The page where create_chart's links open, like "http://localhost:5173/". */
+  pageUrl: string;
 }
 
 /**
@@ -49,11 +52,12 @@ export interface McpServerOptions {
  */
 export function createMcpServer(
   metrics: Metrics,
-  { log }: McpServerOptions,
+  { log, pageUrl }: McpServerOptions,
 ): McpServer {
   const tools = createTools(metrics, {
     maxQueries: Number.POSITIVE_INFINITY,
     keepResults: KEEP_RESULTS,
+    chartLink: (chart) => linkTo(pageUrl, chart),
   }).filter(({ name }) => SHARED_TOOLS.has(name));
   const mcp = new McpServer(
     { name: "dashgen", version: "0.1.0" },
@@ -113,6 +117,21 @@ async function callTool(
     );
     return failed(`DashGen couldn't run ${tool.name}. Try again in a moment.`);
   }
+}
+
+/**
+ * A link that opens `chart` on the page at `pageUrl`, as the page's own Copy
+ * link makes one, or undefined when the chart is too large for a link.
+ */
+async function linkTo(
+  pageUrl: string,
+  chart: Chart,
+): Promise<string | undefined> {
+  const hash = await chartHash(chart);
+  if (hash === undefined) return undefined;
+  const link = new URL(pageUrl);
+  link.hash = hash;
+  return link.toString();
 }
 
 function failed(text: string): CallToolResult {

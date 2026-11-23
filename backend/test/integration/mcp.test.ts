@@ -55,7 +55,7 @@ describe("the MCP server over stdio", () => {
 
       assert.deepEqual(
         tools.map(({ name }) => name),
-        ["list_services", "query_metrics"],
+        ["list_services", "query_metrics", "create_chart"],
       );
       assert.notEqual(result.isError, true);
       // Each SQL statement is logged at debug level, from the settings file.

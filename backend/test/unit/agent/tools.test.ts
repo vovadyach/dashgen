@@ -255,6 +255,57 @@ describe("createTools", () => {
   });
 
   describe("create_chart", () => {
+    it("answers with a link when it's given a way to make one, as for an MCP client, and ends no run", async () => {
+      const { call, tools } = startRun({
+        chartLink: (chart) =>
+          Promise.resolve(`https://dashgen.example/#${chart.type}`),
+      });
+      await call("query_metrics", CHECKOUT_QUERY);
+
+      const result = await call("create_chart", {
+        type: "line",
+        sources: ["q1"],
+        title: "Errors per day, last 3 days",
+      });
+
+      assert.deepEqual(result, {
+        done: false,
+        result: {
+          link: "https://dashgen.example/#line",
+          title: "Errors per day, last 3 days",
+          type: "line",
+        },
+        step: "line chart: Errors per day, last 3 days",
+      });
+      const chart = tools.find((t) => t.name === "create_chart");
+      assert.match(
+        chart?.description ?? "",
+        /^Draws a chart from result IDs, and returns a link/,
+      );
+    });
+
+    it("turns a chart too large for a link into an error the model can act on", async () => {
+      const { call } = startRun({
+        chartLink: () => Promise.resolve(undefined),
+      });
+      await call("query_metrics", CHECKOUT_QUERY);
+
+      await assert.rejects(
+        call("create_chart", { type: "line", sources: ["q1"], title: "t" }),
+        { name: "ToolError", message: /too large for a link/ },
+      );
+    });
+
+    it("tells DashGen's own agent that a chart ends its run", () => {
+      const { tools } = startRun();
+
+      const chart = tools.find((t) => t.name === "create_chart");
+      assert.match(
+        chart?.description ?? "",
+        /^Draws the answer from result IDs, and ends the run, so the visitor sees only the first chart you draw\. Chart over time/,
+      );
+    });
+
     it("draws from the run's own results, and ends the run", async () => {
       const { call } = startRun();
       await call("query_metrics", CHECKOUT_QUERY);

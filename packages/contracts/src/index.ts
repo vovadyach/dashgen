@@ -1,9 +1,11 @@
 // The shapes DashGen's APIs send and receive. A service validates with these
 // schemas, and its clients get their types from the same place, so the two
 // can't drift apart. The same goes for the few values that both the backend
-// and the page show.
+// and the page show, and for the share link's format (link.ts).
 
 import { z } from "zod";
+
+export { CHART_LINK_PREFIX, chartHash, chartJsonFromHash } from "./link.ts";
 
 /** A question's longest length, after trimming, in characters. */
 export const QUESTION_MAX_LENGTH = 300;

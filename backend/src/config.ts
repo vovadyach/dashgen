@@ -337,3 +337,19 @@ const LogLevelEnv = z.object({ LOG_LEVEL: z.enum(LOG_LEVELS).default("info") });
 export function loadLogLevel(env: NodeJS.ProcessEnv = process.env): LogLevel {
   return parseEnv(LogLevelEnv, env).LOG_LEVEL;
 }
+
+/** The page that `make dev` serves. */
+export const LOCAL_PAGE_URL = "http://localhost:5173/";
+
+const PageUrlEnv = z.object({
+  PAGE_URL: z.url({ protocol: /^https?$/ }).default(LOCAL_PAGE_URL),
+});
+
+/**
+ * Reads `PAGE_URL`, where the MCP server's chart links open (ADR-0022): the
+ * local page, unless it's set. The page opens a link with no backend, so the
+ * live page opens them even between sessions.
+ */
+export function loadPageUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return parseEnv(PageUrlEnv, env).PAGE_URL;
+}

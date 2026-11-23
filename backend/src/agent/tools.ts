@@ -1,4 +1,8 @@
-import { EXAMPLE_QUESTIONS, type MetricsResult } from "@dashgen/contracts";
+import {
+  type Chart,
+  EXAMPLE_QUESTIONS,
+  type MetricsResult,
+} from "@dashgen/contracts";
 import type { z } from "zod";
 
 import { type Metrics, MetricsError } from "../metrics/index.ts";
@@ -60,7 +64,16 @@ export interface ToolOptions {
   maxQueries?: number;
   /** The newest results that create_chart can use. Older ones go, oldest first. */
   keepResults?: number;
+  /**
+   * Makes create_chart answer with a link to the chart, as for an MCP client,
+   * instead of ending the run: undefined when the chart is too large for one.
+   */
+  chartLink?: (chart: Chart) => Promise<string | undefined>;
 }
+
+/** create_chart's rules, the same for the agent and for an MCP client. */
+const CHART_RULES =
+  "Chart over time unless the question asks for one number per service, like which is highest or lowest, a total or average for each, or a pie. Over time, leave out aggregation: a line or bar chart, with a series per service. For one number per service, set aggregation: a bar chart, or a pie of totals for 2 or more services. A chart shows one metric, from results over the same days and bucket. You never send numbers: they come from the results.";
 
 /**
  * The tools for one run. They keep that run's query results, so runAgent makes
@@ -73,6 +86,7 @@ export function createTools(
   {
     maxQueries = MAX_QUERIES,
     keepResults = Number.POSITIVE_INFINITY,
+    chartLink,
   }: ToolOptions = {},
 ): Tool[] {
   const results = new Map<string, MetricsResult>();
@@ -140,15 +154,28 @@ export function createTools(
     }),
     defineTool({
       name: "create_chart",
-      description:
-        "Draws the answer from result IDs, and ends the run, so the visitor sees only the first chart you draw. Chart over time unless the question asks for one number per service, like which is highest or lowest, a total or average for each, or a pie. Over time, leave out aggregation: a line or bar chart, with a series per service. For one number per service, set aggregation: a bar chart, or a pie of totals for 2 or more services. A chart shows one metric, from results over the same days and bucket. You never send numbers: they come from the results.",
+      description: `${
+        chartLink
+          ? "Draws a chart from result IDs, and returns a link that opens it in DashGen's page: give the link to your user."
+          : "Draws the answer from result IDs, and ends the run, so the visitor sees only the first chart you draw."
+      } ${CHART_RULES}`,
       args: CreateChartArgs,
-      run: (args) => {
+      run: async (args) => {
         const chart = buildChart(args, results);
+        const step = `${chart.type} chart: ${chart.title}`;
+        if (!chartLink) {
+          return { done: true, outcome: { outcome: "chart", chart }, step };
+        }
+        const link = await chartLink(chart);
+        if (link === undefined) {
+          throw new ToolError(
+            "This chart is too large for a link. Chart fewer services, or fewer days.",
+          );
+        }
         return {
-          done: true,
-          outcome: { outcome: "chart", chart },
-          step: `${chart.type} chart: ${chart.title}`,
+          done: false,
+          result: { link, title: chart.title, type: chart.type },
+          step,
         };
       },
     }),
