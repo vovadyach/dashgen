@@ -6,7 +6,14 @@ export const RESULTS = new Map([
   [
     "q2",
     errorsResult("payments-service", {
-      summary: { total: 300, avg: 5.08, min: 0, max: 40, latest: 3 },
+      summary: {
+        total: 300,
+        avg: 5.08,
+        min: 0,
+        max: 40,
+        maxAt: "2026-10-26T14:00:00.000Z",
+        latest: 3,
+      },
     }),
   ],
   ["q3", latencyResult("checkout-api", 417)],
@@ -15,13 +22,29 @@ export const RESULTS = new Map([
   [
     "q6",
     errorsResult("search-service", {
-      summary: { total: 0, avg: 0, min: 0, max: 0, latest: 0 },
+      summary: {
+        total: 0,
+        avg: 0,
+        min: 0,
+        max: 0,
+        // Every hour ties at 0, so the first.
+        maxAt: "2026-10-25T00:00:00.000Z",
+        latest: 0,
+      },
     }),
   ],
   [
     "q7",
     errorsResult("notifications-worker", {
-      summary: { total: 0, avg: 0, min: 0, max: 0, latest: 0 },
+      summary: {
+        total: 0,
+        avg: 0,
+        min: 0,
+        max: 0,
+        // Every hour ties at 0, so the first.
+        maxAt: "2026-10-25T00:00:00.000Z",
+        latest: 0,
+      },
     }),
   ],
 ]);

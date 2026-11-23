@@ -123,10 +123,23 @@ describe("createTools", () => {
           unit: "count",
           days: 3,
           bucket: "day",
+          // The hours it covers, which a client in another time zone can't guess.
+          window: {
+            from: "2026-10-25T00:00:00.000Z",
+            to: "2026-10-27T10:00:00.000Z",
+          },
           points: 3,
           from: "2026-10-25T00:00:00.000Z",
           to: "2026-10-27T00:00:00.000Z",
-          summary: { total: 109, avg: 1.85, min: 1, max: 4, latest: 2 },
+          summary: {
+            total: 109,
+            avg: 1.85,
+            min: 1,
+            max: 4,
+            // When the worst hour was, which the points don't show the model.
+            maxAt: "2026-10-26T13:00:00.000Z",
+            latest: 2,
+          },
         },
         step: "q1: 3 daily points",
       });

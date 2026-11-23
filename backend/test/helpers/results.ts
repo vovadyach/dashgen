@@ -16,7 +16,14 @@ export const errorsResult = (
     { t: "2026-10-26T00:00:00.000Z", value: 55 },
     { t: "2026-10-27T00:00:00.000Z", value: 16, partial: true },
   ],
-  summary: { total: 109, avg: 1.85, min: 1, max: 4, latest: 2 },
+  summary: {
+    total: 109,
+    avg: 1.85,
+    min: 1,
+    max: 4,
+    maxAt: "2026-10-26T13:00:00.000Z",
+    latest: 2,
+  },
   ...overrides,
 });
 
@@ -25,5 +32,11 @@ export const latencyResult = (service: string, avg: number): MetricsResult => ({
   ...errorsResult(service),
   metric: "latency_ms",
   unit: "ms",
-  summary: { avg, min: avg / 2, max: avg * 2, latest: avg },
+  summary: {
+    avg,
+    min: avg / 2,
+    max: avg * 2,
+    maxAt: "2026-10-26T14:00:00.000Z",
+    latest: avg,
+  },
 });

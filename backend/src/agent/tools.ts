@@ -120,7 +120,7 @@ export function createTools(
     }),
     defineTool({
       name: "query_metrics",
-      description: `Fetches one metric for one service over the last 1 to 30 days. Returns a result ID, like q1, and a summary over the hours (a total for metrics that add up, plus avg, min, max and latest), but not the points: pass the ID to create_chart to plot them. To compare services, call it for each service in the same reply, with the same days and bucket. Only names from list_services work${limit}.`,
+      description: `Fetches one metric for one service over the last 1 to 30 days. Returns a result ID, like q1, its window (the hours it covers, in UTC), the start of its first and last bucket (from and to), and a summary of its hours: a total for metrics that add up, plus the hourly avg, min and max, the hour the max came at (maxAt), and the latest hour's value. It doesn't return the points: pass the ID to create_chart to plot them. To compare services, call it for each service in the same reply, with the same days and bucket. Only names from list_services work${limit}.`,
       args: QueryMetricsArgs,
       run: async (args, callNumber, signal) => {
         // Every call takes the next ID, failed ones too, so IDs follow the
@@ -144,9 +144,10 @@ export function createTools(
           results.delete(old);
         }
 
-        // The points stay here, and so does the window, which create_chart
-        // checks: the model only needs to know what the result covers.
-        const { service, metric, unit, days, bucket, summary, points } = result;
+        // The points stay here: the model only needs to know what the result
+        // covers, as a client reading it in its own time zone might not.
+        const { service, metric, unit, days, bucket, window, summary, points } =
+          result;
         return {
           done: false,
           result: {
@@ -156,6 +157,7 @@ export function createTools(
             unit,
             days,
             bucket,
+            window,
             summary,
             points: points.length,
             from: points[0]?.t,

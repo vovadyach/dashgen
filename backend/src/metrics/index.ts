@@ -118,6 +118,11 @@ export function createMetrics(
         avg: sql<number | null>`avg(${points.value})`,
         min: sql<number | null>`min(${points.value})`,
         max: sql<number | null>`max(${points.value})`,
+        maxAt:
+          sql`(array_agg(${points.recordedAt} order by ${points.value} desc, ${points.recordedAt}))[1]`.mapWith(
+            // As for t: Drizzle returns a timestamp from raw SQL as text.
+            (value: string | null) => (value === null ? null : new Date(value)),
+          ),
         latest: sql<
           number | null
         >`(array_agg(${points.value} order by ${points.recordedAt} desc))[1]`,
@@ -145,6 +150,7 @@ export function createMetrics(
       summary.avg == null ||
       summary.min == null ||
       summary.max == null ||
+      summary.maxAt == null ||
       summary.latest == null
     ) {
       throw new MetricsError(
@@ -196,6 +202,7 @@ export function createMetrics(
         avg: round(summary.avg),
         min: round(summary.min),
         max: round(summary.max),
+        maxAt: summary.maxAt.toISOString(),
         latest: round(summary.latest),
       },
     };

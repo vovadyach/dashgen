@@ -169,11 +169,14 @@ export const MetricsResult = z.object({
       partial: z.literal(true).optional(),
     }),
   ),
+  // Over the window's hours, each an hour's value, whatever the bucket.
   summary: z.object({
     total: z.number().optional(),
     avg: z.number(),
     min: z.number(),
     max: z.number(),
+    /** The start of the hour with the max, the first one if several tie. */
+    maxAt: z.iso.datetime(),
     latest: z.number(),
   }),
 });

@@ -474,16 +474,19 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
   "unit": "count",
   "days": 3,
   "bucket": "day",
+  "window": {"from": "2026-10-25T00:00:00Z", "to": "2026-10-27T10:00:00Z"},
   "points": [
     {"t": "2026-10-25T00:00:00Z", "value": 38},
     {"t": "2026-10-26T00:00:00Z", "value": 55},
     {"t": "2026-10-27T00:00:00Z", "value": 16, "partial": true}
   ],
-  "summary": {"total": 109, "avg": 1.85, "min": 1, "max": 4, "latest": 2}
+  "summary": {"total": 109, "avg": 1.85, "min": 1, "max": 4, "maxAt": "2026-10-26T13:00:00Z", "latest": 2}
 }
 ```
 
-- **The summary comes from the hourly rows,** over the same window, whatever the bucket. So `max` is the worst hour, not the worst day, and `latest` is the last hour, not today so far. `avg` counts every hour the same. Only metrics that add up, like errors, get a `total`: a total of latencies means nothing.
+- **The window is the hours the query covers,** from its first bucket's start to its last hour, whether they have data or not. Results cover the same hours only when their windows match.
+
+- **The summary comes from the hourly rows,** over the same window, whatever the bucket. So `max` is the worst hour, not the worst day, `maxAt` is when it began, and `latest` is the last hour, not today so far. `avg` counts every hour the same. Only metrics that add up, like errors, get a `total`: a total of latencies means nothing.
 - **Daily buckets are whole UTC days,** ending with today so far, so only the last one can be incomplete, and it's marked `partial`. Otherwise a day whose total is still growing would look like a drop.
 - **Daily buckets keep long charts readable:** 30 days is 30 points instead of 720.
 - **One query for the data.** The buckets, the rollup and the summary come from a single SQL query over the primary key's index: `date_trunc` buckets, plus `GROUPING SETS` for a summary row over all the hours.
@@ -493,7 +496,7 @@ For `checkout-api` errors over 3 days, asked at 10:00 UTC, `query` returns:
 | Tool | Arguments | What the backend does |
 |---|---|---|
 | `list_services` | none | returns the services and metrics, with units |
-| `query_metrics` | `service`, `metric`, `days`, optional `bucket` | checks the names, calls `metrics.query()`, and keeps the result as `q1`, `q2` and so on. The model gets back the id, the unit, the number of points, the time range and the summary, never the points |
+| `query_metrics` | `service`, `metric`, `days`, optional `bucket` | checks the names, calls `metrics.query()`, and keeps the result as `q1`, `q2` and so on. The model gets back the id, the unit, the window, the number of points with the start of the first and last bucket, and the summary, never the points |
 | `create_chart` | `type` (line, bar or pie), `sources` (result ids), `title`, and `aggregation` when comparing services | builds the chart from those results, which ends the run |
 | `clarify` | `message`, and 2–4 `choices`, each a complete question | ends the run with the choices |
 | `decline` | `reason` | ends the run with a short refusal and fixed example questions |

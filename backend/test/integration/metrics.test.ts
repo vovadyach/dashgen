@@ -88,7 +88,14 @@ describe("metrics module", () => {
           { t: "2026-10-26T00:00:00.000Z", value: 55 },
           { t: "2026-10-27T00:00:00.000Z", value: 16, partial: true },
         ],
-        summary: { total: 109, avg: 1.85, min: 1, max: 4, latest: 2 },
+        summary: {
+          total: 109,
+          avg: 1.85,
+          min: 1,
+          max: 4,
+          maxAt: "2026-10-26T13:00:00.000Z",
+          latest: 2,
+        },
       });
     });
 
@@ -177,6 +184,8 @@ describe("metrics module", () => {
         spikeDay && laterDays.every((day) => day.value < spikeDay.value),
       );
       assert.ok(result.summary.max > 4 * result.summary.avg);
+      // And its worst hour is that day's, so a client can say when.
+      assert.equal(result.summary.maxAt.slice(0, 10), spikeDay.t.slice(0, 10));
     });
 
     it("rejects unknown names, listing the known ones", async () => {
