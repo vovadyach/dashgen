@@ -1,6 +1,9 @@
-// `npm run mcp`: DashGen's tools for an MCP client, like Claude Code, over
-// stdio (ADR-0022). The client starts it, and the two talk through its stdin
-// and stdout, so every log line goes to stderr. It needs only DATABASE_URL.
+// DashGen's tools for an MCP client, like Claude Code, over stdio
+// (ADR-0022). The client starts it with node, never through npm, whose banner
+// would go to stdout. From the repo root:
+//   claude mcp add dashgen -- node --env-file-if-exists="$PWD/backend/.env" "$PWD/backend/src/scripts/mcp.ts"
+// The two talk through its stdin and stdout, so every log line goes to
+// stderr. It needs only DATABASE_URL.
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { loadDatabaseUrl, loadLogLevel } from "../config.ts";

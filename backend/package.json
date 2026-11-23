@@ -16,8 +16,7 @@
     "db:seed": "node --env-file-if-exists=.env src/scripts/seed.ts",
     "cost": "node --env-file-if-exists=.env src/scripts/cost.ts",
     "model:check": "node --env-file-if-exists=.env src/scripts/model-check.ts",
-    "eval": "node --env-file-if-exists=.env evals/run.ts",
-    "mcp": "node --env-file-if-exists=.env src/scripts/mcp.ts"
+    "eval": "node --env-file-if-exists=.env evals/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",

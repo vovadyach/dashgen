@@ -14,9 +14,9 @@ Roadmap step 8 asks for an MCP client, like Claude Code, that answers metrics qu
 
 ## Decision
 
-- **Stdio first, then HTTP.** `npm run mcp` serves the tools over stdio, against the local Postgres, for Claude Code on a developer's machine. Then the backend serves the same tools over Streamable HTTP during AWS sessions, for Claude chat. Only the transport differs.
+- **Stdio first, then HTTP.** `backend/src/scripts/mcp.ts` serves the tools over stdio, against the local Postgres, for Claude Code on a developer's machine, which starts it with `node`, since npm's banner would go to stdout. Then the backend serves the same tools over Streamable HTTP during AWS sessions, for Claude chat. Only the transport differs.
 - **The official SDK, 1.32.2,** as a dependency of the backend, not a dev dependency, since the HTTP version runs in the backend's image. The protocol's details, like its versions and messages, stay the SDK's job.
-- **Three tools: `list_services`, `query_metrics` and `create_chart`,** from the agent's own definitions, so their names, schemas and checks can't drift apart. `clarify` and `decline` stay out: the client's model can ask its user, or refuse, by itself.
+- **Three tools: `list_services`, `query_metrics` and `create_chart`,** from the agent's own definitions, so their names, schemas and checks can't drift apart. DashGen answers `tools/list` and `tools/call` itself, so every call reaches the agent's tool, which checks it and counts it, as in the agent. `clarify` and `decline` stay out: the client's model can ask its user, or refuse, by itself.
 - **`create_chart` answers with a share link** ([ADR-0013](0013-share-links-carry-the-chart.md)), which draws the chart in DashGen's page with no backend, so it opens even between sessions.
 - **The code is a module of the backend, `backend/src/mcp/`,** which reuses the metrics module, as the agent does ([ADR-0005](0005-one-backend.md)).
 

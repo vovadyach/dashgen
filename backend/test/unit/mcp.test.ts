@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { setImmediate as tick } from "node:timers/promises";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -108,7 +109,7 @@ describe("createMcpServer", () => {
     await client.close();
   });
 
-  it("turns down arguments a tool doesn't take, as an error the client's model can read", async () => {
+  it("turns down arguments a tool doesn't take, with the agent's own message, for the client's model to correct", async () => {
     const { client } = await connect(fakeMetrics());
 
     const { text, isError } = await call(client, "list_services", {
@@ -116,7 +117,68 @@ describe("createMcpServer", () => {
     });
 
     assert.equal(isError, true);
-    assert.match(text, /Input validation error/);
+    assert.match(text, /^Invalid list_services arguments/);
+    await client.close();
+  });
+
+  it("gives a rejected call its result ID too, as the agent does, so IDs follow the calls", async () => {
+    const { client } = await connect(fakeMetrics());
+
+    const rejected = await call(client, "query_metrics", {
+      ...CHECKOUT_QUERY,
+      days: 99,
+    });
+    const next = await call(client, "query_metrics", CHECKOUT_QUERY);
+
+    assert.equal(rejected.isError, true);
+    assert.match(rejected.text, /^Invalid query_metrics arguments/);
+    assert.equal(QueryAnswer.parse(JSON.parse(next.text)).id, "q2");
+    await client.close();
+  });
+
+  it("answers a tool it doesn't offer, like the agent's clarify, with an error that names its tools", async () => {
+    const { client } = await connect(fakeMetrics());
+
+    const { text, isError } = await call(client, "clarify", {
+      message: "Which one?",
+      choices: ["Errors", "Latency"],
+    });
+
+    assert.equal(isError, true);
+    assert.equal(
+      text,
+      "DashGen has no tool named clarify. Its tools: list_services, query_metrics.",
+    );
+    await client.close();
+  });
+
+  it("passes the client's cancellation on to the read, which then gets no second try", async () => {
+    const signals: (AbortSignal | undefined)[] = [];
+    const hanging: Metrics = {
+      // A read that never answers, as one waiting for its second try.
+      listServices: (options) => {
+        signals.push(options?.signal);
+        return new Promise<never>(() => undefined);
+      },
+      query: () => Promise.reject(new Error("not used")),
+    };
+    const { client } = await connect(hanging);
+    const cancel = new AbortController();
+
+    const pending = client.callTool(
+      { name: "list_services", arguments: {} },
+      undefined,
+      { signal: cancel.signal },
+    );
+    for (let i = 0; i < 100 && signals.length === 0; i++) await tick();
+    cancel.abort();
+
+    await assert.rejects(pending);
+    const [signal] = signals;
+    assert.ok(signal);
+    // The cancellation reaches the server as a message of its own.
+    for (let i = 0; i < 100 && !signal.aborted; i++) await tick();
+    assert.equal(signal.aborted, true);
     await client.close();
   });
 

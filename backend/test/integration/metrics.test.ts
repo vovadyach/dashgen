@@ -280,6 +280,28 @@ describe("metrics module", () => {
       assert.deepEqual(retries(lines), []);
     });
 
+    it("doesn't try a read again once its own call is cancelled, as an MCP client can cancel one", async () => {
+      const { log, lines } = recordingLogger();
+      const down = unreachableDb(log);
+      const failing = createMetrics(down, { log, retryDelayMs: () => 0 });
+      try {
+        await assert.rejects(
+          failing.listServices({ signal: AbortSignal.abort() }),
+          (error) => isRetryable(error),
+        );
+        await assert.rejects(
+          failing.query(
+            { service: "auth-service", metric: "errors" },
+            { signal: AbortSignal.abort() },
+          ),
+          (error) => isRetryable(error),
+        );
+      } finally {
+        await down.$client.end();
+      }
+      assert.deepEqual(retries(lines), []);
+    });
+
     it("doesn't try a query the model got wrong again", async () => {
       const { log, lines } = recordingLogger();
 

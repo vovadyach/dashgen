@@ -20,9 +20,15 @@ export class MetricsError extends Error {
 }
 
 /** The metrics module: read-only access to the sample time series. */
+/** For one read. */
+export interface ReadOptions {
+  /** Aborts the read, as when an MCP client cancels its call: then it gets no second try. */
+  signal?: AbortSignal | undefined;
+}
+
 export interface Metrics {
-  listServices(): Promise<ServiceCatalog>;
-  query(input: MetricsQuery): Promise<MetricsResult>;
+  listServices(options?: ReadOptions): Promise<ServiceCatalog>;
+  query(input: MetricsQuery, options?: ReadOptions): Promise<MetricsResult>;
 }
 
 const round = (value: number) => Math.round(value * 100) / 100;
@@ -185,12 +191,25 @@ export function createMetrics(
   }
 
   // Reads are safe to repeat, so one that failed in a way trying again could
-  // fix gets one more try. A query the model got wrong fails at once.
-  const retried = <T>(read: () => Promise<T>) =>
-    retryOnce(read, { log, retryDelayMs, signal });
+  // fix gets one more try, unless the run or the read's own call is over. A
+  // query the model got wrong fails at once.
+  const retried = <T>(read: () => Promise<T>, options: ReadOptions = {}) =>
+    retryOnce(read, {
+      log,
+      retryDelayMs,
+      signal: eitherSignal(signal, options.signal),
+    });
 
   return {
-    listServices: () => retried(listServices),
-    query: (input) => retried(() => query(input)),
+    listServices: (options) => retried(listServices, options),
+    query: (input, options) => retried(() => query(input), options),
   };
+}
+
+/** A signal that aborts when either one does, or the one that's set. */
+function eitherSignal(
+  a: AbortSignal | undefined,
+  b: AbortSignal | undefined,
+): AbortSignal | undefined {
+  return a && b ? AbortSignal.any([a, b]) : (a ?? b);
 }

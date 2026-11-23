@@ -19,7 +19,8 @@ import { checkQueryCount, MAX_QUERIES, parseArgs } from "./validation.ts";
  * A tool whose `run` gets arguments already checked against its own schema,
  * so the name, the schema and the check can't drift apart. `run` also gets
  * the call's number among this tool's calls, counted before the check, so a
- * call with wrong arguments still takes its number.
+ * call with wrong arguments still takes its number, and the call's signal,
+ * for its reads.
  */
 function defineTool<S extends z.ZodType>(tool: {
   name: string;
@@ -28,6 +29,7 @@ function defineTool<S extends z.ZodType>(tool: {
   run: (
     args: z.output<S>,
     callNumber: number,
+    signal: AbortSignal | undefined,
   ) => ToolResult | Promise<ToolResult>;
 }): Tool {
   let calls = 0;
@@ -37,10 +39,14 @@ function defineTool<S extends z.ZodType>(tool: {
     args: tool.args,
     // Async, so even a tool that fails on the spot rejects instead of throwing.
     // Gemini leaves out the arguments of a call that has none.
-    call: async (input) => {
+    call: async (input, { signal } = {}) => {
       calls += 1;
       const callNumber = calls;
-      return tool.run(parseArgs(tool.name, tool.args, input ?? {}), callNumber);
+      return tool.run(
+        parseArgs(tool.name, tool.args, input ?? {}),
+        callNumber,
+        signal,
+      );
     },
   };
 }
@@ -82,8 +88,8 @@ export function createTools(
       description:
         "Lists the services and metrics you can query, with each metric's unit and rollup: sum for metrics that add up, like errors, or avg for ones that average, like latency. Call it when you aren't sure of a name. It returns no data.",
       args: ListServicesArgs,
-      run: async () => {
-        const catalog = await metrics.listServices();
+      run: async (_args, _callNumber, signal) => {
+        const catalog = await metrics.listServices({ signal });
         return {
           done: false,
           result: catalog,
@@ -95,7 +101,7 @@ export function createTools(
       name: "query_metrics",
       description: `Fetches one metric for one service over the last 1 to 30 days. Returns a result ID, like q1, and a summary over the hours (a total for metrics that add up, plus avg, min, max and latest), but not the points: pass the ID to create_chart to plot them. To compare services, call it for each service in the same reply, with the same days and bucket. Only names from list_services work${limit}.`,
       args: QueryMetricsArgs,
-      run: async (args, callNumber) => {
+      run: async (args, callNumber, signal) => {
         // Every call takes the next ID, failed ones too, so IDs follow the
         // order of the calls: a chart in the same reply that names them gets
         // the right results, or a refusal, never another service's.
@@ -104,7 +110,7 @@ export function createTools(
 
         let result: MetricsResult;
         try {
-          result = await metrics.query(args);
+          result = await metrics.query(args, { signal });
         } catch (error) {
           // The metrics module's own errors are the model's to correct, like an unknown name.
           if (error instanceof MetricsError) throw new ToolError(error.message);

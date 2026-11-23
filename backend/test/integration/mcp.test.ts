@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -11,23 +14,29 @@ const SCRIPT = fileURLToPath(
   new URL("../../src/scripts/mcp.ts", import.meta.url),
 );
 
-describe("npm run mcp", () => {
+describe("the MCP server over stdio", () => {
   let testDb: TestDb;
+  let dir: string;
+  let envFile: string;
 
   before(async () => {
     testDb = await createTestDb();
+    // A settings file of its own, in place of backend/.env, which tests never read.
+    dir = mkdtempSync(join(tmpdir(), "dashgen-mcp-"));
+    envFile = join(dir, ".env");
+    writeFileSync(envFile, `DATABASE_URL=${testDb.url}\nLOG_LEVEL=debug\n`);
   });
 
   after(async () => {
     await testDb.drop();
+    rmSync(dir, { recursive: true, force: true });
   });
 
-  it("serves DashGen's tools over stdio, as Claude Code starts it, with every log line on stderr, even at debug level", async () => {
-    // As a client starts it, with only the settings it's given: never backend/.env.
+  it("serves DashGen's tools when started as the docs say, with every log line on stderr, even at debug level", async () => {
+    // The documented command: node with a settings file, never npm, whose banner would go to stdout.
     const transport = new StdioClientTransport({
       command: process.execPath,
-      args: [SCRIPT],
-      env: { DATABASE_URL: testDb.url, LOG_LEVEL: "debug" },
+      args: [`--env-file-if-exists=${envFile}`, SCRIPT],
       stderr: "pipe",
     });
     let stderr = "";
@@ -49,8 +58,9 @@ describe("npm run mcp", () => {
         ["list_services", "query_metrics"],
       );
       assert.notEqual(result.isError, true);
-      // Each SQL statement is logged at debug level. On stdout, it would have
-      // broken MCP's messages, and the calls above would have failed.
+      // Each SQL statement is logged at debug level, from the settings file.
+      // On stdout, it would have broken MCP's messages, and the calls above
+      // would have failed.
       assert.match(stderr, /^sql /m);
     } finally {
       await client.close();
