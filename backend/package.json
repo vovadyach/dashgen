@@ -16,7 +16,8 @@
     "db:seed": "node --env-file-if-exists=.env src/scripts/seed.ts",
     "cost": "node --env-file-if-exists=.env src/scripts/cost.ts",
     "model:check": "node --env-file-if-exists=.env src/scripts/model-check.ts",
-    "eval": "node --env-file-if-exists=.env evals/run.ts"
+    "eval": "node --env-file-if-exists=.env evals/run.ts",
+    "mcp": "node --env-file-if-exists=.env src/scripts/mcp.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",
@@ -26,6 +27,7 @@
     "@fastify/rate-limit": "^11.2.1",
     "@fastify/swagger": "^9.9.2",
     "@google/genai": "^2.31.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@scalar/fastify-api-reference": "^1.76.2",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",

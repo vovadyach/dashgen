@@ -31,11 +31,18 @@ export function parseArgs<T extends z.ZodType>(
   return parsed.data;
 }
 
-/** Refuses a query past the run's limit. `made` counts the queries started so far, failed ones too. */
-export function checkQueryCount(made: number, ids: Iterable<string>): void {
-  if (made >= MAX_QUERIES) {
+/**
+ * Refuses a query past the limit, `max`: a question's, for the agent. `made`
+ * counts the queries started so far, failed ones too.
+ */
+export function checkQueryCount(
+  made: number,
+  ids: Iterable<string>,
+  max = MAX_QUERIES,
+): void {
+  if (made >= max) {
     throw new ToolError(
-      `This question has used its ${String(MAX_QUERIES)} queries. Chart the results you have: ${[...ids].join(", ") || "none"}.`,
+      `This question has used its ${String(max)} queries. Chart the results you have: ${[...ids].join(", ") || "none"}.`,
     );
   }
 }

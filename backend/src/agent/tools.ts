@@ -45,12 +45,30 @@ function defineTool<S extends z.ZodType>(tool: {
   };
 }
 
+export interface ToolOptions {
+  /**
+   * The queries the tools can make: a question's 10 for the agent, since its
+   * model gets every result again with each later call. An MCP client's own
+   * model reads the results instead, so there's no limit there (ADR-0022).
+   */
+  maxQueries?: number;
+  /** The newest results that create_chart can use. Older ones go, oldest first. */
+  keepResults?: number;
+}
+
 /**
  * The tools for one run. They keep that run's query results, so runAgent makes
  * a new set for each run, with a Metrics whose clock it fixes at the run's
  * start: then every query covers the same window, even a few seconds apart.
+ * An MCP session keeps one set throughout.
  */
-export function createTools(metrics: Metrics): Tool[] {
+export function createTools(
+  metrics: Metrics,
+  {
+    maxQueries = MAX_QUERIES,
+    keepResults = Number.POSITIVE_INFINITY,
+  }: ToolOptions = {},
+): Tool[] {
   const results = new Map<string, MetricsResult>();
 
   return [
@@ -76,7 +94,7 @@ export function createTools(metrics: Metrics): Tool[] {
         // Every call takes the next ID, failed ones too, so IDs follow the
         // order of the calls: a chart in the same reply that names them gets
         // the right results, or a refusal, never another service's.
-        checkQueryCount(callNumber - 1, results.keys());
+        checkQueryCount(callNumber - 1, results.keys(), maxQueries);
         const id = `q${String(callNumber)}`;
 
         let result: MetricsResult;
@@ -88,6 +106,11 @@ export function createTools(metrics: Metrics): Tool[] {
           throw error;
         }
         results.set(id, result);
+        // A Map keeps its keys in order, so the oldest go first.
+        for (const old of results.keys()) {
+          if (results.size <= keepResults) break;
+          results.delete(old);
+        }
 
         // The points stay here: the model only needs to know what the result covers.
         const { points, ...rest } = result;

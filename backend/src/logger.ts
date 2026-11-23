@@ -17,8 +17,15 @@ export interface Logger {
 export const LOG_LEVELS = ["error", "warn", "info", "debug"] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
-/** Prints lines at `level` and above, for scripts and tests. */
-export function consoleLogger(level: LogLevel = "warn"): Logger {
+/**
+ * Prints lines at `level` and above, for scripts and tests. Node prints info
+ * and debug lines on stdout, unless `stderr` is set, as for the MCP server
+ * over stdio, whose stdout carries MCP's messages (ADR-0022).
+ */
+export function consoleLogger(
+  level: LogLevel = "warn",
+  { stderr = false }: { stderr?: boolean } = {},
+): Logger {
   const shown = (line: LogLevel) =>
     LOG_LEVELS.indexOf(line) <= LOG_LEVELS.indexOf(level);
   return {
@@ -29,10 +36,14 @@ export function consoleLogger(level: LogLevel = "warn"): Logger {
       if (shown("warn")) console.warn(msg, obj);
     },
     info: (obj, msg) => {
-      if (shown("info")) console.info(msg, obj);
+      if (!shown("info")) return;
+      if (stderr) console.error(msg, obj);
+      else console.info(msg, obj);
     },
     debug: (obj, msg) => {
-      if (shown("debug")) console.debug(msg, obj);
+      if (!shown("debug")) return;
+      if (stderr) console.error(msg, obj);
+      else console.debug(msg, obj);
     },
   };
 }

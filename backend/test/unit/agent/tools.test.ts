@@ -4,16 +4,16 @@ import { describe, it } from "node:test";
 import { EXAMPLE_QUESTIONS, Outcome } from "@dashgen/contracts";
 import { z } from "zod";
 
-import { createTools } from "../../../src/agent/tools.ts";
+import { createTools, type ToolOptions } from "../../../src/agent/tools.ts";
 import { MAX_QUERIES } from "../../../src/agent/validation.ts";
 import { CHECKOUT_QUERY } from "../../fixtures/agent.ts";
 import { CATALOG } from "../../fixtures/metrics.ts";
 import { fakeMetrics } from "../../helpers/metrics.ts";
 
 /** One run's tools, and a way to call one by name, as the agent loop does. */
-function startRun() {
+function startRun(options?: ToolOptions) {
   const metrics = fakeMetrics();
-  const tools = createTools(metrics);
+  const tools = createTools(metrics, options);
   const call = (name: string, input: unknown) => {
     const tool = tools.find((t) => t.name === name);
     assert.ok(tool, `no tool named ${name}`);
@@ -181,6 +181,34 @@ describe("createTools", () => {
         message: /used its 10 queries\. Chart the results you have: q1, q2,/,
       });
       assert.equal(metrics.queries.length, MAX_QUERIES);
+    });
+
+    it("has no limit on queries when told so, as for an MCP session, whose client's model reads the results", async () => {
+      const { call, metrics } = startRun({
+        maxQueries: Number.POSITIVE_INFINITY,
+      });
+
+      for (let i = 0; i <= MAX_QUERIES; i++)
+        await call("query_metrics", CHECKOUT_QUERY);
+
+      assert.equal(metrics.queries.length, MAX_QUERIES + 1);
+    });
+
+    it("keeps only the newest results when told so, so a chart can't use an older one", async () => {
+      const { call } = startRun({ keepResults: 2 });
+
+      for (let i = 0; i < 3; i++) await call("query_metrics", CHECKOUT_QUERY);
+
+      await assert.rejects(
+        call("create_chart", { type: "line", sources: ["q1"], title: "t" }),
+        { name: "ToolError" },
+      );
+      const chart = await call("create_chart", {
+        type: "line",
+        sources: ["q3"],
+        title: "t",
+      });
+      assert.equal(chart.done, true);
     });
 
     it("gives result IDs in the order of the calls, failed ones included", async () => {

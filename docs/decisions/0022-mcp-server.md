@@ -26,4 +26,4 @@ Roadmap step 8 asks for an MCP client, like Claude Code, that answers metrics qu
 - Stdio works only on a machine with the repo, Docker and the sample data, so it's for developers. Claude chat's users need the HTTP version, which is up only during sessions, and needs a rate limit of its own, since anyone can call it.
 - The SDK brings 17 direct dependencies into the backend's image, like express and hono, mostly for HTTP servers and sign-in. That's more to keep up to date, and more code that could have a security hole.
 - Over stdio, stdout carries the protocol's messages, so the server's logs must go to stderr.
-- The agent's limit on queries counts per question. An MCP client asks DashGen no question, so its tools need limits of their own.
+- The agent's 10 queries count per question, since each result goes back to its model with every later call. An MCP client's own model reads the results instead, so a session has no limit on queries, and keeps its newest 20 results for `create_chart`, so its memory stays small.
