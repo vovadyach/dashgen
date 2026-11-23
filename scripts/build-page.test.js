@@ -40,6 +40,21 @@ describe("build-page.sh", () => {
     );
   });
 
+  it("builds with any site key Cloudflare can give: up to 32 characters, with no set prefix", () => {
+    const keys = [
+      // Cloudflare's own example, in its API reference.
+      "0x4AAF00AAAABn0R22HWm-YUc",
+      `0x4${"A".repeat(29)}`,
+      "AAAAexampleSiteKey",
+    ];
+    for (const key of keys) {
+      const { status, stdout } = build(key);
+
+      assert.equal(status, 0);
+      assert.equal(stdout, `npm run build --workspace frontend with ${key}\n`);
+    }
+  });
+
   it("stops before building without a site key, as when gh variable get fails", () => {
     for (const key of [undefined, ""]) {
       const { status, stdout } = build(key);
@@ -63,6 +78,35 @@ describe("build-page.sh", () => {
 
       assert.equal(status, 1);
       assert.match(stdout, /one of Cloudflare's test keys/);
+      assert.doesNotMatch(stdout, /npm run/);
+    }
+  });
+
+  it("stops before building on a key longer than a site key's 32 characters, like the widget's secret key, and never prints it", () => {
+    // One over the limit, and the length of DashGen's secret key.
+    for (const length of [33, 35]) {
+      const key = `0x4${"s".repeat(length - 3)}`;
+      const { status, stdout } = build(key);
+
+      assert.equal(status, 1);
+      assert.match(
+        stdout,
+        new RegExp(`has ${length} characters, so it isn't a site key`),
+      );
+      assert.doesNotMatch(stdout, /npm run/);
+      assert.ok(!stdout.includes(key));
+    }
+  });
+
+  it("stops before building on a key with a space or line break pasted in", () => {
+    for (const key of [
+      " 0x4AAAAAAAexampleSiteKey",
+      "0x4AAAAAAAexampleSiteKey\n",
+    ]) {
+      const { status, stdout } = build(key);
+
+      assert.equal(status, 1);
+      assert.match(stdout, /a space or a line break/);
       assert.doesNotMatch(stdout, /npm run/);
     }
   });
