@@ -15,16 +15,17 @@ import { CHECKOUT_QUERY } from "../fixtures/agent.ts";
 import { CATALOG } from "../fixtures/metrics.ts";
 import { recordingLogger } from "../helpers/logger.ts";
 import { downMetrics, fakeMetrics } from "../helpers/metrics.ts";
+import { errorsResult, latencyResult } from "../helpers/results.ts";
 
 /** Where the server's chart links open, in these tests. */
 const PAGE = "https://dashgen.example/";
 
 /** An MCP client connected to DashGen's server on `metrics`, in memory, as Claude Code is over stdio. */
-async function connect(metrics: Metrics) {
+async function connect(metrics: Metrics, pageUrl = PAGE) {
   const { log, lines } = recordingLogger();
   const client = new Client({ name: "test-client", version: "1.0.0" });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  await createMcpServer(metrics, { log, pageUrl: PAGE }).connect(serverSide);
+  await createMcpServer(metrics, { log, pageUrl }).connect(serverSide);
   await client.connect(clientSide);
   return { client, lines };
 }
@@ -243,6 +244,92 @@ describe("createMcpServer", () => {
     // No run ends: the next query takes the next ID.
     const next = await call(client, "query_metrics", CHECKOUT_QUERY);
     assert.equal(QueryAnswer.parse(JSON.parse(next.text)).id, "q2");
+    await client.close();
+  });
+
+  it("builds a chart's link from the page's origin and path only, so a password or a query in PAGE_URL isn't shared", async () => {
+    const { client } = await connect(
+      fakeMetrics(),
+      "https://user:secret@dashgen.example/app/?preview=token",
+    );
+
+    await call(client, "query_metrics", CHECKOUT_QUERY);
+    const { text } = await call(client, "create_chart", {
+      type: "line",
+      sources: ["q1"],
+      title: "t",
+    });
+
+    const { link } = ChartAnswer.parse(JSON.parse(text));
+    assert.match(link, /^https:\/\/dashgen\.example\/app\/#chart=/);
+    assert.doesNotMatch(link, /secret|preview/);
+    await client.close();
+  });
+
+  it("refuses to chart results fetched at different times, as in a long session, which cover different hours", async () => {
+    const fetched = [
+      { from: "2026-10-25T00:00:00.000Z", to: "2026-10-27T10:00:00.000Z" },
+      // The same "last 3 days", asked for 2 days later.
+      { from: "2026-10-27T00:00:00.000Z", to: "2026-10-29T10:00:00.000Z" },
+    ];
+    let queries = 0;
+    const drifting: Metrics = {
+      ...fakeMetrics(),
+      query: (input) => {
+        const window = fetched[queries];
+        queries += 1;
+        assert.ok(window);
+        return Promise.resolve(errorsResult(input.service, { window }));
+      },
+    };
+    const { client } = await connect(drifting);
+
+    await call(client, "query_metrics", CHECKOUT_QUERY);
+    await call(client, "query_metrics", {
+      ...CHECKOUT_QUERY,
+      service: "payments-service",
+    });
+    const { text, isError } = await call(client, "create_chart", {
+      type: "line",
+      sources: ["q1", "q2"],
+      title: "t",
+    });
+
+    assert.equal(isError, true);
+    assert.match(
+      text,
+      /^Results on one chart need the same hours, but these were fetched at different times/,
+    );
+    await client.close();
+  });
+
+  it("tells the client's model to ask its user which metric to chart, since it has no clarify", async () => {
+    const mixed: Metrics = {
+      ...fakeMetrics(),
+      query: (input) =>
+        Promise.resolve(
+          input.metric === "latency_ms"
+            ? latencyResult(input.service, 200)
+            : errorsResult(input.service),
+        ),
+    };
+    const { client } = await connect(mixed);
+
+    await call(client, "query_metrics", CHECKOUT_QUERY);
+    await call(client, "query_metrics", {
+      ...CHECKOUT_QUERY,
+      service: "payments-service",
+      metric: "latency_ms",
+    });
+    const { text, isError } = await call(client, "create_chart", {
+      type: "line",
+      sources: ["q1", "q2"],
+      title: "t",
+    });
+
+    assert.equal(isError, true);
+    assert.match(text, /Chart one of them, or ask your user which\.$/);
+    assert.doesNotMatch(text, /clarify/);
     await client.close();
   });
 

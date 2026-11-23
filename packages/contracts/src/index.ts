@@ -154,6 +154,14 @@ export const MetricsResult = z.object({
   unit: z.string(),
   days: z.number(),
   bucket: Bucket,
+  /**
+   * The start of the first bucket the query asked for, and the last hour it
+   * covers, whether they have data or not. Results over the same days and
+   * bucket cover the same hours only when these match: queries made far apart,
+   * as in a long MCP session, don't, nor do daily ones made hours apart, since
+   * today's bucket grows each hour.
+   */
+  window: z.object({ from: z.iso.datetime(), to: z.iso.datetime() }),
   points: z.array(
     z.object({
       t: z.iso.datetime(),

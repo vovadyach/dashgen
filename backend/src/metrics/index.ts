@@ -176,6 +176,11 @@ export function createMetrics(
       unit: info.unit,
       days,
       bucket,
+      window: {
+        from: new Date(from).toISOString(),
+        // The last hour, for daily buckets too: today's bucket grows each hour.
+        to: new Date(lastHour).toISOString(),
+      },
       points: buckets.map((row) => ({
         t: row.t.toISOString(),
         value: round(row.value),

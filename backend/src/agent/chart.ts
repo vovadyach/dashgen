@@ -2,7 +2,11 @@ import { Chart, type MetricsResult } from "@dashgen/contracts";
 
 import { ToolError } from "./errors.ts";
 import type { Aggregation, CreateChartArgs } from "./types.ts";
-import { checkChart, findResults } from "./validation.ts";
+import {
+  type ChartCheckOptions,
+  checkChart,
+  findResults,
+} from "./validation.ts";
 
 // The summary comes from the hourly rows, so all but the total describe hours,
 // whatever the bucket. The series name says so, or "average" could read as per day.
@@ -22,9 +26,10 @@ const AGGREGATION_LABELS: Record<Aggregation, string> = {
 export function buildChart(
   args: CreateChartArgs,
   results: ReadonlyMap<string, MetricsResult>,
+  options?: ChartCheckOptions,
 ): Chart {
   const sources = findResults(args.sources, results);
-  checkChart(args, sources);
+  checkChart(args, sources, options);
 
   const [first] = sources;
   if (!first) throw new ToolError("Name at least one result in sources.");

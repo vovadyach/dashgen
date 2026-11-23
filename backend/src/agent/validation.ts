@@ -67,14 +67,23 @@ export function findResults(
  * names a chart that would work, in full, so the model's next try succeeds
  * instead of trading one refusal for another.
  */
+export interface ChartCheckOptions {
+  /** Whether the model can ask with clarify: an MCP client's model asks its user itself. */
+  canClarify?: boolean | undefined;
+}
+
 export function checkChart(
   args: CreateChartArgs,
   sources: MetricsResult[],
+  { canClarify = true }: ChartCheckOptions = {},
 ): void {
   const metrics = distinct(sources.map((s) => s.metric));
   if (metrics.length > 1) {
+    const ask = canClarify
+      ? "use clarify to ask the visitor which"
+      : "ask your user which";
     throw new ToolError(
-      `A chart shows one metric, but these results have ${metrics.join(" and ")}. Chart one of them, or use clarify to ask the visitor which.`,
+      `A chart shows one metric, but these results have ${metrics.join(" and ")}. Chart one of them, or ${ask}.`,
     );
   }
   const services = sources.map((s) => s.service);
@@ -91,6 +100,17 @@ export function checkChart(
   if (windows.length > 1) {
     throw new ToolError(
       `Results on one chart need the same days and bucket, but these cover ${windows.join(" and ")}. Query them again the same way.`,
+    );
+  }
+  // Over the same days and bucket, results fetched at different times, as in
+  // a long MCP session, still cover different hours. A run of DashGen's own
+  // agent fixes its clock, so its results always match.
+  const spans = distinct(
+    sources.map((s) => `${s.window.from} to ${s.window.to}`),
+  );
+  if (spans.length > 1) {
+    throw new ToolError(
+      `Results on one chart need the same hours, but these were fetched at different times, so they cover ${spans.join(" and ")}. Query them again, together.`,
     );
   }
 

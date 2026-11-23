@@ -10,6 +10,7 @@ export const errorsResult = (
   unit: "count",
   days: 3,
   bucket: "day",
+  window: { from: "2026-10-25T00:00:00.000Z", to: "2026-10-27T10:00:00.000Z" },
   points: [
     { t: "2026-10-25T00:00:00.000Z", value: 38 },
     { t: "2026-10-26T00:00:00.000Z", value: 55 },

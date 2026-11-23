@@ -58,6 +58,7 @@ export function createMcpServer(
     maxQueries: Number.POSITIVE_INFINITY,
     keepResults: KEEP_RESULTS,
     chartLink: (chart) => linkTo(pageUrl, chart),
+    canClarify: false,
   }).filter(({ name }) => SHARED_TOOLS.has(name));
   const mcp = new McpServer(
     { name: "dashgen", version: "0.1.0" },
@@ -120,8 +121,10 @@ async function callTool(
 }
 
 /**
- * A link that opens `chart` on the page at `pageUrl`, as the page's own Copy
- * link makes one, or undefined when the chart is too large for a link.
+ * A link that opens `chart` on the page at `pageUrl`, or undefined when the
+ * chart is too large for a link. Like the page's own Copy link, it keeps only
+ * the page's origin and path: a query or a password in PAGE_URL would
+ * otherwise go out with every link.
  */
 async function linkTo(
   pageUrl: string,
@@ -129,9 +132,8 @@ async function linkTo(
 ): Promise<string | undefined> {
   const hash = await chartHash(chart);
   if (hash === undefined) return undefined;
-  const link = new URL(pageUrl);
-  link.hash = hash;
-  return link.toString();
+  const { origin, pathname } = new URL(pageUrl);
+  return `${origin}${pathname}${hash}`;
 }
 
 function failed(text: string): CallToolResult {

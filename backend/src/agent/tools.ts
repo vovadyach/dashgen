@@ -69,6 +69,12 @@ export interface ToolOptions {
    * instead of ending the run: undefined when the chart is too large for one.
    */
   chartLink?: (chart: Chart) => Promise<string | undefined>;
+  /**
+   * Whether the model can ask with clarify, as DashGen's own agent can. An
+   * MCP client has no clarify, so a chart's refusal tells its model to ask
+   * its user instead.
+   */
+  canClarify?: boolean;
 }
 
 /** create_chart's rules, the same for the agent and for an MCP client. */
@@ -87,6 +93,7 @@ export function createTools(
     maxQueries = MAX_QUERIES,
     keepResults = Number.POSITIVE_INFINITY,
     chartLink,
+    canClarify = true,
   }: ToolOptions = {},
 ): Tool[] {
   const results = new Map<string, MetricsResult>();
@@ -137,13 +144,19 @@ export function createTools(
           results.delete(old);
         }
 
-        // The points stay here: the model only needs to know what the result covers.
-        const { points, ...rest } = result;
+        // The points stay here, and so does the window, which create_chart
+        // checks: the model only needs to know what the result covers.
+        const { service, metric, unit, days, bucket, summary, points } = result;
         return {
           done: false,
           result: {
             id,
-            ...rest,
+            service,
+            metric,
+            unit,
+            days,
+            bucket,
+            summary,
             points: points.length,
             from: points[0]?.t,
             to: points.at(-1)?.t,
@@ -161,7 +174,7 @@ export function createTools(
       } ${CHART_RULES}`,
       args: CreateChartArgs,
       run: async (args) => {
-        const chart = buildChart(args, results);
+        const chart = buildChart(args, results, { canClarify });
         const step = `${chart.type} chart: ${chart.title}`;
         if (!chartLink) {
           return { done: true, outcome: { outcome: "chart", chart }, step };
