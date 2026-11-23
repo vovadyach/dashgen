@@ -162,6 +162,7 @@ The repo is set up for [Claude Code](https://claude.com/claude-code):
 - [19. The evals also run in CI, on pull requests that change the agent](docs/decisions/0019-evals-in-ci.md)
 - [20. The page's first paint comes from index.html alone](docs/decisions/0020-first-paint-in-index-html.md)
 - [21. A Cloudflare Turnstile check before each question](docs/decisions/0021-turnstile-bot-check.md)
+- [22. An MCP server for DashGen's tools, over stdio first](docs/decisions/0022-mcp-server.md)
 
 ## License
 
