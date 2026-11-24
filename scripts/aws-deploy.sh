@@ -29,8 +29,9 @@ if ! lock_deploys "$lock_table"; then
 fi
 image_tag=$(output image_tag)
 # Before a build, and before anything replaces the backend that runs
-# (ADR-0021).
+# (ADR-0021, ADR-0023).
 require_bot_check_key "$backend_template" 1
+require_page_url "$backend_template" 1
 if [[ $image_tag == dev ]]; then
   # By the build's own tag, not dev, which another checkout's make aws-image
   # can move meanwhile.

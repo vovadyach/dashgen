@@ -16,7 +16,12 @@ import {
 
 import { Health, type RunEvent } from "@dashgen/contracts";
 
-import { type RunDeps, runRoutes } from "./api/index.ts";
+import {
+  type McpLimits,
+  mcpRoutes,
+  type RunDeps,
+  runRoutes,
+} from "./api/index.ts";
 import type { Config } from "./config.ts";
 import { withoutQueryValues } from "./db.ts";
 import { ApiError, errorBody, INTERNAL_ERROR } from "./errors.ts";
@@ -33,6 +38,8 @@ export interface AppOptions {
    * the server, fakes in tests. `close` runs when the app closes.
    */
   runs: (log: Logger) => RunDeps & { close?: () => Promise<void> };
+  /** The MCP server's limits, which tests make small. */
+  mcp?: McpLimits;
 }
 
 /** Builds the backend from `config`, so each test can pass its own. Nothing else reads the environment. */
@@ -163,6 +170,16 @@ export async function buildApp(config: Config, options: AppOptions) {
     ...runs,
     store: createRunStore<RunEvent>({ log: app.log }),
     price: config.model.price,
+    visitorIp: (request) => visitorIp(request, config.viewerIpHeader),
+  });
+  await app.register(mcpRoutes, {
+    prefix: "/api",
+    ...options.mcp,
+    // On the real clock, with no deadline: a session outlives any run, and
+    // each MCP request brings its own signal.
+    metrics: () =>
+      runs.metrics(() => new Date(), app.log, new AbortController().signal),
+    pageUrl: config.pageUrl,
     visitorIp: (request) => visitorIp(request, config.viewerIpHeader),
   });
 

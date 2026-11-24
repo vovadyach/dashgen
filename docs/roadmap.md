@@ -140,7 +140,7 @@ The rest, in the order to build them. The $20 Gemini spend cap from step 4 comes
 
 - [x] MCP server that exposes DashGen's tools to any MCP client, over stdio: `list_services`, `query_metrics` and `create_chart`, which answers with a share link ([ADR-0022](decisions/0022-mcp-server.md))
 - [x] Demo from Claude Code: it compared the 5 services' errors this week, and its link opened the chart in DashGen's page
-- [ ] The same tools over HTTP from the backend, during sessions, for Claude chat's custom connectors
+- [ ] The same tools over HTTP from the backend, during sessions, for Claude chat's custom connectors ([ADR-0023](decisions/0023-remote-mcp.md))
 
 **Done when:** Claude Code answers a metrics question through DashGen's MCP server, and Claude chat does during a session.
 

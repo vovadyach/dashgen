@@ -8,10 +8,10 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-import { createTestDb, type TestDb } from "../helpers/db.ts";
+import { createTestDb, type TestDb } from "../../helpers/db.ts";
 
 const SCRIPT = fileURLToPath(
-  new URL("../../src/scripts/mcp.ts", import.meta.url),
+  new URL("../../../src/scripts/mcp.ts", import.meta.url),
 );
 
 describe("the MCP server over stdio", () => {
