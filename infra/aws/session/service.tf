@@ -93,6 +93,8 @@ resource "aws_ecs_task_definition" "backend" {
       # AWS's own DynamoDB, with this task's role (backend/src/config.ts).
       { name = "DYNAMODB_REGION", value = data.aws_region.current.region },
       { name = "ALLOWED_ORIGINS", value = "https://${data.aws_cloudfront_distribution.front_door.domain_name}" },
+      # The live page, where the MCP server's chart links open (ADR-0023).
+      { name = "PAGE_URL", value = "https://${data.aws_cloudfront_distribution.front_door.domain_name}/" },
       # The visitor's IP, which CloudFront's function sends, for the rate
       # limit (ADR-0003).
       { name = "VIEWER_IP_HEADER", value = "x-viewer-ip" },

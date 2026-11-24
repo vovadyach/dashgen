@@ -146,6 +146,21 @@ Cloudflare Turnstile checks that a person asks each question ([ADR-0021](../deci
 - **If the page deploy stops because the variable holds the secret key,** rotate the secret key in the widget's settings, since the job's log shows its variables. Then set the variable to the site key, and start the next session with the new secret key.
 - **A session made before the backend needed the key keeps its old backend.** On AWS the backend won't start without `TURNSTILE_SECRET_KEY`, so CI's deploy skips a session whose template has none, and says so in its log, and `make aws-deploy` and `make aws-start` stop before they change anything. Its next `make aws-up`, with the key, updates the template and deploys the new image.
 
+## The MCP connector
+
+During a session, the backend serves DashGen's MCP tools at `/api/mcp`, for Claude chat's custom connectors and for Claude Code ([ADR-0023](../decisions/0023-remote-mcp.md)). CloudFront must pass MCP's 3 headers and `Origin`, which the always-on stack's origin request policy lists (`infra/aws/always-on/api.tf`), so apply that stack once, as [above](#the-always-on-stack), after its plan shows 1 to change and 0 to destroy.
+
+1. Start a session with `make aws-up`.
+2. In Claude, open Customize, then Connectors, and add a custom connector. Its URL is the page's address, which `terraform -chdir=infra/aws/always-on output -raw url` prints, followed by `/api/mcp`, and its authentication is "No sign in".
+3. Ask "Compare errors across all services this week, as a chart", and open the link it gives.
+
+- **Anyone can add it,** on any Claude plan, during a session. Their own plan pays for the model, so DashGen pays only for the session's hours.
+- **Between sessions,** the connector gets the offline 503, as the page does.
+- **A deploy ends every MCP session,** since they live in the backend's memory. Claude starts a new one on its next request.
+- **A session made before the backend needed `PAGE_URL` keeps its old backend,** as with [Turnstile's key](#the-turnstile-widget): on AWS the backend won't start without it, so CI's deploy skips that session, and `make aws-deploy` and `make aws-start` stop. Its next `make aws-up` updates the template and deploys.
+- **Web pages get a 403,** as MCP asks: only Claude's origins, `https://claude.ai` and `https://claude.com`, and apps that send no `Origin`, like Claude Code, get through. If Claude chat can't connect, look for `mcp request from a web page refused` in the backend's log, with the origin it sent.
+- **Its log lines** are the backend's, with `/api/mcp` as the URL ([read the backend's logs](#read-the-backends-logs)).
+
 ## The session stack
 
 `infra/aws/session` holds what runs on AWS only while DashGen is being worked on, and costs money by the hour. So far it's the network, the database, the backend's secrets, the task that fills the database, and the backend itself, behind a load balancer ([design](../design.md#on-aws)):
@@ -162,7 +177,7 @@ Cloudflare Turnstile checks that a person asks each question ([ADR-0021](../deci
 - Turnstile's secret key, in the secret `dashgen/turnstile-secret-key`, which the backend sends to Cloudflare to check each question's token ([the Turnstile widget](#the-turnstile-widget)). Like the model's key, `make aws-up` takes it from your shell, Terraform keeps no copy, and `make aws-down` deletes it at once.
 - Two IAM roles. ECS takes `dashgen-task-execution` to start the backend's tasks: it can read these three secrets, pull the image and write the tasks' logs, and nothing else. The backend's own role, `dashgen-backend`, can only count the day's questions in the always-on stack's daily cap table, with `UpdateItem`.
 - An ECS cluster, `dashgen`, and the one-off task `dashgen-migrate`, which each deploy copies from the template `dashgen-migrate-template` ([the backend's image](#the-backends-image)): the migrations, then the seed, on Fargate's smallest size (0.25 vCPU, 0.5 GB), on ARM. It connects to Postgres with TLS, checked against RDS's certificates in the image (`backend/certs/`), with the password from RDS's secret as `PGPASSWORD`. Its output goes to the log group `/dashgen/migrate`, kept for a day.
-- The backend's service, `dashgen-backend`, from the template `dashgen-backend-template`: exactly one task of the image's own command, `node src/server.ts`, on the same size. It gets the model's key as `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`, Turnstile's secret key as `TURNSTILE_SECRET_KEY`, the database's password as `PGPASSWORD`, and `AI_MODEL` when `TF_VAR_ai_model` sets one ([ADR-0016](../decisions/0016-ai-model-setting.md)), uses AWS's own DynamoDB (`DYNAMODB_REGION`), and allows CloudFront's address for CORS. A deploy stops the old task before it starts the new one. Its output goes to `/dashgen/backend`, kept for a day.
+- The backend's service, `dashgen-backend`, from the template `dashgen-backend-template`: exactly one task of the image's own command, `node src/server.ts`, on the same size. It gets the model's key as `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`, Turnstile's secret key as `TURNSTILE_SECRET_KEY`, the database's password as `PGPASSWORD`, and `AI_MODEL` when `TF_VAR_ai_model` sets one ([ADR-0016](../decisions/0016-ai-model-setting.md)), uses AWS's own DynamoDB (`DYNAMODB_REGION`), allows CloudFront's address for CORS, and gets the page's address as `PAGE_URL`, for the MCP server's chart links. A deploy stops the old task before it starts the new one. Its output goes to `/dashgen/backend`, kept for a day.
 - The deploy lock, the DynamoDB table `dashgen-deploy-lock`, which holds one item while a deploy runs, so deploys take turns. On demand, it costs a fraction of a cent.
 - A load balancer, `dashgen`, in the public subnets: plain HTTP on port 80, to the task on port 3000. It forwards only requests that carry this session's secret in the `x-origin-verify` header, a random UUID that Terraform makes each session, and answers 403 to anything else. It checks `/api/health` every 10 seconds, and calls a new task healthy after 2 answers in a row.
 

@@ -113,9 +113,20 @@ function checkModelKey(env: ModelEnvValues, ctx: z.RefinementCtx): void {
   }
 }
 
+/** The page that `make dev` serves. */
+export const LOCAL_PAGE_URL = "http://localhost:5173/";
+
+/**
+ * PAGE_URL: where the MCP server's chart links open (ADR-0022), the local page
+ * unless it's set. The page opens a link with no backend, so the live page
+ * opens them even between sessions. On AWS it's required (checkPageUrl).
+ */
+const PageUrl = z.url({ protocol: /^https?$/ });
+
 const Env = z
   .object({
     ...modelFields,
+    PAGE_URL: PageUrl.optional(),
     ALLOWED_ORIGINS: z
       .string()
       .transform((value) =>
@@ -149,7 +160,8 @@ const Env = z
     DYNAMODB_REGION: z.string().optional(),
   })
   .superRefine(checkModelKey)
-  .superRefine(checkBotCheckKey);
+  .superRefine(checkBotCheckKey)
+  .superRefine(checkPageUrl);
 
 /**
  * Cloudflare's test secret keys, like 1x0000000000000000000000000000000AA,
@@ -185,6 +197,25 @@ function checkBotCheckKey(
       path: ["TURNSTILE_SECRET_KEY"],
       message:
         "On AWS, TURNSTILE_SECRET_KEY can't be one of Cloudflare's test keys, which turn every real visitor down.",
+    });
+  }
+}
+
+/**
+ * Stops the backend at startup on AWS without PAGE_URL (ADR-0023). A task
+ * made from an older template would otherwise give Claude chat links to
+ * localhost, which open nothing.
+ */
+function checkPageUrl(
+  env: { PAGE_URL?: string | undefined; DYNAMODB_REGION?: string | undefined },
+  ctx: z.RefinementCtx,
+): void {
+  if (env.DYNAMODB_REGION && !env.PAGE_URL) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["PAGE_URL"],
+      message:
+        "On AWS, where DYNAMODB_REGION is set, the MCP server's chart links need PAGE_URL, the live page.",
     });
   }
 }
@@ -226,6 +257,8 @@ export interface Config {
   viewerIpHeader: string | undefined;
   /** Cloudflare Turnstile's secret key, which checks each question's token; unset, no check. */
   turnstileSecret: Secret | undefined;
+  /** Where the MCP server's chart links open, like "http://localhost:5173/". */
+  pageUrl: string;
 }
 
 /** Parses `env` with `schema`, and throws an error naming every missing or invalid variable. */
@@ -253,6 +286,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     PORT,
     VIEWER_IP_HEADER,
     TURNSTILE_SECRET_KEY,
+    PAGE_URL,
   } = parsed;
   return {
     model: modelSettings(parsed),
@@ -265,6 +299,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     turnstileSecret: TURNSTILE_SECRET_KEY
       ? new Secret(TURNSTILE_SECRET_KEY)
       : undefined,
+    pageUrl: PAGE_URL ?? LOCAL_PAGE_URL,
   };
 }
 
@@ -338,18 +373,9 @@ export function loadLogLevel(env: NodeJS.ProcessEnv = process.env): LogLevel {
   return parseEnv(LogLevelEnv, env).LOG_LEVEL;
 }
 
-/** The page that `make dev` serves. */
-export const LOCAL_PAGE_URL = "http://localhost:5173/";
+const PageUrlEnv = z.object({ PAGE_URL: PageUrl.default(LOCAL_PAGE_URL) });
 
-const PageUrlEnv = z.object({
-  PAGE_URL: z.url({ protocol: /^https?$/ }).default(LOCAL_PAGE_URL),
-});
-
-/**
- * Reads `PAGE_URL`, where the MCP server's chart links open (ADR-0022): the
- * local page, unless it's set. The page opens a link with no backend, so the
- * live page opens them even between sessions.
- */
+/** Reads `PAGE_URL` alone, for the MCP server over stdio. */
 export function loadPageUrl(env: NodeJS.ProcessEnv = process.env): string {
   return parseEnv(PageUrlEnv, env).PAGE_URL;
 }

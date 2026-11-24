@@ -20,7 +20,7 @@ Browser ──▶ Frontend ──── /api ──▶ Backend ─────�
 - **The `runs` module** (`backend/src/runs/`): each run's events in memory, for its stream, and `saveRun()`, which keeps each finished run in the `runs` table, with its cost.
 - **The `cap` module** (`backend/src/cap/`): the [daily cap](design.md#the-daily-cap). `POST /api/ask` takes one of today's 150 questions with one conditional write to DynamoDB before it starts a run ([ADR-0014](decisions/0014-daily-cap-in-dynamodb.md)).
 - **The `bots` module** (`backend/src/bots/`): Cloudflare Turnstile's check that a person asks. `POST /api/ask` sends each question's token to Cloudflare's `siteverify` before the daily cap, so a bot takes none of today's questions. Without `TURNSTILE_SECRET_KEY`, as locally, there's no check ([ADR-0021](decisions/0021-turnstile-bot-check.md)).
-- **The `mcp` module** (`backend/src/mcp/`): DashGen's tools for MCP clients, like Claude Code, taken from the agent's own, so their names, schemas and checks stay one set. The client's model calls them, so DashGen calls no model ([ADR-0022](decisions/0022-mcp-server.md)). `backend/src/scripts/mcp.ts` serves them over stdio, against the local Postgres, and Claude Code starts it with `node`. Its tools are `list_services`, `query_metrics` and `create_chart`, which answers with a share link to the page at `PAGE_URL`, the local page unless it's set. Unlike a question to DashGen's own agent, a session has no limit on queries, and keeps its newest 20 results for charts.
+- **The `mcp` module** (`backend/src/mcp/`): DashGen's tools for MCP clients, like Claude Code, taken from the agent's own, so their names, schemas and checks stay one set. The client's model calls them, so DashGen calls no model ([ADR-0022](decisions/0022-mcp-server.md)). `backend/src/scripts/mcp.ts` serves them over stdio, against the local Postgres, and Claude Code starts it with `node`. The backend also serves them over HTTP, at `/api/mcp`, so during a session Claude chat can use them too. Its tools are `list_services`, `query_metrics` and `create_chart`, which answers with a share link to the page at `PAGE_URL`, the local page unless it's set. Unlike a question to DashGen's own agent, a session has no limit on queries, and keeps its newest 20 results for charts.
 - **Postgres** runs in Docker Compose (`make db`), with one `dashgen` database and user. The tables come from Drizzle migrations, and the data from the seed.
 - **The backend's image** (`backend/Dockerfile`): Node 26 on Alpine, with only the production packages, run by the unprivileged `node` user. `.dockerignore` lists all it may take from the repo, so no `.env` file can reach it. `docker compose up` builds it, runs the migrations and the seed in a one-off `migrate` container, then starts the backend on :3000, as ECS will in step 5.
 - **DynamoDB Local** runs in Docker Compose too (`make db`, port 8000), in memory, so a restart starts the count over. The backend makes its table when it starts. Its client uses fake keys, so it can't reach a real AWS account.
@@ -56,6 +56,19 @@ Every response carries an `x-request-id` header: a UUIDv7, which also appears in
 | 204 | | every event was sent already, which tells `EventSource` to stop reconnecting |
 | 404 | `run_not_found` | the run is unknown, or ended more than 5 minutes ago |
 
+**`/api/mcp`** speaks MCP over Streamable HTTP, for MCP clients like Claude chat's custom connectors, with no sign-in ([ADR-0023](decisions/0023-remote-mcp.md)). An `initialize` starts a session, whose ID the client sends back in `Mcp-Session-Id`. Each session has its own MCP server and results, with the tools of the `mcp` module, and each `POST` carries one message. A request gets one JSON answer, never a stream, and a notification an empty 202. A web page can't call it: only Claude's origins, `https://claude.ai` and `https://claude.com`, and clients that send no `Origin`, like Claude Code, get through. Its answers are MCP's, not this API's: an error is JSON-RPC's `{"jsonrpc": "2.0", "error": {...}}`. The one exception is the 429, which the rate limit answers in this API's shape, with the code `rate_limited`, as for questions.
+
+| Status | When |
+|---|---|
+| 200 | an answer, or a session ended with `DELETE` |
+| 202 | a notification, which gets no answer |
+| 400 | no session yet, and not an `initialize`, a batch of messages, or a protocol version it doesn't support |
+| 403 | an `Origin` that isn't Claude's: a web page's |
+| 404 | the session has ended, after 30 idle minutes or a `DELETE`, so the client starts a new one, whatever the method |
+| 405 | a `GET`: DashGen sends no messages of its own |
+| 429 | a session's 61st request in a minute, or an IP's, for any other request: with no session, a made-up one, or from a web page |
+| 503 | 50 sessions are open or starting already, with `Retry-After` |
+
 Every error is `{"error": {"code": "...", "message": "..."}}`, and the message is safe to show visitors. The codes are `ApiErrorCode` in `@dashgen/contracts`. The [target design](design.md#the-frontends-api) keeps these codes. CORS allows only the origins in `ALLOWED_ORIGINS`, and only `GET` and `POST`.
 
 ## Data
@@ -75,7 +88,7 @@ Database tests run against a separate throwaway Postgres on port 5433, and Dynam
 
 | Where | Settings |
 |---|---|
-| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed`, `model:check`, `eval` and the MCP server | `AI_MODEL` (`gemini-3.1-flash-lite`, the default, `gemini-3.5-flash-lite` or `claude-haiku-5-5`: the models DashGen has an adapter and prices for), `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` (only the one the model needs), `ALLOWED_ORIGINS`, `DATABASE_URL`, `DYNAMODB_ENDPOINT` (`http://localhost:8000`, the default), `DAILY_CAP` (150 questions a day by default), `HOST` and `PORT` (`localhost` and `3000` by default; the image sets `HOST=0.0.0.0`), `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement), and `PAGE_URL`, for the MCP server only (where its chart links open: the local page by default). A missing or invalid one stops the command that needs it |
+| `backend/.env` (from `backend/.env.example`), read by `npm run dev`, `db:migrate`, `db:seed`, `model:check`, `eval` and the MCP server | `AI_MODEL` (`gemini-3.1-flash-lite`, the default, `gemini-3.5-flash-lite` or `claude-haiku-5-5`: the models DashGen has an adapter and prices for), `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` (only the one the model needs), `ALLOWED_ORIGINS`, `DATABASE_URL`, `DYNAMODB_ENDPOINT` (`http://localhost:8000`, the default), `DAILY_CAP` (150 questions a day by default), `HOST` and `PORT` (`localhost` and `3000` by default; the image sets `HOST=0.0.0.0`), `LOG_LEVEL` (`info` by default; `debug` adds every SQL statement), and `PAGE_URL`, for the MCP server only (where its chart links open: the local page by default, and required on AWS). A missing or invalid one stops the command that needs it |
 | `.env` at the root (from `.env.example`), read by Docker Compose | `POSTGRES_PASSWORD`, `DASHGEN_DB_PASSWORD` |
 
 ## Known limits

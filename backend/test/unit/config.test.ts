@@ -64,7 +64,11 @@ describe("loadConfig", () => {
   });
 
   it("stops on AWS without Turnstile's secret key, so no task there runs without the bot check", () => {
-    const aws = { ...VALID_ENV, DYNAMODB_REGION: "us-east-1" };
+    const aws = {
+      ...VALID_ENV,
+      DYNAMODB_REGION: "us-east-1",
+      PAGE_URL: "https://dashgen.example/",
+    };
 
     for (const key of [{}, { TURNSTILE_SECRET_KEY: "" }]) {
       assert.throws(
@@ -82,7 +86,11 @@ describe("loadConfig", () => {
   });
 
   it("stops on AWS with Cloudflare's test secret keys, which turn every real visitor down, but takes them locally", () => {
-    const aws = { ...VALID_ENV, DYNAMODB_REGION: "us-east-1" };
+    const aws = {
+      ...VALID_ENV,
+      DYNAMODB_REGION: "us-east-1",
+      PAGE_URL: "https://dashgen.example/",
+    };
     // Cloudflare's three: passes, fails, and already spent.
     const testKeys = ["1x", "2x", "3x"].map(
       (start) => `${start}${"0".repeat(31)}AA`,
@@ -102,6 +110,35 @@ describe("loadConfig", () => {
         key,
       );
     }
+  });
+
+  it("stops on AWS without PAGE_URL, so no task there gives Claude chat links to localhost", () => {
+    const aws = {
+      ...VALID_ENV,
+      DYNAMODB_REGION: "us-east-1",
+      TURNSTILE_SECRET_KEY: "turnstile-secret",
+    };
+
+    for (const url of [{}, { PAGE_URL: "" }]) {
+      assert.throws(
+        () => loadConfig({ ...aws, ...url }),
+        /On AWS, where DYNAMODB_REGION is set, the MCP server's chart links need PAGE_URL/,
+      );
+    }
+    assert.equal(
+      loadConfig({ ...aws, PAGE_URL: "https://dashgen.example/" }).pageUrl,
+      "https://dashgen.example/",
+    );
+    // Locally, it's the page that make dev serves.
+    assert.equal(loadConfig(VALID_ENV).pageUrl, LOCAL_PAGE_URL);
+  });
+
+  it("gets PAGE_URL on AWS under the name it reads", () => {
+    const service = readFileSync(
+      new URL("../../../infra/aws/session/service.tf", import.meta.url),
+      "utf8",
+    );
+    assert.match(service, /\{\s*name\s*=\s*"PAGE_URL",\s*value\s*=/);
   });
 
   it("counts an empty value as missing", () => {

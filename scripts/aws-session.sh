@@ -382,6 +382,21 @@ require_bot_check_key() {
   fi
 }
 
+# Stops unless the backend's template family $1 gives its task PAGE_URL,
+# where the MCP server's chart links open, which the backend needs to start
+# on AWS (ADR-0023). As with require_bot_check_key, a session made before
+# that has a template without it. Exits with $2: 0 for CI, and 1 for make.
+require_page_url() {
+  local names
+  names=$(aws ecs describe-task-definition --task-definition "$1" \
+    --query 'taskDefinition.containerDefinitions[0].environment[].name' \
+    --output text) || exit 1
+  if ! grep -qw PAGE_URL <<<"$names"; then
+    echo "The session's backend template has no PAGE_URL, which the backend needs to start on AWS, so the running backend stays. Run make aws-up, which updates the template and deploys." >&2
+    exit "$2"
+  fi
+}
+
 # Registers a copy of the newest revision of template family $1 in family
 # $2, running image $3, pinned by digest, tagged ImageTag=$4, main or dev, and
 # prints its ARN. Only Terraform registers templates, a revision on each
